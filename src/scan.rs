@@ -4,7 +4,7 @@ use std::collections::HashMap;
 const RADIX: u32 = 10;
 
 #[derive(Clone, Debug)]
-enum TokenType {
+pub enum TokenType {
     // Single character
     LeftPar,
     RightPar,
@@ -54,10 +54,10 @@ enum TokenType {
 
 #[derive(Debug)]
 pub struct Token {
-    t: TokenType,
-    line: usize,
-    pos: usize,
-    len: usize,
+    pub t: TokenType,
+    pub line: usize,
+    pub pos: usize,
+    pub len: usize,
 }
 
 pub struct Scanner {
