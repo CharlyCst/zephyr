@@ -35,7 +35,7 @@ pub enum UnaryOperator {
 
 #[derive(Debug)]
 pub enum Expression {
-    Literal {
+    Value {
         value: Value,
     },
     Binary {
@@ -52,7 +52,7 @@ pub enum Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Literal { value: v } => match v {
+            Expression::Value { value: v } => match v {
                 Value::Boolean(true) => write!(f, "true"),
                 Value::Boolean(false) => write!(f, "false"),
                 Value::Identifier(x) => write!(f, "{}", x),
@@ -90,13 +90,20 @@ impl fmt::Display for Expression {
 }
 
 pub enum Statement {
-    ExprStmt { expr: Box<Expression> },
+    ExprStmt {
+        expr: Box<Expression>,
+    },
+    LetStmt {
+        ident: String,
+        expr: Box<Expression>,
+    },
 }
 
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
+            Statement::LetStmt { ident, expr } => write!(f, "let {} = {}", ident, expr),
         }
     }
 }
@@ -161,7 +168,13 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Statement, ()> {
-        self.expr_stmt()
+        match self.peek().t {
+            TokenType::Let => {
+                self.advance();
+                self.let_stmt()
+            }
+            _ => self.expr_stmt(),
+        }
     }
 
     fn expr_stmt(&mut self) -> Result<Statement, ()> {
@@ -176,6 +189,43 @@ impl Parser {
                 .report(line, "This statement is not complete");
             Err(())
         }
+    }
+
+    // The let token must have been consumed
+    fn let_stmt(&mut self) -> Result<Statement, ()> {
+        let next = self.advance();
+        let ident = match next {
+            Token {
+                t: TokenType::Identifier(ref x),
+                ..
+            } => x.clone(),
+            Token { line, .. } => {
+                let l = *line;
+                self.error_handler.report(
+                    l,
+                    "Let statement requires an identifier after the \"let\" keyword",
+                );
+                return Err(());
+            }
+        };
+        if !self.next_match(TokenType::Equal) {
+            self.error_handler.report(
+                self.peek().line,
+                "Let statement requires an \"=\" after the identifier",
+            );
+            return Err(());
+        }
+        let expr = self.expression()?;
+        let semi_colon = self.advance();
+        if semi_colon.t != TokenType::SemiColon {
+            let l = semi_colon.line;
+            self.error_handler
+                .report(l, "Expect statement ender, try to add a line break")
+        }
+        Ok(Statement::LetStmt {
+            ident: ident,
+            expr: Box::new(expr),
+        })
     }
 
     fn expression(&mut self) -> Result<Expression, ()> {
@@ -346,13 +396,13 @@ impl Parser {
         let token = self.advance();
 
         match &token.t {
-            TokenType::NumberLit(n) => Ok(Expression::Literal {
+            TokenType::NumberLit(n) => Ok(Expression::Value {
                 value: Value::Number(*n),
             }),
-            TokenType::BooleanLit(b) => Ok(Expression::Literal {
+            TokenType::BooleanLit(b) => Ok(Expression::Value {
                 value: Value::Boolean(*b),
             }),
-            TokenType::Identifier(ref x) => Ok(Expression::Literal {
+            TokenType::Identifier(ref x) => Ok(Expression::Value {
                 value: Value::Identifier(x.clone()),
             }),
             TokenType::LeftPar => {
@@ -370,7 +420,7 @@ impl Parser {
             _ => {
                 let line = token.line;
                 self.error_handler
-                    .report(line, "Expected literal or identifier");
+                    .report(line, "Expected value or identifier");
                 Err(())
             }
         }

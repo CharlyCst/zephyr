@@ -1,5 +1,6 @@
 // This code is written in fork
 
-x || y == 36
+let x = 0
+let y = (2 + x) * 3
 
-(a + 1) * 2 / 5
+x + y
