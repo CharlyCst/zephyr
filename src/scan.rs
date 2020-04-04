@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 const RADIX: u32 = 10;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TokenType {
     // Single character
     LeftPar,
@@ -61,7 +61,6 @@ pub struct Token {
 }
 
 pub struct Scanner {
-    // had_error: bool,
     error_handler: ErrorHandler,
     code: Vec<char>,
     start: usize,
@@ -88,7 +87,6 @@ impl Scanner {
         .collect();
 
         Scanner {
-            // had_error: false,
             error_handler: handler,
             code: code.chars().collect(),
             start: 0,
@@ -210,7 +208,7 @@ impl Scanner {
     }
 
     fn advance(&mut self) -> char {
-        let c = self.code[self.current];
+        let c = self.peek();
         self.current += 1;
         c
     }

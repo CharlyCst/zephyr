@@ -2,11 +2,10 @@ use std::env;
 use std::fs;
 
 mod error;
+mod parse;
 mod scan;
 
 fn main() {
-    println!("Hi, I'm the Fork compiler!");
-
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         println!("Usage: fork <file>");
@@ -17,9 +16,21 @@ fn main() {
 }
 
 fn compile(code: String) {
-    let error_handler = error::ErrorHandler::new();
-    let mut scanner = scan::Scanner::new(error_handler, code);
+    println!("\n/// Scanning ///\n");
+
+    let scan_handler = error::ErrorHandler::new();
+    let mut scanner = scan::Scanner::new(scan_handler, code);
     let tokens = scanner.scan();
     println!("{:?}", tokens);
+
+    println!("\n/// Parsing ///\n");
+
+    let parse_handler = error::ErrorHandler::new();
+    let mut parser = parse::Parser::new(parse_handler, tokens);
+    let expressions = parser.parse();
+
+    for expr in expressions.iter() {
+        println!("{}", expr);
+    }
     return;
 }
