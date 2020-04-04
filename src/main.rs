@@ -27,10 +27,10 @@ fn compile(code: String) {
 
     let parse_handler = error::ErrorHandler::new();
     let mut parser = parse::Parser::new(parse_handler, tokens);
-    let expressions = parser.parse();
+    let statements = parser.parse();
 
-    for expr in expressions.iter() {
-        println!("{}", expr);
+    for stmt in statements.iter() {
+        println!("{}", stmt);
     }
     return;
 }

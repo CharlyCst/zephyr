@@ -49,6 +49,7 @@ pub enum TokenType {
     False,
 
     // Other
+    SemiColon,
     EOF,
 }
 
@@ -67,6 +68,7 @@ pub struct Scanner {
     current: usize,
     line: usize,
     keywords: HashMap<String, TokenType>,
+    stmt_ender: bool,
 }
 
 impl Scanner {
@@ -93,6 +95,7 @@ impl Scanner {
             current: 0,
             line: 1,
             keywords: keywords,
+            stmt_ender: false,
         }
     }
 
@@ -101,6 +104,9 @@ impl Scanner {
         while !self.is_at_end() {
             self.scan_token(&mut tokens);
             self.start = self.current;
+        }
+        if self.stmt_ender {
+            self.add_token(&mut tokens, TokenType::SemiColon);
         }
         self.add_token(&mut tokens, TokenType::EOF);
 
@@ -170,7 +176,12 @@ impl Scanner {
                     self.add_token(tokens, TokenType::Slash)
                 }
             }
-            '\n' => self.line += 1,
+            '\n' => {
+                self.line += 1;
+                if self.stmt_ender {
+                    self.add_token(tokens, TokenType::SemiColon)
+                }
+            }
             ' ' | '\t' | '\r' => (),
             c => {
                 if c.is_digit(RADIX) {
@@ -179,6 +190,17 @@ impl Scanner {
                     self.identifier(tokens)
                 }
             }
+        }
+    }
+
+    fn check_stmt_ender(&mut self, token: &Token) {
+        match token.t {
+            TokenType::NumberLit(_) => self.stmt_ender = true,
+            TokenType::BooleanLit(_) => self.stmt_ender = true,
+            TokenType::Identifier(_) => self.stmt_ender = true,
+            TokenType::RightBrace => self.stmt_ender = true,
+            TokenType::RightPar => self.stmt_ender = true,
+            _ => self.stmt_ender = false,
         }
     }
 
@@ -200,6 +222,7 @@ impl Scanner {
             pos: self.start,
             len: self.current - self.start,
         };
+        self.check_stmt_ender(&token);
         tokens.push(token);
     }
 

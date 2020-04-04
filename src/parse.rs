@@ -35,9 +35,6 @@ pub enum UnaryOperator {
 
 #[derive(Debug)]
 pub enum Expression {
-    // Grouping {
-    //     expr: Box<Expression>,
-    // },
     Literal {
         value: Value,
     },
@@ -62,8 +59,8 @@ impl fmt::Display for Expression {
                 Value::Number(n) => write!(f, "{}", n),
             },
             Expression::Unary { unop, expr } => match unop {
-                UnaryOperator::Not => write!(f, "-{}", expr),
-                UnaryOperator::Minus => write!(f, "!{}", expr),
+                UnaryOperator::Not => write!(f, "!{}", expr),
+                UnaryOperator::Minus => write!(f, "-{}", expr),
             },
             Expression::Binary {
                 expr_left,
@@ -92,6 +89,18 @@ impl fmt::Display for Expression {
     }
 }
 
+pub enum Statement {
+    ExprStmt { expr: Box<Expression> },
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Statement::ExprStmt { expr } => write!(f, "{};", expr),
+        }
+    }
+}
+
 pub struct Parser {
     error_handler: ErrorHandler,
     tokens: Vec<Token>,
@@ -109,17 +118,17 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Expression> {
-        let mut exprs = Vec::new();
+    pub fn parse(&mut self) -> Vec<Statement> {
+        let mut stmts = Vec::new();
 
         while !self.is_at_end() {
-            match self.expression() {
-                Ok(expr) => exprs.push(expr),
+            match self.statement() {
+                Ok(expr) => stmts.push(expr),
                 Err(()) => (),
             }
         }
 
-        exprs
+        stmts
     }
 
     fn is_at_end(&self) -> bool {
@@ -148,6 +157,24 @@ impl Parser {
             true
         } else {
             false
+        }
+    }
+
+    fn statement(&mut self) -> Result<Statement, ()> {
+        self.expr_stmt()
+    }
+
+    fn expr_stmt(&mut self) -> Result<Statement, ()> {
+        let expr = self.expression()?;
+        if self.next_match(TokenType::SemiColon) {
+            Ok(Statement::ExprStmt {
+                expr: Box::new(expr),
+            })
+        } else {
+            let line = self.peek().line;
+            self.error_handler
+                .report(line, "This statement is not complete");
+            Err(())
         }
     }
 
