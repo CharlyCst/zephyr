@@ -229,7 +229,7 @@ impl Scanner {
             Ok(n) => self.add_token(tokens, TokenType::NumberLit(n)),
             Err(_) => self.error_handler.report(
                 self.line,
-                ["Could not parse", &str_val[..], "as a number"].join(" "),
+                &format!("Could not parse {} as a number", str_val),
             ),
         }
     }

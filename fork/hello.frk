@@ -1,9 +1,5 @@
 // This code is written in fork
 
-let x = 14
-let y = (2 + 3)
-let z = 8 / 4
+x || y == 36
 
-if x == y {
-    0
-}
+(a + 1) * 2 / 5

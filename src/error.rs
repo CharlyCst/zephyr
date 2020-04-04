@@ -12,7 +12,7 @@ impl ErrorHandler {
         ErrorHandler { has_error: false }
     }
 
-    pub fn report(&mut self, line: usize, message: String) {
+    pub fn report(&mut self, line: usize, message: &str) {
         self.has_error = true;
         println!("An error was found line {}: {}", line, message);
     }

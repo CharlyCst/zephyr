@@ -113,7 +113,10 @@ impl Parser {
         let mut exprs = Vec::new();
 
         while !self.is_at_end() {
-            exprs.push(self.expression())
+            match self.expression() {
+                Ok(expr) => exprs.push(expr),
+                Err(()) => (),
+            }
         }
 
         exprs
@@ -129,10 +132,6 @@ impl Parser {
     fn peek(&self) -> &Token {
         let cur = self.current;
         &self.tokens[cur]
-    }
-
-    fn previous(&self) -> &Token {
-        &self.tokens[self.current - 1]
     }
 
     fn advance(&mut self) -> &Token {
@@ -152,40 +151,40 @@ impl Parser {
         }
     }
 
-    fn expression(&mut self) -> Expression {
+    fn expression(&mut self) -> Result<Expression, ()> {
         self.logical_or()
     }
 
-    fn logical_or(&mut self) -> Expression {
-        let mut left_and = self.logical_and();
+    fn logical_or(&mut self) -> Result<Expression, ()> {
+        let mut left_and = self.logical_and()?;
 
         while self.next_match(TokenType::OrOr) {
-            let right_and = self.logical_and();
+            let right_and = self.logical_and()?;
             left_and = Expression::Binary {
                 expr_left: Box::new(left_and),
                 binop: BinaryOperator::Or,
                 expr_right: Box::new(right_and),
             }
         }
-        left_and
+        Ok(left_and)
     }
 
-    fn logical_and(&mut self) -> Expression {
-        let mut left_eq = self.equality();
+    fn logical_and(&mut self) -> Result<Expression, ()> {
+        let mut left_eq = self.equality()?;
 
         while self.next_match(TokenType::AndAnd) {
-            let right_eq = self.logical_and();
+            let right_eq = self.logical_and()?;
             left_eq = Expression::Binary {
                 expr_left: Box::new(left_eq),
                 binop: BinaryOperator::And,
                 expr_right: Box::new(right_eq),
             }
         }
-        left_eq
+        Ok(left_eq)
     }
 
-    fn equality(&mut self) -> Expression {
-        let mut left_comp = self.comparison();
+    fn equality(&mut self) -> Result<Expression, ()> {
+        let mut left_comp = self.comparison()?;
 
         loop {
             let binop = match self.peek().t {
@@ -194,18 +193,18 @@ impl Parser {
                 _ => break,
             };
             self.advance();
-            let right_comp = self.comparison();
+            let right_comp = self.comparison()?;
             left_comp = Expression::Binary {
                 expr_left: Box::new(left_comp),
                 binop: binop,
                 expr_right: Box::new(right_comp),
             }
         }
-        left_comp
+        Ok(left_comp)
     }
 
-    fn comparison(&mut self) -> Expression {
-        let mut left_b_or = self.bitwise_or();
+    fn comparison(&mut self) -> Result<Expression, ()> {
+        let mut left_b_or = self.bitwise_or()?;
 
         loop {
             let binop = match self.peek().t {
@@ -216,46 +215,46 @@ impl Parser {
                 _ => break,
             };
             self.advance();
-            let right_b_or = self.bitwise_or();
+            let right_b_or = self.bitwise_or()?;
             left_b_or = Expression::Binary {
                 expr_left: Box::new(left_b_or),
                 binop: binop,
                 expr_right: Box::new(right_b_or),
             }
         }
-        left_b_or
+        Ok(left_b_or)
     }
 
-    fn bitwise_or(&mut self) -> Expression {
-        let mut left_b_and = self.bitwise_and();
+    fn bitwise_or(&mut self) -> Result<Expression, ()> {
+        let mut left_b_and = self.bitwise_and()?;
 
         while self.next_match(TokenType::Or) {
-            let right_b_and = self.bitwise_and();
+            let right_b_and = self.bitwise_and()?;
             left_b_and = Expression::Binary {
                 expr_left: Box::new(left_b_and),
                 binop: BinaryOperator::BitwiseOr,
                 expr_right: Box::new(right_b_and),
             }
         }
-        left_b_and
+        Ok(left_b_and)
     }
 
-    fn bitwise_and(&mut self) -> Expression {
-        let mut left_add = self.addition();
+    fn bitwise_and(&mut self) -> Result<Expression, ()> {
+        let mut left_add = self.addition()?;
 
         while self.next_match(TokenType::And) {
-            let right_add = self.addition();
+            let right_add = self.addition()?;
             left_add = Expression::Binary {
                 expr_left: Box::new(left_add),
                 binop: BinaryOperator::BitwiseAnd,
                 expr_right: Box::new(right_add),
             }
         }
-        left_add
+        Ok(left_add)
     }
 
-    fn addition(&mut self) -> Expression {
-        let mut left_mult = self.multiplication();
+    fn addition(&mut self) -> Result<Expression, ()> {
+        let mut left_mult = self.multiplication()?;
 
         loop {
             let binop = match self.peek().t {
@@ -264,18 +263,18 @@ impl Parser {
                 _ => break,
             };
             self.advance();
-            let right_mult = self.multiplication();
+            let right_mult = self.multiplication()?;
             left_mult = Expression::Binary {
                 expr_left: Box::new(left_mult),
                 binop: binop,
                 expr_right: Box::new(right_mult),
             }
         }
-        left_mult
+        Ok(left_mult)
     }
 
-    fn multiplication(&mut self) -> Expression {
-        let mut left_unary = self.unary();
+    fn multiplication(&mut self) -> Result<Expression, ()> {
+        let mut left_unary = self.unary()?;
 
         loop {
             let binop = match self.peek().t {
@@ -284,67 +283,68 @@ impl Parser {
                 _ => break,
             };
             self.advance();
-            let right_unary = self.unary();
+            let right_unary = self.unary()?;
             left_unary = Expression::Binary {
                 expr_left: Box::new(left_unary),
                 binop: binop,
                 expr_right: Box::new(right_unary),
             }
         }
-        left_unary
+        Ok(left_unary)
     }
 
-    fn unary(&mut self) -> Expression {
+    fn unary(&mut self) -> Result<Expression, ()> {
         let token = self.peek();
 
         match token.t {
             TokenType::Bang => {
                 self.advance();
-                Expression::Unary {
+                Ok(Expression::Unary {
                     unop: UnaryOperator::Not,
-                    expr: Box::new(self.unary()),
-                }
+                    expr: Box::new(self.unary()?),
+                })
             }
             TokenType::Minus => {
                 self.advance();
-                Expression::Unary {
+                Ok(Expression::Unary {
                     unop: UnaryOperator::Minus,
-                    expr: Box::new(self.unary()),
-                }
+                    expr: Box::new(self.unary()?),
+                })
             }
             _ => self.primary(),
         }
     }
 
-    fn primary(&mut self) -> Expression {
+    fn primary(&mut self) -> Result<Expression, ()> {
         let token = self.advance();
 
         match &token.t {
-            TokenType::NumberLit(n) => Expression::Literal {
+            TokenType::NumberLit(n) => Ok(Expression::Literal {
                 value: Value::Number(*n),
-            },
-            TokenType::BooleanLit(b) => Expression::Literal {
+            }),
+            TokenType::BooleanLit(b) => Ok(Expression::Literal {
                 value: Value::Boolean(*b),
-            },
-            TokenType::Identifier(ref x) => Expression::Literal {
+            }),
+            TokenType::Identifier(ref x) => Ok(Expression::Literal {
                 value: Value::Identifier(x.clone()),
-            },
+            }),
             TokenType::LeftPar => {
-                let expr = self.expression();
+                let expr = self.expression()?;
                 let left_brace = self.advance();
                 if left_brace.t != TokenType::RightPar {
-                    // Handle error
-                    println!("ERROR missing parenthesis");
+                    let line = left_brace.line;
+                    self.error_handler
+                        .report(line, "Expected closing parenthesis");
+                    Err(())
+                } else {
+                    Ok(expr)
                 }
-                expr
             }
             _ => {
-                // Handle error
-                println!("{:?}", token);
-                println!("ERROR in parsing primary");
-                Expression::Literal {
-                    value: Value::Number(777),
-                }
+                let line = token.line;
+                self.error_handler
+                    .report(line, "Expected literal or identifier");
+                Err(())
             }
         }
     }
