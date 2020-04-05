@@ -103,7 +103,7 @@ impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
-            Statement::LetStmt { ident, expr } => write!(f, "let {} = {}", ident, expr),
+            Statement::LetStmt { ident, expr } => write!(f, "let {} = {};", ident, expr),
         }
     }
 }
@@ -419,8 +419,7 @@ impl Parser {
             }
             _ => {
                 let line = token.line;
-                self.error_handler
-                    .report(line, "Expected value or identifier");
+                self.error_handler.report(line, "Expected expression");
                 Err(())
             }
         }

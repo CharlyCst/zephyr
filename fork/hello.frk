@@ -1,6 +1,10 @@
 // This code is written in fork
 
 let x = 0
-let y = (2 + x) * 3
+let y = (
+    1 + 
+    2 + 3
+    + 4
+)
 
 x + y

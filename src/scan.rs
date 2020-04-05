@@ -69,6 +69,7 @@ pub struct Scanner {
     line: usize,
     keywords: HashMap<String, TokenType>,
     stmt_ender: bool,
+    parenthesis_count: i32,
 }
 
 impl Scanner {
@@ -96,6 +97,7 @@ impl Scanner {
             line: 1,
             keywords: keywords,
             stmt_ender: false,
+            parenthesis_count: 0,
         }
     }
 
@@ -194,14 +196,22 @@ impl Scanner {
     }
 
     fn check_stmt_ender(&mut self, token: &Token) {
-        match token.t {
-            TokenType::NumberLit(_) => self.stmt_ender = true,
-            TokenType::BooleanLit(_) => self.stmt_ender = true,
-            TokenType::Identifier(_) => self.stmt_ender = true,
-            TokenType::RightBrace => self.stmt_ender = true,
-            TokenType::RightPar => self.stmt_ender = true,
-            _ => self.stmt_ender = false,
-        }
+        let candidate = match token.t {
+            TokenType::NumberLit(_) => true,
+            TokenType::BooleanLit(_) => true,
+            TokenType::Identifier(_) => true,
+            TokenType::RightBrace => true,
+            TokenType::RightPar => {
+                self.parenthesis_count -= 1;
+                true
+            }
+            TokenType::LeftPar => {
+                self.parenthesis_count += 1;
+                false
+            }
+            _ => false,
+        };
+        self.stmt_ender = candidate && self.parenthesis_count <= 0
     }
 
     fn next_match(&mut self, c: char) -> bool {
