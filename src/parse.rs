@@ -97,6 +97,10 @@ pub enum Statement {
         ident: String,
         expr: Box<Expression>,
     },
+    AssignStmt {
+        ident: String,
+        expr: Box<Expression>,
+    },
 }
 
 impl fmt::Display for Statement {
@@ -104,6 +108,7 @@ impl fmt::Display for Statement {
         match self {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { ident, expr } => write!(f, "let {} = {};", ident, expr),
+            Statement::AssignStmt { ident, expr } => write!(f, "{} = {};", ident, expr),
         }
     }
 }
@@ -150,6 +155,15 @@ impl Parser {
         &self.tokens[cur]
     }
 
+    fn peekpeek(&self) -> &Token {
+        let next = self.current + 1;
+        if next >= self.tokens.len() {
+            &self.tokens[next - 1]
+        } else {
+            &self.tokens[next]
+        }
+    }
+
     fn advance(&mut self) -> &Token {
         let token = &self.tokens[self.current];
         if !self.is_at_end() {
@@ -167,12 +181,25 @@ impl Parser {
         }
     }
 
+    fn consume_semi_colon(&mut self) -> () {
+        let semi_colon = self.advance();
+        if semi_colon.t != TokenType::SemiColon {
+            let l = semi_colon.line;
+            self.error_handler
+                .report(l, "Expect statement ender, try to add a line break")
+        }
+    }
+
     fn statement(&mut self) -> Result<Statement, ()> {
         match self.peek().t {
             TokenType::Let => {
                 self.advance();
                 self.let_stmt()
             }
+            TokenType::Identifier(_) => match self.peekpeek().t {
+                TokenType::Equal => self.assign_stmt(),
+                _ => self.expr_stmt(),
+            },
             _ => self.expr_stmt(),
         }
     }
@@ -216,13 +243,41 @@ impl Parser {
             return Err(());
         }
         let expr = self.expression()?;
-        let semi_colon = self.advance();
-        if semi_colon.t != TokenType::SemiColon {
-            let l = semi_colon.line;
-            self.error_handler
-                .report(l, "Expect statement ender, try to add a line break")
-        }
+        self.consume_semi_colon();
         Ok(Statement::LetStmt {
+            ident: ident,
+            expr: Box::new(expr),
+        })
+    }
+
+    fn assign_stmt(&mut self) -> Result<Statement, ()> {
+        let ident = match self.advance() {
+            Token {
+                t: TokenType::Identifier(ref x),
+                ..
+            } => x.clone(),
+            Token { line, .. } => {
+                let l = *line;
+                self.error_handler
+                    .report_internal(l, "Assignment statement does not start with an identifier");
+                return Err(());
+            }
+        };
+        match self.advance() {
+            Token {
+                t: TokenType::Equal,
+                ..
+            } => (),
+            Token { line, .. } => {
+                let l = *line;
+                self.error_handler
+                    .report_internal(l, "Assignment identifier is not followed by an \"=\"");
+                return Err(());
+            }
+        };
+        let expr = self.expression()?;
+        self.consume_semi_colon();
+        Ok(Statement::AssignStmt {
             ident: ident,
             expr: Box::new(expr),
         })

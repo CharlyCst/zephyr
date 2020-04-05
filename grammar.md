@@ -5,9 +5,10 @@ The grammar is defined as follow, and parsed using recursive descent.
 ```
 program        -> statement* EOF
 
-statement      -> expr_stmt | let_stmt
+statement      -> expr_stmt | let_stmt | assign_stmt
 expr_stmt      -> expression ";"
 let_stmt       -> "let" IDENTIFIER = expression ";"
+assign_stmt    -> IDENTIFIER = expression ";"
 
 expression     -> logical_or
 logical_or     -> logical_and ("||" logical_and)*

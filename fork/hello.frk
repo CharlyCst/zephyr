@@ -1,10 +1,10 @@
 // This code is written in fork
 
-let x = 0
+let x = false
 let y = (
     1 + 
     2 + 3
     + 4
 )
 
-x + y
+x = y == 10

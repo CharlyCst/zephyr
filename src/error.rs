@@ -16,4 +16,9 @@ impl ErrorHandler {
         self.has_error = true;
         println!("An error was found line {}: {}", line, message);
     }
+
+    pub fn report_internal(&mut self, line: usize, message: &str) {
+        self.has_error = true;
+        println!("Internal error at line {}: {}", line, message);
+    }
 }
