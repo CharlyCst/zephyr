@@ -1,9 +1,7 @@
 // This code is written in fork
 
-let x = 0
-if true {
-    x = 10
-}
-while x > 0 {
-    x = x - 1
-}
+f(
+    a, 
+    b, 
+    c
+)(d, e)

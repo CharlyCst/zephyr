@@ -21,4 +21,12 @@ impl ErrorHandler {
         self.has_error = true;
         println!("Internal error at line {}: {}", line, message);
     }
+
+    pub fn silent_report(&mut self) {
+        self.has_error = true;
+    }
+
+    pub fn success(&self) -> bool {
+        !self.has_error
+    }
 }

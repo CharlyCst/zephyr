@@ -36,5 +36,11 @@ fn compile(code: String) {
     for stmt in statements.iter() {
         println!("{}", stmt);
     }
+
+    if parser.success() {
+        println!("\nSuccess");
+    } else {
+        println!("\nFailure");
+    }
     return;
 }

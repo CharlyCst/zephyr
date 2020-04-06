@@ -23,8 +23,11 @@ bitwise_or     -> bitwise_and ("|" bitwise_and)*
 bitwise_and    -> addition ("&" addition)*
 addition       -> multiplication (("+" | "-") multiplication)*
 multiplication -> unary (("/" | "*") unary)*
-unary          -> (("!" | "-") unary) | primary
-primary        -> NUMBER | BOOLEAN | IDENTIFIER | "false" | "true" | "(" expression ")"
+unary          -> (("!" | "-") unary) | call
+call           -> primary ( "(" arguments? ")" )*
+primary        -> NUMBER | BOOLEAN | IDENTIFIER | "false" | "true"
+                | "(" expression ")"
+arguments      -> expression ( "," expression )*
 ```
 
 It is worth noting that there is no semi-colon `;` in Fork, but some are inserted by the scanner following Go-like rules.

@@ -2,14 +2,12 @@ use crate::error::ErrorHandler;
 use crate::scan::{Token, TokenType};
 use std::fmt;
 
-#[derive(Debug)]
 pub enum Value {
     Identifier(String),
     Number(u64),
     Boolean(bool),
 }
 
-#[derive(Debug)]
 pub enum BinaryOperator {
     Equal,
     NotEqual,
@@ -27,13 +25,11 @@ pub enum BinaryOperator {
     And,
 }
 
-#[derive(Debug)]
 pub enum UnaryOperator {
     Minus,
     Not,
 }
 
-#[derive(Debug)]
 pub enum Expression {
     Value {
         value: Value,
@@ -47,6 +43,10 @@ pub enum Expression {
         unop: UnaryOperator,
         expr: Box<Expression>,
     },
+    Call {
+        fun: Box<Expression>,
+        args: Vec<Expression>,
+    },
 }
 
 impl fmt::Display for Expression {
@@ -58,6 +58,15 @@ impl fmt::Display for Expression {
                 Value::Identifier(x) => write!(f, "{}", x),
                 Value::Number(n) => write!(f, "{}", n),
             },
+            Expression::Call { fun, args } => write!(
+                f,
+                "{}({})",
+                fun,
+                args.iter()
+                    .map(|arg| format!("{}", arg))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Expression::Unary { unop, expr } => match unop {
                 UnaryOperator::Not => write!(f, "!{}", expr),
                 UnaryOperator::Minus => write!(f, "-{}", expr),
@@ -160,13 +169,17 @@ impl Parser {
         }
     }
 
+    pub fn success(&self) -> bool {
+        self.error_handler.success()
+    }
+
     pub fn parse(&mut self) -> Vec<Statement> {
         let mut stmts = Vec::new();
 
         while !self.is_at_end() {
             match self.statement() {
                 Ok(expr) => stmts.push(expr),
-                Err(()) => (),
+                Err(()) => self.error_handler.silent_report(),
             }
         }
 
@@ -202,6 +215,12 @@ impl Parser {
         token
     }
 
+    fn back(&mut self) {
+        if self.current > 0 {
+            self.current -= 1;
+        }
+    }
+
     fn next_match(&mut self, t: TokenType) -> bool {
         if self.peek().t == t {
             self.advance();
@@ -213,7 +232,7 @@ impl Parser {
 
     fn synchronize(&mut self) {
         let mut token = self.advance();
-        while token.t != TokenType::SemiColon {
+        while token.t != TokenType::SemiColon && !self.is_at_end() {
             token = self.advance();
         }
     }
@@ -537,8 +556,28 @@ impl Parser {
                     expr: Box::new(self.unary()?),
                 })
             }
-            _ => self.primary(),
+            _ => self.call(),
         }
+    }
+
+    fn call(&mut self) -> Result<Expression, ()> {
+        let mut expr = self.primary()?;
+        while self.next_match(TokenType::LeftPar) {
+            let args = self.arguments();
+            // println!("{}", self.peek());
+            if !self.next_match(TokenType::RightPar) {
+                let line = self.peek().line;
+                self.error_handler
+                    .report(line, "Expected a closing parenthesis `)` to function call");
+                self.synchronize();
+                return Err(());
+            }
+            expr = Expression::Call {
+                fun: Box::new(expr),
+                args: args,
+            };
+        }
+        Ok(expr)
     }
 
     fn primary(&mut self) -> Result<Expression, ()> {
@@ -566,11 +605,19 @@ impl Parser {
                     Ok(expr)
                 }
             }
-            _ => {
-                let line = token.line;
-                self.error_handler.report(line, "Expected expression");
-                Err(())
+            _ => Err(()),
+        }
+    }
+
+    fn arguments(&mut self) -> Vec<Expression> {
+        let mut args = Vec::new();
+        while let Ok(expr) = self.expression() {
+            args.push(expr);
+            if !self.next_match(TokenType::Comma) {
+                return args;
             }
         }
+        self.back(); // expression consume one token when failing
+        args
     }
 }
