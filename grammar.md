@@ -5,11 +5,14 @@ The grammar is defined as follow, and parsed using recursive descent.
 ```
 program        -> statement* EOF
 
-statement      -> expr_stmt | let_stmt | if_stmt | assign_stmt
+statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt | while_stmt
 expr_stmt      -> expression ";"
-let_stmt       -> "let" IDENTIFIER = expression ";"
-if_stmt        -> "if" expression "{" statement* "}" ";"
 assign_stmt    -> IDENTIFIER = expression ";"
+let_stmt       -> "let" IDENTIFIER = expression ";"
+if_stmt        -> "if" expression block_stmt ";"
+while_stmt     -> "while" expression block_stmt ";"
+
+block          -> "{" statement* "}"
 
 expression     -> logical_or
 logical_or     -> logical_and ("||" logical_and)*

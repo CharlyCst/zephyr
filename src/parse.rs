@@ -103,8 +103,32 @@ pub enum Statement {
     },
     IfStmt {
         expr: Box<Expression>,
-        stmts: Vec<Statement>,
+        block: Block,
     },
+    WhileStmt {
+        expr: Box<Expression>,
+        block: Block,
+    },
+}
+
+pub struct Block {
+    stmts: Vec<Statement>,
+}
+
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut strs = Vec::new();
+        strs.push(String::from("{"));
+        for stmt in self.stmts.iter() {
+            strs.push(format!("    {}", stmt));
+        }
+        strs.push(String::from("};"));
+        write!(
+            f,
+            "{}",
+            strs.iter().map(|s| &**s).collect::<Vec<&str>>().join("\n"),
+        )
+    }
 }
 
 impl fmt::Display for Statement {
@@ -113,19 +137,8 @@ impl fmt::Display for Statement {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { ident, expr } => write!(f, "let {} = {};", ident, expr),
             Statement::AssignStmt { ident, expr } => write!(f, "{} = {};", ident, expr),
-            Statement::IfStmt { expr, stmts } => {
-                let mut strs = Vec::new();
-                strs.push(format!("if {} {{", expr));
-                for stmt in stmts.iter() {
-                    strs.push(format!("    {}", stmt));
-                }
-                strs.push(String::from("};"));
-                write!(
-                    f,
-                    "{}",
-                    strs.iter().map(|s| &**s).collect::<Vec<&str>>().join("\n"),
-                )
-            }
+            Statement::IfStmt { expr, block } => write!(f, "if {} {}", expr, block),
+            Statement::WhileStmt { expr, block } => write!(f, "while {} {}", expr, block),
         }
     }
 }
@@ -225,6 +238,10 @@ impl Parser {
                 self.advance();
                 self.if_stmt()
             }
+            TokenType::While => {
+                self.advance();
+                self.while_stmt()
+            }
             TokenType::Identifier(_) => match self.peekpeek().t {
                 TokenType::Equal => self.assign_stmt(),
                 _ => self.expr_stmt(),
@@ -245,63 +262,6 @@ impl Parser {
                 .report(line, "This statement is not complete");
             Err(())
         }
-    }
-
-    // The let token must have been consumed
-    fn let_stmt(&mut self) -> Result<Statement, ()> {
-        let next = self.advance();
-        let ident = match next {
-            Token {
-                t: TokenType::Identifier(ref x),
-                ..
-            } => x.clone(),
-            Token { line, .. } => {
-                let l = *line;
-                self.error_handler.report(
-                    l,
-                    "Let statement requires an identifier after the \"let\" keyword",
-                );
-                return Err(());
-            }
-        };
-        if !self.next_match(TokenType::Equal) {
-            self.error_handler.report(
-                self.peek().line,
-                "Let statement requires an \"=\" after the identifier",
-            );
-            return Err(());
-        }
-        let expr = self.expression()?;
-        self.consume_semi_colon();
-        Ok(Statement::LetStmt {
-            ident: ident,
-            expr: Box::new(expr),
-        })
-    }
-
-    // The if token must have been consumed
-    fn if_stmt(&mut self) -> Result<Statement, ()> {
-        let expr = self.expression()?;
-        if !self.next_match(TokenType::LeftBrace) {
-            self.error_handler.report(
-                self.peek().line,
-                "If statement requires an \"{\" after the condition",
-            );
-            return Err(());
-        };
-        let mut stmts = Vec::new();
-        while !self.next_match(TokenType::RightBrace) {
-            let next_expr = self.statement();
-            match next_expr {
-                Ok(e) => stmts.push(e),
-                Err(()) => (),
-            }
-        }
-        self.consume_semi_colon();
-        Ok(Statement::IfStmt {
-            expr: Box::new(expr),
-            stmts: stmts,
-        })
     }
 
     fn assign_stmt(&mut self) -> Result<Statement, ()> {
@@ -335,6 +295,86 @@ impl Parser {
             ident: ident,
             expr: Box::new(expr),
         })
+    }
+
+    // The `let` token must have been consumed
+    fn let_stmt(&mut self) -> Result<Statement, ()> {
+        let next = self.advance();
+        let ident = match next {
+            Token {
+                t: TokenType::Identifier(ref x),
+                ..
+            } => x.clone(),
+            Token { line, .. } => {
+                let l = *line;
+                self.error_handler.report(
+                    l,
+                    "Let statement requires an identifier after the \"let\" keyword",
+                );
+                return Err(());
+            }
+        };
+        if !self.next_match(TokenType::Equal) {
+            self.error_handler.report(
+                self.peek().line,
+                "Let statement requires an \"=\" after the identifier",
+            );
+            return Err(());
+        }
+        let expr = self.expression()?;
+        self.consume_semi_colon();
+        Ok(Statement::LetStmt {
+            ident: ident,
+            expr: Box::new(expr),
+        })
+    }
+
+    // The `if` token must have been consumed
+    fn if_stmt(&mut self) -> Result<Statement, ()> {
+        let expr = self.expression()?;
+        if !self.next_match(TokenType::LeftBrace) {
+            self.error_handler.report(
+                self.peek().line,
+                "If statement requires an \"{\" after the condition",
+            );
+            return Err(());
+        };
+        let block = self.block()?;
+        Ok(Statement::IfStmt {
+            expr: Box::new(expr),
+            block: block,
+        })
+    }
+
+    // The `while` token must have been consumed
+    fn while_stmt(&mut self) -> Result<Statement, ()> {
+        let expr = self.expression()?;
+        if !self.next_match(TokenType::LeftBrace) {
+            self.error_handler.report(
+                self.peek().line,
+                "While statement requires an \"{\" after the condition",
+            );
+            return Err(());
+        };
+        let block = self.block()?;
+        Ok(Statement::WhileStmt {
+            expr: Box::new(expr),
+            block: block,
+        })
+    }
+
+    // The `{` token must have been consumed
+    fn block(&mut self) -> Result<Block, ()> {
+        let mut stmts = Vec::new();
+        while !self.next_match(TokenType::RightBrace) {
+            let next_expr = self.statement();
+            match next_expr {
+                Ok(e) => stmts.push(e),
+                Err(()) => (),
+            }
+        }
+        self.consume_semi_colon();
+        Ok(Block { stmts: stmts })
     }
 
     fn expression(&mut self) -> Result<Expression, ()> {
