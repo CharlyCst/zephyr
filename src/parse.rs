@@ -101,6 +101,10 @@ pub enum Statement {
         ident: String,
         expr: Box<Expression>,
     },
+    IfStmt {
+        expr: Box<Expression>,
+        stmts: Vec<Statement>,
+    },
 }
 
 impl fmt::Display for Statement {
@@ -109,6 +113,19 @@ impl fmt::Display for Statement {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { ident, expr } => write!(f, "let {} = {};", ident, expr),
             Statement::AssignStmt { ident, expr } => write!(f, "{} = {};", ident, expr),
+            Statement::IfStmt { expr, stmts } => {
+                let mut strs = Vec::new();
+                strs.push(format!("if {} {{", expr));
+                for stmt in stmts.iter() {
+                    strs.push(format!("    {}", stmt));
+                }
+                strs.push(String::from("};"));
+                write!(
+                    f,
+                    "{}",
+                    strs.iter().map(|s| &**s).collect::<Vec<&str>>().join("\n"),
+                )
+            }
         }
     }
 }
@@ -181,12 +198,20 @@ impl Parser {
         }
     }
 
-    fn consume_semi_colon(&mut self) -> () {
+    fn synchronize(&mut self) {
+        let mut token = self.advance();
+        while token.t != TokenType::SemiColon {
+            token = self.advance();
+        }
+    }
+
+    fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
             let l = semi_colon.line;
             self.error_handler
-                .report(l, "Expect statement ender, try to add a line break")
+                .report(l, "Expect statement ender, try to add a line break");
+            self.synchronize();
         }
     }
 
@@ -195,6 +220,10 @@ impl Parser {
             TokenType::Let => {
                 self.advance();
                 self.let_stmt()
+            }
+            TokenType::If => {
+                self.advance();
+                self.if_stmt()
             }
             TokenType::Identifier(_) => match self.peekpeek().t {
                 TokenType::Equal => self.assign_stmt(),
@@ -247,6 +276,31 @@ impl Parser {
         Ok(Statement::LetStmt {
             ident: ident,
             expr: Box::new(expr),
+        })
+    }
+
+    // The if token must have been consumed
+    fn if_stmt(&mut self) -> Result<Statement, ()> {
+        let expr = self.expression()?;
+        if !self.next_match(TokenType::LeftBrace) {
+            self.error_handler.report(
+                self.peek().line,
+                "If statement requires an \"{\" after the condition",
+            );
+            return Err(());
+        };
+        let mut stmts = Vec::new();
+        while !self.next_match(TokenType::RightBrace) {
+            let next_expr = self.statement();
+            match next_expr {
+                Ok(e) => stmts.push(e),
+                Err(()) => (),
+            }
+        }
+        self.consume_semi_colon();
+        Ok(Statement::IfStmt {
+            expr: Box::new(expr),
+            stmts: stmts,
         })
     }
 

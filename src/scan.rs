@@ -78,7 +78,7 @@ impl Scanner {
             (String::from("let"), TokenType::Let),
             (String::from("var"), TokenType::Var),
             (String::from("fun"), TokenType::Fun),
-            (String::from("If"), TokenType::If),
+            (String::from("if"), TokenType::If),
             (String::from("else"), TokenType::Else),
             (String::from("while"), TokenType::While),
             (String::from("return"), TokenType::Return),
