@@ -21,7 +21,11 @@ fn compile(code: String) {
     let scan_handler = error::ErrorHandler::new();
     let mut scanner = scan::Scanner::new(scan_handler, code);
     let tokens = scanner.scan();
-    println!("{:?}", tokens);
+
+    for token in tokens.iter() {
+        print!("{}", token);
+    }
+    println!("");
 
     println!("\n/// Parsing ///\n");
 

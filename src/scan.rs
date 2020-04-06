@@ -1,5 +1,6 @@
 use crate::error::ErrorHandler;
 use std::collections::HashMap;
+use std::fmt;
 
 const RADIX: u32 = 10;
 
@@ -59,6 +60,12 @@ pub struct Token {
     pub line: usize,
     pub pos: usize,
     pub len: usize,
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?} ", self.t)
+    }
 }
 
 pub struct Scanner {
@@ -190,6 +197,9 @@ impl Scanner {
                     self.number(tokens)
                 } else if c.is_alphabetic() {
                     self.identifier(tokens)
+                } else {
+                    self.error_handler
+                        .report(self.line, &format!("Unexpected character {}", c))
                 }
             }
         }
