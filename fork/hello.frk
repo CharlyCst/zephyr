@@ -1,7 +1,6 @@
 // This code is written in fork
 
-f(
-    a, 
-    b,
-    c,
-)(d, e)
+fun f(a, b) {
+    let x = 1
+    x + a * b
+}

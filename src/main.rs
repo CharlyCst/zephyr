@@ -31,9 +31,9 @@ fn compile(code: String) {
 
     let parse_handler = error::ErrorHandler::new();
     let mut parser = parse::Parser::new(parse_handler, tokens);
-    let statements = parser.parse();
+    let functions = parser.parse();
 
-    for stmt in statements.iter() {
+    for stmt in functions.iter() {
         println!("{}", stmt);
     }
 

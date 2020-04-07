@@ -120,6 +120,28 @@ pub enum Statement {
     },
 }
 
+pub struct Function {
+    ident: String,
+    params: Vec<String>,
+    block: Block,
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}({}) {};",
+            self.ident,
+            self.params
+                .iter()
+                .map(|s| &**s)
+                .collect::<Vec<&str>>()
+                .join(", "),
+            self.block
+        )
+    }
+}
+
 pub struct Block {
     stmts: Vec<Statement>,
 }
@@ -131,7 +153,7 @@ impl fmt::Display for Block {
         for stmt in self.stmts.iter() {
             strs.push(format!("    {}", stmt));
         }
-        strs.push(String::from("};"));
+        strs.push(String::from("}"));
         write!(
             f,
             "{}",
@@ -146,8 +168,8 @@ impl fmt::Display for Statement {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { ident, expr } => write!(f, "let {} = {};", ident, expr),
             Statement::AssignStmt { ident, expr } => write!(f, "{} = {};", ident, expr),
-            Statement::IfStmt { expr, block } => write!(f, "if {} {}", expr, block),
-            Statement::WhileStmt { expr, block } => write!(f, "while {} {}", expr, block),
+            Statement::IfStmt { expr, block } => write!(f, "if {} {};", expr, block),
+            Statement::WhileStmt { expr, block } => write!(f, "while {} {};", expr, block),
         }
     }
 }
@@ -173,17 +195,17 @@ impl Parser {
         self.error_handler.success()
     }
 
-    pub fn parse(&mut self) -> Vec<Statement> {
-        let mut stmts = Vec::new();
+    pub fn parse(&mut self) -> Vec<Function> {
+        let mut funs = Vec::new();
 
         while !self.is_at_end() {
-            match self.statement() {
-                Ok(expr) => stmts.push(expr),
+            match self.function() {
+                Ok(expr) => funs.push(expr),
                 Err(()) => self.error_handler.silent_report(),
             }
         }
 
-        stmts
+        funs
     }
 
     fn is_at_end(&self) -> bool {
@@ -237,6 +259,13 @@ impl Parser {
         }
     }
 
+    fn synchronize_fun(&mut self) {
+        let mut token = self.advance();
+        while token.t != TokenType::Fun && !self.is_at_end() {
+            token = self.advance();
+        }
+    }
+
     fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
@@ -245,6 +274,62 @@ impl Parser {
                 .report(l, "Expect statement ender, try to add a line break");
             self.synchronize();
         }
+    }
+
+    fn function(&mut self) -> Result<Function, ()> {
+        if !self.next_match(TokenType::Fun) {
+            let line = self.peek().line;
+            self.error_handler
+                .report(line, "Top level declaration must be functions");
+            self.synchronize_fun();
+            return Err(()); // Todo: synchronize to next function
+        }
+        let line = self.peek().line;
+        let ident = match self.advance() {
+            Token {
+                t: TokenType::Identifier(ref x),
+                ..
+            } => x.clone(),
+            _ => {
+                self.error_handler
+                    .report(line, "Top level declaration must be functions");
+                self.synchronize_fun();
+                return Err(());
+            }
+        };
+        if !self.next_match(TokenType::LeftPar) {
+            let line = self.peek().line;
+            self.error_handler
+                .report(line, "Parenthesis are expected after function declaration");
+            self.synchronize_fun();
+            return Err(());
+        }
+        let params = self.parameters();
+        if !self.next_match(TokenType::RightPar) {
+            let line = self.peek().line;
+            self.error_handler
+                .report(line, "Parenthesis are expected after function declaration");
+            self.synchronize_fun();
+            return Err(());
+        }
+        let block = self.block()?;
+        Ok(Function {
+            ident: ident,
+            params: params,
+            block: block,
+        })
+    }
+
+    fn parameters(&mut self) -> Vec<String> {
+        let mut params = Vec::new();
+        while let TokenType::Identifier(ref param) = self.advance().t {
+            params.push(param.clone());
+            if !self.next_match(TokenType::Comma) {
+                return params;
+            }
+        }
+        self.back();
+        params
     }
 
     fn statement(&mut self) -> Result<Statement, ()> {
