@@ -210,6 +210,7 @@ impl Scanner {
             TokenType::NumberLit(_) => true,
             TokenType::BooleanLit(_) => true,
             TokenType::Identifier(_) => true,
+            TokenType::Return => true,
             TokenType::RightBrace => true,
             TokenType::RightPar => {
                 self.parenthesis_count -= 1;

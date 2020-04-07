@@ -118,6 +118,9 @@ pub enum Statement {
         expr: Box<Expression>,
         block: Block,
     },
+    ReturnStmt {
+        expr: Option<Expression>,
+    },
 }
 
 pub struct Function {
@@ -170,6 +173,10 @@ impl fmt::Display for Statement {
             Statement::AssignStmt { ident, expr } => write!(f, "{} = {};", ident, expr),
             Statement::IfStmt { expr, block } => write!(f, "if {} {};", expr, block),
             Statement::WhileStmt { expr, block } => write!(f, "while {} {};", expr, block),
+            Statement::ReturnStmt { expr } => match expr {
+                Some(e) => write!(f, "return {};", e),
+                None => write!(f, "return;"),
+            },
         }
     }
 }
@@ -346,6 +353,10 @@ impl Parser {
                 self.advance();
                 self.while_stmt()
             }
+            TokenType::Return => {
+                self.advance();
+                self.return_stmt()
+            }
             TokenType::Identifier(_) => match self.peekpeek().t {
                 TokenType::Equal => self.assign_stmt(),
                 _ => self.expr_stmt(),
@@ -465,6 +476,22 @@ impl Parser {
             expr: Box::new(expr),
             block: block,
         })
+    }
+
+    // The `return` token must have been consumed
+    fn return_stmt(&mut self) -> Result<Statement, ()> {
+        let expr = self.expression();
+        match expr {
+            Ok(e) => {
+                self.consume_semi_colon();
+                Ok(Statement::ReturnStmt { expr: Some(e) })
+            }
+            Err(()) => {
+                self.back(); // expression consumes one character
+                self.consume_semi_colon();
+                Ok(Statement::ReturnStmt { expr: None })
+            }
+        }
     }
 
     // The `{` token must have been consumed

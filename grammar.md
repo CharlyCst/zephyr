@@ -8,12 +8,14 @@ program        -> function* EOF
 function       -> "fun" IDENTIFIER "(" parameters ? ")" block ";"
 parameters     -> IDENTIFIER ( "," IDENTIFIER )* ","?
 
-statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt | while_stmt
+statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
+                | while_stmt | return_stmt
 expr_stmt      -> expression ";"
 assign_stmt    -> IDENTIFIER = expression ";"
 let_stmt       -> "let" IDENTIFIER = expression ";"
 if_stmt        -> "if" expression block_stmt ";"
 while_stmt     -> "while" expression block_stmt ";"
+return_stmt    -> "return" expression? ";"
 
 block          -> "{" statement* "}"
 

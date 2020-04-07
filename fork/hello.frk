@@ -2,5 +2,5 @@
 
 fun f(a, b) {
     let x = 1
-    x + a * b
+    return x + a * b
 }
