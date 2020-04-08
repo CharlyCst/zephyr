@@ -250,11 +250,24 @@ impl Parser {
         }
     }
 
+    // If the next token has type t, consume it and return true, return false otherwise
     fn next_match(&mut self, t: TokenType) -> bool {
         if self.peek().t == t {
             self.advance();
             true
         } else {
+            false
+        }
+    }
+
+    // Same as `next_match` but report an error if the token doesn't match
+    fn next_match_report(&mut self, t: TokenType, err: &str) -> bool {
+        if self.peek().t == t {
+            self.advance();
+            true
+        } else {
+            let line = self.peek().line;
+            self.error_handler.report(line, err);
             false
         }
     }
@@ -284,10 +297,7 @@ impl Parser {
     }
 
     fn function(&mut self) -> Result<Function, ()> {
-        if !self.next_match(TokenType::Fun) {
-            let line = self.peek().line;
-            self.error_handler
-                .report(line, "Top level declaration must be functions");
+        if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
             return Err(()); // Todo: synchronize to next function
         }
@@ -304,18 +314,18 @@ impl Parser {
                 return Err(());
             }
         };
-        if !self.next_match(TokenType::LeftPar) {
-            let line = self.peek().line;
-            self.error_handler
-                .report(line, "Parenthesis are expected after function declaration");
+        if !self.next_match_report(
+            TokenType::LeftPar,
+            "Parenthesis are expected after function declaration",
+        ) {
             self.synchronize_fun();
             return Err(());
         }
         let params = self.parameters();
-        if !self.next_match(TokenType::RightPar) {
-            let line = self.peek().line;
-            self.error_handler
-                .report(line, "Parenthesis are expected after function declaration");
+        if !self.next_match_report(
+            TokenType::RightPar,
+            "Parenthesis are expected after function declaration",
+        ) {
             self.synchronize_fun();
             return Err(());
         }
@@ -367,16 +377,12 @@ impl Parser {
 
     fn expr_stmt(&mut self) -> Result<Statement, ()> {
         let expr = self.expression()?;
-        if self.next_match(TokenType::SemiColon) {
-            Ok(Statement::ExprStmt {
-                expr: Box::new(expr),
-            })
-        } else {
-            let line = self.peek().line;
-            self.error_handler
-                .report(line, "This statement is not complete");
-            Err(())
+        if !self.next_match_report(TokenType::SemiColon, "This statement is not complete") {
+            return Err(());
         }
+        Ok(Statement::ExprStmt {
+            expr: Box::new(expr),
+        })
     }
 
     fn assign_stmt(&mut self) -> Result<Statement, ()> {
@@ -392,18 +398,13 @@ impl Parser {
                 return Err(());
             }
         };
-        match self.advance() {
-            Token {
-                t: TokenType::Equal,
-                ..
-            } => (),
-            Token { line, .. } => {
-                let l = *line;
-                self.error_handler
-                    .report_internal(l, "Assignment identifier is not followed by an \"=\"");
-                return Err(());
-            }
-        };
+        if !self.next_match_report(
+            TokenType::Equal,
+            "Assignment identifier is not followed by an \"=\"",
+        ) {
+            self.synchronize();
+            return Err(());
+        }
         let expr = self.expression()?;
         self.consume_semi_colon();
         Ok(Statement::AssignStmt {
@@ -429,11 +430,11 @@ impl Parser {
                 return Err(());
             }
         };
-        if !self.next_match(TokenType::Equal) {
-            self.error_handler.report(
-                self.peek().line,
-                "Let statement requires an \"=\" after the identifier",
-            );
+        if !self.next_match_report(
+            TokenType::Equal,
+            "Let statement requires an \"=\" after the identifier",
+        ) {
+            self.synchronize();
             return Err(());
         }
         let expr = self.expression()?;
@@ -447,11 +448,10 @@ impl Parser {
     // The `if` token must have been consumed
     fn if_stmt(&mut self) -> Result<Statement, ()> {
         let expr = self.expression()?;
-        if !self.next_match(TokenType::LeftBrace) {
-            self.error_handler.report(
-                self.peek().line,
-                "If statement requires an \"{\" after the condition",
-            );
+        if !self.next_match_report(
+            TokenType::LeftBrace,
+            "If statement requires an \"{\" after the condition",
+        ) {
             return Err(());
         };
         let block = self.block()?;
@@ -464,11 +464,10 @@ impl Parser {
     // The `while` token must have been consumed
     fn while_stmt(&mut self) -> Result<Statement, ()> {
         let expr = self.expression()?;
-        if !self.next_match(TokenType::LeftBrace) {
-            self.error_handler.report(
-                self.peek().line,
-                "While statement requires an \"{\" after the condition",
-            );
+        if !self.next_match_report(
+            TokenType::LeftBrace,
+            "While statement requires an \"{\" after the condition",
+        ) {
             return Err(());
         };
         let block = self.block()?;
@@ -497,7 +496,7 @@ impl Parser {
     // The `{` token must have been consumed
     fn block(&mut self) -> Result<Block, ()> {
         let mut stmts = Vec::new();
-        while !self.next_match(TokenType::RightBrace) {
+        while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
             let next_expr = self.statement();
             match next_expr {
                 Ok(e) => stmts.push(e),
@@ -676,11 +675,10 @@ impl Parser {
         let mut expr = self.primary()?;
         while self.next_match(TokenType::LeftPar) {
             let args = self.arguments();
-            // println!("{}", self.peek());
-            if !self.next_match(TokenType::RightPar) {
-                let line = self.peek().line;
-                self.error_handler
-                    .report(line, "Expected a closing parenthesis `)` to function call");
+            if !self.next_match_report(
+                TokenType::RightPar,
+                "Expected a closing parenthesis `)` to function call",
+            ) {
                 self.synchronize();
                 return Err(());
             }
@@ -707,15 +705,10 @@ impl Parser {
             }),
             TokenType::LeftPar => {
                 let expr = self.expression()?;
-                let left_brace = self.advance();
-                if left_brace.t != TokenType::RightPar {
-                    let line = left_brace.line;
-                    self.error_handler
-                        .report(line, "Expected closing parenthesis");
-                    Err(())
-                } else {
-                    Ok(expr)
+                if !self.next_match_report(TokenType::RightPar, "Expected closing parenthesis") {
+                    return Err(());
                 }
+                Ok(expr)
             }
             _ => Err(()),
         }
