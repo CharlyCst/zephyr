@@ -154,7 +154,11 @@ impl fmt::Display for Block {
         let mut strs = Vec::new();
         strs.push(String::from("{"));
         for stmt in self.stmts.iter() {
-            strs.push(format!("    {}", stmt));
+            for line in format!("{}", stmt).split("\n") {
+                let mut indented_line = String::from("    ");
+                indented_line.push_str(line);
+                strs.push(indented_line)
+            }
         }
         strs.push(String::from("}"));
         write!(
