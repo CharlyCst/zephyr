@@ -43,7 +43,7 @@ pub enum Section {
     },
 }
 
-pub struct SectionType {
+struct SectionType {
     types: Vec<Vec<u8>>,
     size: Vec<u8>,
     count: Vec<u8>,
@@ -52,11 +52,12 @@ pub struct SectionType {
 impl SectionType {
     // Function declaration format:
     // [Func] (nb_args) [arg_1] [arg_2] ... (nb_results) [result_1] [result_2] ...
-    pub fn new(funs: Vec<wasm::Function>) -> SectionType {
+    fn new(funs: &mut Vec<wasm::Function>) -> SectionType {
         let mut types = Vec::new();
         let mut size = 0;
+        let mut index: usize = 0;
 
-        for fun in funs.iter() {
+        for fun in funs.iter_mut() {
             let mut params = Vec::new();
             let mut results = Vec::new();
             let mut fun_type = Vec::new();
@@ -77,6 +78,9 @@ impl SectionType {
 
             size += fun_type.len();
             types.push(fun_type);
+
+            fun.type_index = index;
+            index += 1;
         }
 
         let count = to_leb(types.len());
@@ -106,14 +110,62 @@ impl SectionType {
     }
 }
 
+struct SectionFunction {
+    types: Vec<Vec<u8>>,
+    size: Vec<u8>,
+    count: Vec<u8>,
+}
+
+impl SectionFunction {
+    fn new(funs: &Vec<wasm::Function>) -> SectionFunction {
+        let mut types = Vec::new();
+        let mut size = 0;
+
+        for fun in funs.iter() {
+            let idx = to_leb(fun.type_index);
+            size += idx.len();
+            types.push(idx);
+        }
+
+        let count = to_leb(types.len());
+        size += count.len();
+
+        SectionFunction {
+            types: types,
+            size: to_leb(size),
+            count: count,
+        }
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        let mut bytecode = Vec::new();
+
+        // Header
+        bytecode.push(SecFunction);
+        bytecode.extend(self.size.iter());
+        bytecode.extend(self.count.iter());
+
+        // Body
+        for t in self.types.iter() {
+            bytecode.extend(t.iter());
+        }
+
+        bytecode
+    }
+}
+
 pub struct Module {
     types: SectionType,
+    functions: SectionFunction,
 }
 
 impl Module {
-    pub fn new(funs: Vec<wasm::Function>) -> Module {
+    pub fn new(mut funs: Vec<wasm::Function>) -> Module {
+        let types = SectionType::new(&mut funs);
+        let functions = SectionFunction::new(&funs); // Need to be called after SectionType::New
         Module {
-            types: SectionType::new(funs),
+            types: types,
+            functions: functions,
         }
     }
 
@@ -125,6 +177,7 @@ impl Module {
         bytecode.extend(Version.to_le_bytes().iter());
 
         bytecode.extend(self.types.encode().iter());
+        bytecode.extend(self.functions.encode().iter());
 
         bytecode
     }

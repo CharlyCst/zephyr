@@ -12,6 +12,7 @@ pub enum Type {
 pub struct Function {
     pub params: Vec<Type>,
     pub results: Vec<Type>,
+    pub type_index: usize, // Used by encode
 }
 
 pub struct Compiler {
@@ -39,6 +40,7 @@ impl Compiler {
             wasm_funs.push(Function {
                 params: params,
                 results: results,
+                type_index: std::usize::MAX,
             })
         }
 
