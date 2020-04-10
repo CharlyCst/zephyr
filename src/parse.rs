@@ -124,9 +124,9 @@ pub enum Statement {
 }
 
 pub struct Function {
-    ident: String,
-    params: Vec<String>,
-    block: Block,
+    pub ident: String,
+    pub params: Vec<String>,
+    pub block: Block,
 }
 
 impl fmt::Display for Function {
@@ -193,9 +193,9 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(handler: ErrorHandler, tokens: Vec<Token>) -> Parser {
+    pub fn new(tokens: Vec<Token>) -> Parser {
         Parser {
-            error_handler: handler,
+            error_handler: ErrorHandler::new(),
             tokens: tokens,
             start: 0,
             current: 0,

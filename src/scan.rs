@@ -80,7 +80,7 @@ pub struct Scanner {
 }
 
 impl Scanner {
-    pub fn new(handler: ErrorHandler, code: String) -> Scanner {
+    pub fn new(code: String) -> Scanner {
         let keywords: HashMap<String, TokenType> = [
             (String::from("let"), TokenType::Let),
             (String::from("var"), TokenType::Var),
@@ -97,7 +97,7 @@ impl Scanner {
         .collect();
 
         Scanner {
-            error_handler: handler,
+            error_handler: ErrorHandler::new(),
             code: code.chars().collect(),
             start: 0,
             current: 0,

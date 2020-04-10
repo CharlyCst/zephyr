@@ -1,9 +1,8 @@
 // This code is written in fork
 
-fun f(a, b) {
-    let x = (1 + 2)
-    if x == 3 {
-        return 0
-    }
-    return x 
+fun f(x) {
+}
+
+fun g() {
+    
 }

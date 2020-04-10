@@ -1,9 +1,11 @@
 use std::env;
 use std::fs;
 
+mod encode;
 mod error;
 mod parse;
 mod scan;
+mod wasm;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -18,8 +20,7 @@ fn main() {
 fn compile(code: String) {
     println!("\n/// Scanning ///\n");
 
-    let scan_handler = error::ErrorHandler::new();
-    let mut scanner = scan::Scanner::new(scan_handler, code);
+    let mut scanner = scan::Scanner::new(code);
     let tokens = scanner.scan();
 
     for token in tokens.iter() {
@@ -29,8 +30,7 @@ fn compile(code: String) {
 
     println!("\n/// Parsing ///\n");
 
-    let parse_handler = error::ErrorHandler::new();
-    let mut parser = parse::Parser::new(parse_handler, tokens);
+    let mut parser = parse::Parser::new(tokens);
     let functions = parser.parse();
 
     for stmt in functions.iter() {
@@ -42,5 +42,15 @@ fn compile(code: String) {
     } else {
         println!("\nFailure");
     }
+
+    let compiler = wasm::Compiler::new();
+    let wasm_functions = compiler.compile(functions);
+
+    let module = encode::Module::new(wasm_functions);
+    match fs::write("out/hello.wasm", module.encode()) {
+        Ok(_) => (),
+        Err(e) => println!("{}", e),
+    }
+
     return;
 }
