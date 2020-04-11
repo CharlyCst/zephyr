@@ -1,4 +1,5 @@
 use crate::error::ErrorHandler;
+use crate::opcode;
 use crate::parse::Function as ForkFunction;
 
 #[derive(Debug)]
@@ -13,6 +14,7 @@ pub struct Function {
     pub params: Vec<Type>,
     pub results: Vec<Type>,
     pub type_index: usize, // Used by encode
+    pub body: Vec<opcode::Opcode>,
 }
 
 pub struct Compiler {
@@ -41,6 +43,7 @@ impl Compiler {
                 params: params,
                 results: results,
                 type_index: std::usize::MAX,
+                body: Vec::new(),
             })
         }
 

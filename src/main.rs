@@ -3,6 +3,7 @@ use std::fs;
 
 mod encode;
 mod error;
+mod opcode;
 mod parse;
 mod scan;
 mod wasm;

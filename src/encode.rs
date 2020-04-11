@@ -1,24 +1,10 @@
+use crate::opcode;
 use crate::wasm;
 
 const LEB_MASK: usize = 0x0000007f;
 
 const MagicNumber: u32 = 0x6d736100;
 const Version: u32 = 0x1;
-
-// Section identifier
-type SecTyp = u8;
-const SecCustom: SecTyp = 0;
-const SecType: SecTyp = 1;
-const SecImport: SecTyp = 2;
-const SecFunction: SecTyp = 3;
-const SecTable: SecTyp = 4;
-const SecMemory: SecTyp = 5;
-const SecGlobal: SecTyp = 6;
-const SecExport: SecTyp = 7;
-const SecStart: SecTyp = 8;
-const SecElement: SecTyp = 9;
-const SecCode: SecTyp = 10;
-const SecData: SecTyp = 11;
 
 // Types
 type Type = u8;
@@ -97,7 +83,7 @@ impl SectionType {
         let mut bytecode = Vec::new();
 
         // Header
-        bytecode.push(SecType);
+        bytecode.push(opcode::SEC_TYPE);
         bytecode.extend(self.size.iter());
         bytecode.extend(self.count.iter());
 
@@ -141,7 +127,7 @@ impl SectionFunction {
         let mut bytecode = Vec::new();
 
         // Header
-        bytecode.push(SecFunction);
+        bytecode.push(opcode::SEC_FUNCTION);
         bytecode.extend(self.size.iter());
         bytecode.extend(self.count.iter());
 
@@ -154,18 +140,72 @@ impl SectionFunction {
     }
 }
 
+struct SectionCode {
+    bodies: Vec<Vec<u8>>,
+    size: Vec<u8>,
+    count: Vec<u8>,
+}
+
+impl SectionCode {
+    fn new(funs: &Vec<wasm::Function>) -> SectionCode {
+        let mut fun_bodies = Vec::new();
+        let mut size = 0;
+
+        for fun in funs.iter() {
+            let mut body = Vec::new();
+
+            body.push(0x00); // local count
+            body.push(opcode::END);
+
+            let mut size_body = to_leb(body.len());
+            size_body.append(&mut body);
+
+            size += size_body.len();
+            fun_bodies.push(size_body);
+        }
+
+        let count = to_leb(fun_bodies.len());
+        size += count.len();
+
+        SectionCode {
+            count: count,
+            size: to_leb(size),
+            bodies: fun_bodies,
+        }
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        let mut bytecode = Vec::new();
+
+        // Header
+        bytecode.push(opcode::SEC_CODE);
+        bytecode.extend(self.size.iter());
+        bytecode.extend(self.count.iter());
+
+        // Body
+        for body in self.bodies.iter() {
+            bytecode.extend(body.iter());
+        }
+
+        bytecode
+    }
+}
+
 pub struct Module {
     types: SectionType,
     functions: SectionFunction,
+    code: SectionCode,
 }
 
 impl Module {
     pub fn new(mut funs: Vec<wasm::Function>) -> Module {
-        let types = SectionType::new(&mut funs);
-        let functions = SectionFunction::new(&funs); // Need to be called after SectionType::New
+        let types = SectionType::new(&mut funs); // Must be called first because of side effects
+        let functions = SectionFunction::new(&funs);
+        let code = SectionCode::new(&funs);
         Module {
             types: types,
             functions: functions,
+            code: code,
         }
     }
 
@@ -178,6 +218,7 @@ impl Module {
 
         bytecode.extend(self.types.encode().iter());
         bytecode.extend(self.functions.encode().iter());
+        bytecode.extend(self.code.encode().iter());
 
         bytecode
     }
