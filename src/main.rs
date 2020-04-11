@@ -44,7 +44,7 @@ fn compile(code: String) {
         println!("\nFailure");
     }
 
-    let compiler = wasm::Compiler::new();
+    let mut compiler = wasm::Compiler::new();
     let wasm_functions = compiler.compile(functions);
 
     let module = encode::Module::new(wasm_functions);

@@ -48,6 +48,7 @@ pub enum TokenType {
     Return,
     True,
     False,
+    Export,
 
     // Other
     SemiColon,
@@ -91,6 +92,7 @@ impl Scanner {
             (String::from("return"), TokenType::Return),
             (String::from("true"), TokenType::True),
             (String::from("false"), TokenType::False),
+            (String::from("export"), TokenType::Export),
         ]
         .iter()
         .cloned()

@@ -1,4 +1,4 @@
 // This code is written in fork
 
-fun f(x) {
+export fun Main() {
 }

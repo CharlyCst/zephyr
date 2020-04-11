@@ -127,13 +127,16 @@ pub struct Function {
     pub ident: String,
     pub params: Vec<String>,
     pub block: Block,
+    pub exported: bool,
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let prefix = if self.exported { "export " } else { "" };
         write!(
             f,
-            "{}({}) {};",
+            "{}{}({}) {};",
+            prefix,
             self.ident,
             self.params
                 .iter()
@@ -301,6 +304,7 @@ impl Parser {
     }
 
     fn function(&mut self) -> Result<Function, ()> {
+        let exported = self.next_match(TokenType::Export);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
             return Err(()); // Todo: synchronize to next function
@@ -338,6 +342,7 @@ impl Parser {
             ident: ident,
             params: params,
             block: block,
+            exported: exported,
         })
     }
 

@@ -15,3 +15,7 @@ pub const SEC_START: SecTyp = 8;
 pub const SEC_ELEMENT: SecTyp = 9;
 pub const SEC_CODE: SecTyp = 10;
 pub const SEC_DATA: SecTyp = 11;
+
+// Kind
+pub type Kind = u8;
+pub const KIND_FUNC: Kind = 0;

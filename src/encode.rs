@@ -191,9 +191,63 @@ impl SectionCode {
     }
 }
 
+struct SectionExport {
+    exports: Vec<Vec<u8>>,
+    size: Vec<u8>,
+    count: Vec<u8>,
+}
+
+impl SectionExport {
+    fn new(funs: &Vec<wasm::Function>) -> SectionExport {
+        let mut exports = Vec::new();
+        let mut size = 0;
+
+        for (idx, fun) in funs.iter().enumerate() {
+            if let Some(name) = &fun.export_name {
+                let mut data = Vec::new();
+                let encoded_name = name.as_bytes();
+
+                data.extend(to_leb(encoded_name.len()));
+                data.extend(encoded_name);
+                data.push(opcode::KIND_FUNC);
+                data.extend(to_leb(idx));
+
+                size += data.len();
+                exports.push(data);
+            }
+        }
+
+        let count = to_leb(exports.len());
+        size += count.len();
+
+        SectionExport {
+            exports: exports,
+            size: to_leb(size),
+            count: count,
+        }
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        let mut bytecode = Vec::new();
+
+        // Header
+        bytecode.push(opcode::SEC_EXPORT);
+        bytecode.extend(self.size.iter());
+        bytecode.extend(self.count.iter());
+
+        // Body
+        for body in self.exports.iter() {
+            bytecode.extend(body.iter());
+        }
+
+        bytecode
+    }
+}
+
 pub struct Module {
     types: SectionType,
     functions: SectionFunction,
+    exports: SectionExport,
     code: SectionCode,
 }
 
@@ -201,11 +255,13 @@ impl Module {
     pub fn new(mut funs: Vec<wasm::Function>) -> Module {
         let types = SectionType::new(&mut funs); // Must be called first because of side effects
         let functions = SectionFunction::new(&funs);
+        let exports = SectionExport::new(&funs);
         let code = SectionCode::new(&funs);
         Module {
             types: types,
             functions: functions,
             code: code,
+            exports: exports,
         }
     }
 
@@ -218,6 +274,7 @@ impl Module {
 
         bytecode.extend(self.types.encode().iter());
         bytecode.extend(self.functions.encode().iter());
+        bytecode.extend(self.exports.encode());
         bytecode.extend(self.code.encode().iter());
 
         bytecode
