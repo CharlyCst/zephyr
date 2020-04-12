@@ -10,15 +10,18 @@ mod wasm;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        println!("Usage: fork <file>");
-    } else {
-        let code = fs::read_to_string(&args[1]).expect("File not found");
-        compile(code);
+    let mut output_path = "a.wasm";
+    if args.len() == 3 {
+        output_path = &args[2];
+    } else if args.len() != 2 {
+        println!("Usage: fork <file> [out]");
+        std::process::exit(1);
     }
+    let code = fs::read_to_string(&args[1]).expect("File not found");
+    compile(code, output_path);
 }
 
-fn compile(code: String) {
+fn compile(code: String, output_path: &str) {
     println!("\n/// Scanning ///\n");
 
     let mut scanner = scan::Scanner::new(code);
@@ -42,16 +45,16 @@ fn compile(code: String) {
         println!("\nSuccess");
     } else {
         println!("\nFailure");
+        std::process::exit(1);
     }
 
     let mut compiler = wasm::Compiler::new();
     let wasm_functions = compiler.compile(functions);
 
     let module = encode::Module::new(wasm_functions);
-    match fs::write("out/hello.wasm", module.encode()) {
+    match fs::write(output_path, module.encode()) {
         Ok(_) => (),
         Err(e) => println!("{}", e),
     }
-
-    return;
+    std::process::exit(0);
 }
