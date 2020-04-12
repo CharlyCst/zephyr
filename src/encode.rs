@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::opcode;
 use crate::wasm;
 
@@ -42,6 +44,7 @@ impl SectionType {
         let mut types = Vec::new();
         let mut size = 0;
         let mut index: usize = 0;
+        let mut known_types = HashMap::new();
 
         for fun in funs.iter_mut() {
             let mut params = Vec::new();
@@ -62,11 +65,19 @@ impl SectionType {
             fun_type.append(&mut to_leb(results.len()));
             fun_type.extend(results.iter());
 
-            size += fun_type.len();
-            types.push(fun_type);
+            match known_types.get(&fun_type) {
+                Some(idx) => {
+                    fun.type_index = *idx;
+                }
+                None => {
+                    size += fun_type.len();
+                    known_types.insert(fun_type.clone(), index);
 
-            fun.type_index = index;
-            index += 1;
+                    types.push(fun_type);
+                    fun.type_index = index;
+                    index += 1;
+                }
+            }
         }
 
         let count = to_leb(types.len());
