@@ -14,7 +14,7 @@ pub struct Function {
     pub params: Vec<Type>,
     pub results: Vec<Type>,
     pub type_index: usize, // Used by encode
-    pub body: Vec<opcode::Opcode>,
+    pub body: Vec<opcode::Instr>,
     pub export_name: Option<String>,
 }
 

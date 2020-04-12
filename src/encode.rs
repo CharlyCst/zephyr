@@ -5,19 +5,6 @@ use crate::wasm;
 
 const LEB_MASK: usize = 0x0000007f;
 
-const MagicNumber: u32 = 0x6d736100;
-const Version: u32 = 0x1;
-
-// Types
-type Type = u8;
-const I32: Type = 0x7f;
-const I64: Type = 0x7e;
-const F32: Type = 0x7d;
-const F64: Type = 0x7c;
-const AnyFunc: Type = 0x70;
-const Func: Type = 0x60;
-const BlockType: Type = 0x40;
-
 pub enum Section {
     Known {
         id: u8,
@@ -59,11 +46,11 @@ impl SectionType {
                 results.push(type_to_bytes(&result))
             }
 
-            fun_type.push(Func);
+            fun_type.push(opcode::Func);
             fun_type.append(&mut to_leb(params.len()));
-            fun_type.extend(params.iter());
+            fun_type.extend(params);
             fun_type.append(&mut to_leb(results.len()));
-            fun_type.extend(results.iter());
+            fun_type.extend(results);
 
             match known_types.get(&fun_type) {
                 Some(idx) => {
@@ -100,7 +87,7 @@ impl SectionType {
 
         // Body
         for fun_type in self.types.iter() {
-            bytecode.extend(fun_type.iter());
+            bytecode.extend(fun_type);
         }
 
         bytecode
@@ -118,7 +105,7 @@ impl SectionFunction {
         let mut types = Vec::new();
         let mut size = 0;
 
-        for fun in funs.iter() {
+        for fun in funs {
             let idx = to_leb(fun.type_index);
             size += idx.len();
             types.push(idx);
@@ -144,7 +131,7 @@ impl SectionFunction {
 
         // Body
         for t in self.types.iter() {
-            bytecode.extend(t.iter());
+            bytecode.extend(t);
         }
 
         bytecode
@@ -162,11 +149,11 @@ impl SectionCode {
         let mut fun_bodies = Vec::new();
         let mut size = 0;
 
-        for fun in funs.iter() {
+        for fun in funs {
             let mut body = Vec::new();
 
             body.push(0x00); // local count
-            body.push(opcode::END);
+            body.push(opcode::INSTR_END);
 
             let mut size_body = to_leb(body.len());
             size_body.append(&mut body);
@@ -195,7 +182,7 @@ impl SectionCode {
 
         // Body
         for body in self.bodies.iter() {
-            bytecode.extend(body.iter());
+            bytecode.extend(body);
         }
 
         bytecode
@@ -248,7 +235,7 @@ impl SectionExport {
 
         // Body
         for body in self.exports.iter() {
-            bytecode.extend(body.iter());
+            bytecode.extend(body);
         }
 
         bytecode
@@ -280,8 +267,8 @@ impl Module {
         let mut bytecode = Vec::new();
 
         // Header
-        bytecode.extend(MagicNumber.to_le_bytes().iter());
-        bytecode.extend(Version.to_le_bytes().iter());
+        bytecode.extend(opcode::MAGIC_NUMBER.to_le_bytes().iter());
+        bytecode.extend(opcode::VERSION.to_le_bytes().iter());
 
         bytecode.extend(self.types.encode().iter());
         bytecode.extend(self.functions.encode().iter());
@@ -294,10 +281,10 @@ impl Module {
 
 fn type_to_bytes(t: &wasm::Type) -> u8 {
     match t {
-        wasm::Type::F32 => F32,
-        wasm::Type::F64 => F64,
-        wasm::Type::I32 => I32,
-        wasm::Type::I64 => I64,
+        wasm::Type::F32 => opcode::F32,
+        wasm::Type::F64 => opcode::F64,
+        wasm::Type::I32 => opcode::I32,
+        wasm::Type::I64 => opcode::I64,
     }
 }
 
