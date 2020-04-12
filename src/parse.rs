@@ -3,7 +3,6 @@ use crate::scan::{Token, TokenType};
 use std::fmt;
 
 pub enum Value {
-    Identifier(String),
     Number(u64),
     Boolean(bool),
 }
@@ -30,8 +29,16 @@ pub enum UnaryOperator {
     Not,
 }
 
+pub struct Variable {
+    ident: String,
+    t: Option<String>,
+}
+
 pub enum Expression {
-    Value {
+    Variable {
+        var: Box<Variable>,
+    },
+    Literal {
         value: Value,
     },
     Binary {
@@ -52,10 +59,10 @@ pub enum Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Value { value: v } => match v {
+            Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
+            Expression::Literal { value: v } => match v {
                 Value::Boolean(true) => write!(f, "true"),
                 Value::Boolean(false) => write!(f, "false"),
-                Value::Identifier(x) => write!(f, "{}", x),
                 Value::Number(n) => write!(f, "{}", n),
             },
             Expression::Call { fun, args } => write!(
@@ -103,11 +110,11 @@ pub enum Statement {
         expr: Box<Expression>,
     },
     LetStmt {
-        ident: String,
+        var: Box<Variable>,
         expr: Box<Expression>,
     },
     AssignStmt {
-        ident: String,
+        var: Box<Variable>,
         expr: Box<Expression>,
     },
     IfStmt {
@@ -125,7 +132,7 @@ pub enum Statement {
 
 pub struct Function {
     pub ident: String,
-    pub params: Vec<String>,
+    pub params: Vec<Variable>,
     pub block: Block,
     pub exported: bool,
 }
@@ -140,8 +147,16 @@ impl fmt::Display for Function {
             self.ident,
             self.params
                 .iter()
-                .map(|s| &**s)
-                .collect::<Vec<&str>>()
+                .map(|v| {
+                    let mut param = v.ident.clone();
+                    param.push_str(" ");
+                    param.push_str(match v.t {
+                        Some(ref typ) => typ,
+                        None => "?",
+                    });
+                    param
+                })
+                .collect::<Vec<String>>()
                 .join(", "),
             self.block
         )
@@ -176,8 +191,8 @@ impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
-            Statement::LetStmt { ident, expr } => write!(f, "let {} = {};", ident, expr),
-            Statement::AssignStmt { ident, expr } => write!(f, "{} = {};", ident, expr),
+            Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
+            Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
             Statement::IfStmt { expr, block } => write!(f, "if {} {};", expr, block),
             Statement::WhileStmt { expr, block } => write!(f, "while {} {};", expr, block),
             Statement::ReturnStmt { expr } => match expr {
@@ -346,10 +361,25 @@ impl Parser {
         })
     }
 
-    fn parameters(&mut self) -> Vec<String> {
+    fn parameters(&mut self) -> Vec<Variable> {
         let mut params = Vec::new();
         while let TokenType::Identifier(ref param) = self.advance().t {
-            params.push(param.clone());
+            let ident = param.clone();
+            let token = self.advance();
+            let l = token.line;
+            let t = match token {
+                Token {
+                    t: TokenType::Identifier(ref x),
+                    ..
+                } => Some(x.clone()),
+                _ => {
+                    self.error_handler.report(l, "Expected parameter type");
+                    self.back();
+                    None
+                }
+            };
+
+            params.push(Variable { ident: ident, t: t });
             if !self.next_match(TokenType::Comma) {
                 return params;
             }
@@ -417,7 +447,10 @@ impl Parser {
         let expr = self.expression()?;
         self.consume_semi_colon();
         Ok(Statement::AssignStmt {
-            ident: ident,
+            var: Box::new(Variable {
+                ident: ident,
+                t: None,
+            }),
             expr: Box::new(expr),
         })
     }
@@ -449,7 +482,10 @@ impl Parser {
         let expr = self.expression()?;
         self.consume_semi_colon();
         Ok(Statement::LetStmt {
-            ident: ident,
+            var: Box::new(Variable {
+                ident: ident,
+                t: None,
+            }),
             expr: Box::new(expr),
         })
     }
@@ -703,14 +739,17 @@ impl Parser {
         let token = self.advance();
 
         match &token.t {
-            TokenType::NumberLit(n) => Ok(Expression::Value {
+            TokenType::NumberLit(n) => Ok(Expression::Literal {
                 value: Value::Number(*n),
             }),
-            TokenType::BooleanLit(b) => Ok(Expression::Value {
+            TokenType::BooleanLit(b) => Ok(Expression::Literal {
                 value: Value::Boolean(*b),
             }),
-            TokenType::Identifier(ref x) => Ok(Expression::Value {
-                value: Value::Identifier(x.clone()),
+            TokenType::Identifier(ref x) => Ok(Expression::Variable {
+                var: Box::new(Variable {
+                    ident: x.clone(),
+                    t: None,
+                }),
             }),
             TokenType::LeftPar => {
                 let expr = self.expression()?;

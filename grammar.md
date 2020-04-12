@@ -6,7 +6,7 @@ The grammar is defined as follow, and parsed using recursive descent.
 program        -> function* EOF
 
 function       -> "export"? "fun" IDENTIFIER "(" parameters ? ")" block ";"
-parameters     -> IDENTIFIER ( "," IDENTIFIER )* ","?
+parameters     -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)* ","?
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt

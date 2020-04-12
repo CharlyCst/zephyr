@@ -1,4 +1,7 @@
 // This code is written in fork
 
-export fun Main() {
+export fun Main(a i32) {
+    let x = 0
+    x = x + a
+    return x
 }
