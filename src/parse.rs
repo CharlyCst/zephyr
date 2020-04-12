@@ -133,6 +133,7 @@ pub enum Statement {
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
+    pub result: Option<String>,
     pub block: Block,
     pub exported: bool,
 }
@@ -140,25 +141,31 @@ pub struct Function {
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let prefix = if self.exported { "export " } else { "" };
+        let params = self
+            .params
+            .iter()
+            .map(|v| {
+                let mut param = v.ident.clone();
+                param.push_str(" ");
+                param.push_str(match v.t {
+                    Some(ref typ) => typ,
+                    None => "?",
+                });
+                param
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
+        let result_type = if let Some(ref t) = self.result {
+            let mut t = t.clone();
+            t.push_str(" ");
+            t
+        } else {
+            String::from("")
+        };
         write!(
             f,
-            "{}{}({}) {};",
-            prefix,
-            self.ident,
-            self.params
-                .iter()
-                .map(|v| {
-                    let mut param = v.ident.clone();
-                    param.push_str(" ");
-                    param.push_str(match v.t {
-                        Some(ref typ) => typ,
-                        None => "?",
-                    });
-                    param
-                })
-                .collect::<Vec<String>>()
-                .join(", "),
-            self.block
+            "{}{}({}) {}{};",
+            prefix, self.ident, params, result_type, self.block
         )
     }
 }
@@ -352,10 +359,12 @@ impl Parser {
             self.synchronize_fun();
             return Err(());
         }
+        let result = self.result();
         let block = self.block()?;
         Ok(Function {
             ident: ident,
             params: params,
+            result: result,
             block: block,
             exported: exported,
         })
@@ -386,6 +395,16 @@ impl Parser {
         }
         self.back();
         params
+    }
+
+    fn result(&mut self) -> Option<String> {
+        if let TokenType::Identifier(ref t) = self.peek().t {
+            let result = Some(t.clone());
+            self.advance();
+            result
+        } else {
+            None
+        }
     }
 
     fn statement(&mut self) -> Result<Statement, ()> {

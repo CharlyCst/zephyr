@@ -41,10 +41,14 @@ impl Compiler {
 
     fn function(&mut self, fun: &ForkFunction) -> Function {
         let mut params = Vec::new();
-        let results = Vec::new();
+        let mut results = Vec::new();
 
         for param in fun.params.iter() {
-            params.push(Type::I32)
+            params.push(Type::I32);
+        }
+
+        if let Some(_) = fun.result {
+            results.push(Type::I32);
         }
 
         let export_name = if fun.exported {

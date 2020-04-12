@@ -1,5 +1,5 @@
 // This code is written in fork
 
-export fun Main() {
+export fun Main() i32 {
     return 14
 }
