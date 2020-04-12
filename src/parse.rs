@@ -164,7 +164,7 @@ impl fmt::Display for Function {
 }
 
 pub struct Block {
-    stmts: Vec<Statement>,
+    pub stmts: Vec<Statement>,
 }
 
 impl fmt::Display for Block {

@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use crate::opcode;
 use crate::wasm;
 
-const LEB_MASK: usize = 0x0000007f;
-
 pub enum Section {
     Known {
         id: u8,
@@ -47,9 +45,9 @@ impl SectionType {
             }
 
             fun_type.push(opcode::Func);
-            fun_type.append(&mut to_leb(params.len()));
+            fun_type.append(&mut opcode::to_leb(params.len()));
             fun_type.extend(params);
-            fun_type.append(&mut to_leb(results.len()));
+            fun_type.append(&mut opcode::to_leb(results.len()));
             fun_type.extend(results);
 
             match known_types.get(&fun_type) {
@@ -67,12 +65,12 @@ impl SectionType {
             }
         }
 
-        let count = to_leb(types.len());
+        let count = opcode::to_leb(types.len());
         size += count.len();
 
         SectionType {
             types: types,
-            size: to_leb(size),
+            size: opcode::to_leb(size),
             count: count,
         }
     }
@@ -106,17 +104,17 @@ impl SectionFunction {
         let mut size = 0;
 
         for fun in funs {
-            let idx = to_leb(fun.type_index);
+            let idx = opcode::to_leb(fun.type_index);
             size += idx.len();
             types.push(idx);
         }
 
-        let count = to_leb(types.len());
+        let count = opcode::to_leb(types.len());
         size += count.len();
 
         SectionFunction {
             types: types,
-            size: to_leb(size),
+            size: opcode::to_leb(size),
             count: count,
         }
     }
@@ -150,24 +148,21 @@ impl SectionCode {
         let mut size = 0;
 
         for fun in funs {
-            let mut body = Vec::new();
+            let body = &fun.body;
 
-            body.push(0x00); // local count
-            body.push(opcode::INSTR_END);
-
-            let mut size_body = to_leb(body.len());
-            size_body.append(&mut body);
+            let mut size_body = opcode::to_leb(body.len());
+            size_body.extend(body);
 
             size += size_body.len();
             fun_bodies.push(size_body);
         }
 
-        let count = to_leb(fun_bodies.len());
+        let count = opcode::to_leb(fun_bodies.len());
         size += count.len();
 
         SectionCode {
             count: count,
-            size: to_leb(size),
+            size: opcode::to_leb(size),
             bodies: fun_bodies,
         }
     }
@@ -205,22 +200,22 @@ impl SectionExport {
                 let mut data = Vec::new();
                 let encoded_name = name.as_bytes();
 
-                data.extend(to_leb(encoded_name.len()));
+                data.extend(opcode::to_leb(encoded_name.len()));
                 data.extend(encoded_name);
                 data.push(opcode::KIND_FUNC);
-                data.extend(to_leb(idx));
+                data.extend(opcode::to_leb(idx));
 
                 size += data.len();
                 exports.push(data);
             }
         }
 
-        let count = to_leb(exports.len());
+        let count = opcode::to_leb(exports.len());
         size += count.len();
 
         SectionExport {
             exports: exports,
-            size: to_leb(size),
+            size: opcode::to_leb(size),
             count: count,
         }
     }
@@ -285,35 +280,5 @@ fn type_to_bytes(t: &wasm::Type) -> u8 {
         wasm::Type::F64 => opcode::F64,
         wasm::Type::I32 => opcode::I32,
         wasm::Type::I64 => opcode::I64,
-    }
-}
-
-fn to_leb<'a>(val: usize) -> Vec<u8> {
-    let mut remainder = val;
-    let mut leb = Vec::new();
-    let mut done = false;
-    while !done {
-        let mut byte = (LEB_MASK & remainder) as u8;
-        remainder = remainder >> 7;
-        if remainder == 0 {
-            done = true;
-        } else {
-            byte += 0x80;
-        }
-        leb.push(byte);
-    }
-    leb
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_to_leb() {
-        assert_eq!(vec!(0x0), to_leb(0));
-        assert_eq!(vec!(0x5), to_leb(5));
-        assert_eq!(vec!(0x80, 0x1), to_leb(128));
-        assert_eq!(vec!(0xff, 0x1), to_leb(255));
     }
 }

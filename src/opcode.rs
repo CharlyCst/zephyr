@@ -35,7 +35,40 @@ pub type Instr = u8;
 pub const INSTR_UNREACHABLE: Instr = 0x00;
 pub const INSTR_NOP: Instr = 0x01;
 pub const INSTR_END: Instr = 0x0b;
+pub const INSTR_RETURN: Instr = 0x0f;
 pub const INSTR_I32_CST: Instr = 0x41;
 pub const INSTR_I64_CST: Instr = 0x42;
 pub const INSTR_F32_CST: Instr = 0x43;
 pub const INSTR_F64_CST: Instr = 0x44;
+
+const LEB_MASK: usize = 0x0000007f;
+
+pub fn to_leb<'a>(val: usize) -> Vec<u8> {
+    let mut remainder = val;
+    let mut leb = Vec::new();
+    let mut done = false;
+    while !done {
+        let mut byte = (LEB_MASK & remainder) as u8;
+        remainder = remainder >> 7;
+        if remainder == 0 {
+            done = true;
+        } else {
+            byte += 0x80;
+        }
+        leb.push(byte);
+    }
+    leb
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_leb() {
+        assert_eq!(vec!(0x0), to_leb(0));
+        assert_eq!(vec!(0x5), to_leb(5));
+        assert_eq!(vec!(0x80, 0x1), to_leb(128));
+        assert_eq!(vec!(0xff, 0x1), to_leb(255));
+    }
+}
