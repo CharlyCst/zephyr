@@ -41,6 +41,8 @@ pub const INSTR_I64_CST: Instr = 0x42;
 pub const INSTR_F32_CST: Instr = 0x43;
 pub const INSTR_F64_CST: Instr = 0x44;
 
+pub const INSTR_I32_ADD: Instr = 0x6a;
+
 const LEB_MASK: usize = 0x0000007f;
 
 pub fn to_leb<'a>(val: usize) -> Vec<u8> {

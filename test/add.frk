@@ -1,0 +1,5 @@
+// Test add operator
+
+export fun Main() i32 {
+    return 38 + 4
+}

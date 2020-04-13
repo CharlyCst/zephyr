@@ -1,12 +1,12 @@
 use std::env;
 use std::fs;
 
+mod compile;
 mod encode;
 mod error;
 mod opcode;
 mod parse;
 mod scan;
-mod wasm;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -48,7 +48,7 @@ fn compile(code: String, output_path: &str) {
         std::process::exit(1);
     }
 
-    let mut compiler = wasm::Compiler::new();
+    let mut compiler = compile::Compiler::new();
     let wasm_functions = compiler.compile(functions);
 
     let module = encode::Module::new(wasm_functions);

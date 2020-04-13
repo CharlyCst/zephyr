@@ -213,7 +213,6 @@ impl fmt::Display for Statement {
 pub struct Parser {
     error_handler: ErrorHandler,
     tokens: Vec<Token>,
-    start: usize,
     current: usize,
 }
 
@@ -222,7 +221,6 @@ impl Parser {
         Parser {
             error_handler: ErrorHandler::new(),
             tokens: tokens,
-            start: 0,
             current: 0,
         }
     }

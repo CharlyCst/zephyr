@@ -1,20 +1,7 @@
 use std::collections::HashMap;
 
+use crate::compile;
 use crate::opcode;
-use crate::wasm;
-
-pub enum Section {
-    Known {
-        id: u8,
-        payload_len: u32,
-        payload_data: Vec<u8>,
-    },
-    Custom {
-        payload_len: u32,
-        name: Vec<u8>,
-        payload_data: Vec<u8>,
-    },
-}
 
 struct SectionType {
     types: Vec<Vec<u8>>,
@@ -25,7 +12,7 @@ struct SectionType {
 impl SectionType {
     // Function declaration format:
     // [Func] (nb_args) [arg_1] [arg_2] ... (nb_results) [result_1] [result_2] ...
-    fn new(funs: &mut Vec<wasm::Function>) -> SectionType {
+    fn new(funs: &mut Vec<compile::Function>) -> SectionType {
         let mut types = Vec::new();
         let mut size = 0;
         let mut index: usize = 0;
@@ -99,7 +86,7 @@ struct SectionFunction {
 }
 
 impl SectionFunction {
-    fn new(funs: &Vec<wasm::Function>) -> SectionFunction {
+    fn new(funs: &Vec<compile::Function>) -> SectionFunction {
         let mut types = Vec::new();
         let mut size = 0;
 
@@ -143,7 +130,7 @@ struct SectionCode {
 }
 
 impl SectionCode {
-    fn new(funs: &Vec<wasm::Function>) -> SectionCode {
+    fn new(funs: &Vec<compile::Function>) -> SectionCode {
         let mut fun_bodies = Vec::new();
         let mut size = 0;
 
@@ -191,7 +178,7 @@ struct SectionExport {
 }
 
 impl SectionExport {
-    fn new(funs: &Vec<wasm::Function>) -> SectionExport {
+    fn new(funs: &Vec<compile::Function>) -> SectionExport {
         let mut exports = Vec::new();
         let mut size = 0;
 
@@ -245,7 +232,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(mut funs: Vec<wasm::Function>) -> Module {
+    pub fn new(mut funs: Vec<compile::Function>) -> Module {
         let types = SectionType::new(&mut funs); // Must be called first because of side effects
         let functions = SectionFunction::new(&funs);
         let exports = SectionExport::new(&funs);
@@ -274,11 +261,11 @@ impl Module {
     }
 }
 
-fn type_to_bytes(t: &wasm::Type) -> u8 {
+fn type_to_bytes(t: &compile::Type) -> u8 {
     match t {
-        wasm::Type::F32 => opcode::F32,
-        wasm::Type::F64 => opcode::F64,
-        wasm::Type::I32 => opcode::I32,
-        wasm::Type::I64 => opcode::I64,
+        compile::Type::F32 => opcode::F32,
+        compile::Type::F64 => opcode::F64,
+        compile::Type::I32 => opcode::I32,
+        compile::Type::I64 => opcode::I64,
     }
 }

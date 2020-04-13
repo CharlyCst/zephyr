@@ -96,18 +96,29 @@ impl Compiler {
 
     fn expression(&mut self, expr: &Expression, opcode: &mut Vec<opcode::Instr>) {
         match expr {
-            Expression::Literal {
-                value: Value::Number(n),
+            Expression::Literal { value } => self.value(value, opcode),
+            Expression::Binary {
+                expr_left,
+                binop,
+                expr_right,
             } => {
+                self.expression(&expr_left, opcode);
+                self.expression(&expr_right, opcode);
+                opcode.push(opcode::INSTR_I32_ADD); // TODO handle all binop
+            }
+            _ => self.error_handler.report(0, "Expression not yet supported"),
+        }
+    }
+
+    fn value(&mut self, value: &Value, opcode: &mut Vec<opcode::Instr>) {
+        match value {
+            Value::Number(n) => {
                 opcode.push(opcode::INSTR_I32_CST);
                 opcode.extend(opcode::to_leb(*n as usize));
             }
-            Expression::Literal {
-                value: Value::Boolean(_),
-            } => self
+            Value::Boolean(_) => self
                 .error_handler
                 .report(0, "Boolean are not yet supported"),
-            _ => self.error_handler.report(0, "Expression not yet supported"),
         }
     }
 }
