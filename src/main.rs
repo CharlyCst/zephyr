@@ -4,6 +4,7 @@ use std::fs;
 mod compile;
 mod encode;
 mod error;
+mod name;
 mod opcode;
 mod parse;
 mod scan;
@@ -48,13 +49,19 @@ fn compile(code: String, output_path: &str) {
         std::process::exit(1);
     }
 
-    let mut compiler = compile::Compiler::new();
-    let wasm_functions = compiler.compile(functions);
+    let mut name_resolver = name::NameResolver::new();
+    let program = name_resolver.resolve(functions);
 
-    let module = encode::Module::new(wasm_functions);
-    match fs::write(output_path, module.encode()) {
-        Ok(_) => (),
-        Err(e) => println!("{}", e),
-    }
+    println!("");
+    println!("{}", program.names);
+
+    // let mut compiler = compile::Compiler::new();
+    // let wasm_functions = compiler.compile(functions);
+
+    // let module = encode::Module::new(wasm_functions);
+    // match fs::write(output_path, module.encode()) {
+    //     Ok(_) => (),
+    //     Err(e) => println!("{}", e),
+    // }
     std::process::exit(0);
 }

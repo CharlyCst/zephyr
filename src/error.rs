@@ -1,7 +1,8 @@
-// pub struct Error {
-//     line: usize,
-//     message: String,
-// }
+pub struct Location {
+    pub line: u32,
+    pub pos: u32,
+    pub len: u32,
+}
 
 pub struct ErrorHandler {
     has_error: bool,

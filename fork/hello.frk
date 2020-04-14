@@ -3,3 +3,7 @@
 export fun Main() i32 {
     return 14 + 1
 }
+
+fun f() {
+
+}

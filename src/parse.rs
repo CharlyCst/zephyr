@@ -30,8 +30,8 @@ pub enum UnaryOperator {
 }
 
 pub struct Variable {
-    ident: String,
-    t: Option<String>,
+    pub ident: String,
+    pub t: Option<String>,
 }
 
 pub enum Expression {
