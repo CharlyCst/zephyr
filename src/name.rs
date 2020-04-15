@@ -37,10 +37,11 @@ impl NameStore {
 
 impl fmt::Display for NameStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut store = String::from("Names: {\n");
-        for name in self.names.iter() {
-            store.push_str("    ");
-            store.push_str(&name.name);
+        let mut store = String::from("NameStore {\n");
+        store.push_str("    id ~ t_id - name\n\n");
+        for (idx, name) in self.names.iter().enumerate() {
+            store.push_str("  ");
+            store.push_str(&format!("{:>4} ~ {:>4} - {:} ", idx, name.t_id, name.name));
             store.push_str("\n");
         }
         store.push_str("}");
@@ -76,6 +77,26 @@ impl TypeVarStore {
         };
         self.types.push(tv);
         id
+    }
+}
+
+impl fmt::Display for TypeVarStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut store = String::from("TypeVarStore {\n");
+        store.push_str("  t_id - candidates\n\n");
+        for (idx, t) in self.types.iter().enumerate() {
+            let candidates = t
+                .candidate
+                .iter()
+                .map(|c| format!("{}", c))
+                .collect::<Vec<String>>()
+                .join(" | ");
+            store.push_str("  ");
+            store.push_str(&format!("{:>4} - {}", idx, candidates));
+            store.push_str("\n");
+        }
+        store.push_str("}");
+        write!(f, "{}", store)
     }
 }
 
