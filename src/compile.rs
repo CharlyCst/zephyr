@@ -57,7 +57,7 @@ impl Compiler {
             } else {
                 if fun.ident == "main" {
                     self.error_handler
-                        .report(0, "Main function must be capitalized") // TODO report line
+                        .report_line(0, "Main function must be capitalized") // TODO report line
                 }
                 Some(fun.ident.clone())
             }
@@ -106,19 +106,21 @@ impl Compiler {
                 self.expression(&expr_right, opcode);
                 opcode.push(opcode::INSTR_I32_ADD); // TODO handle all binop
             }
-            _ => self.error_handler.report(0, "Expression not yet supported"),
+            _ => self
+                .error_handler
+                .report_line(0, "Expression not yet supported"),
         }
     }
 
     fn value(&mut self, value: &Value, opcode: &mut Vec<opcode::Instr>) {
         match value {
-            Value::Number(n) => {
+            Value::Number(n, _) => {
                 opcode.push(opcode::INSTR_I32_CST);
                 opcode.extend(opcode::to_leb(*n as usize));
             }
-            Value::Boolean(_) => self
+            Value::Boolean(_, _) => self
                 .error_handler
-                .report(0, "Boolean are not yet supported"),
+                .report_line(0, "Boolean are not yet supported"),
         }
     }
 }

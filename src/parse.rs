@@ -1,10 +1,10 @@
-use crate::error::ErrorHandler;
+use crate::error::{ErrorHandler, Location};
 use crate::scan::{Token, TokenType};
 use std::fmt;
 
 pub enum Value {
-    Number(u64),
-    Boolean(bool),
+    Number(u64, Location),
+    Boolean(bool, Location),
 }
 
 pub enum BinaryOperator {
@@ -32,6 +32,7 @@ pub enum UnaryOperator {
 pub struct Variable {
     pub ident: String,
     pub t: Option<String>,
+    pub loc: Location,
 }
 
 pub enum Expression {
@@ -61,9 +62,9 @@ impl fmt::Display for Expression {
         match self {
             Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
             Expression::Literal { value: v } => match v {
-                Value::Boolean(true) => write!(f, "true"),
-                Value::Boolean(false) => write!(f, "false"),
-                Value::Number(n) => write!(f, "{}", n),
+                Value::Boolean(true, _) => write!(f, "true"),
+                Value::Boolean(false, _) => write!(f, "false"),
+                Value::Number(n, _) => write!(f, "{}", n),
             },
             Expression::Call { fun, args } => write!(
                 f,
@@ -133,7 +134,7 @@ pub enum Statement {
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
-    pub result: Option<String>,
+    pub result: Option<(String, Location)>,
     pub block: Block,
     pub exported: bool,
 }
@@ -155,7 +156,7 @@ impl fmt::Display for Function {
             })
             .collect::<Vec<String>>()
             .join(", ");
-        let result_type = if let Some(ref t) = self.result {
+        let result_type = if let Some((ref t, _)) = self.result {
             let mut t = t.clone();
             t.push_str(" ");
             t
@@ -293,8 +294,8 @@ impl Parser {
             self.advance();
             true
         } else {
-            let line = self.peek().line;
-            self.error_handler.report(line, err);
+            let loc = self.peek().loc;
+            self.error_handler.report(loc, err);
             false
         }
     }
@@ -316,9 +317,9 @@ impl Parser {
     fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
-            let l = semi_colon.line;
+            let loc = semi_colon.loc;
             self.error_handler
-                .report(l, "Expect statement ender, try to add a line break");
+                .report(loc, "Expect statement ender, try to add a line break");
             self.synchronize();
         }
     }
@@ -329,7 +330,7 @@ impl Parser {
             self.synchronize_fun();
             return Err(()); // Todo: synchronize to next function
         }
-        let line = self.peek().line;
+        let loc = self.peek().loc;
         let ident = match self.advance() {
             Token {
                 t: TokenType::Identifier(ref x),
@@ -337,7 +338,7 @@ impl Parser {
             } => x.clone(),
             _ => {
                 self.error_handler
-                    .report(line, "Top level declaration must be functions");
+                    .report(loc, "Top level declaration must be functions");
                 self.synchronize_fun();
                 return Err(());
             }
@@ -370,23 +371,32 @@ impl Parser {
 
     fn parameters(&mut self) -> Vec<Variable> {
         let mut params = Vec::new();
-        while let TokenType::Identifier(ref param) = self.advance().t {
+        while let Token {
+            t: TokenType::Identifier(ref param),
+            loc: var_loc,
+        } = self.advance()
+        {
             let ident = param.clone();
+            let var_loc = *var_loc;
             let token = self.advance();
-            let l = token.line;
+            let loc = token.loc;
             let t = match token {
                 Token {
                     t: TokenType::Identifier(ref x),
                     ..
                 } => Some(x.clone()),
                 _ => {
-                    self.error_handler.report(l, "Expected parameter type");
+                    self.error_handler.report(loc, "Expected parameter type");
                     self.back();
                     None
                 }
             };
 
-            params.push(Variable { ident: ident, t: t });
+            params.push(Variable {
+                ident: ident,
+                t: t,
+                loc: var_loc,
+            });
             if !self.next_match(TokenType::Comma) {
                 return params;
             }
@@ -395,9 +405,9 @@ impl Parser {
         params
     }
 
-    fn result(&mut self) -> Option<String> {
+    fn result(&mut self) -> Option<(String, Location)> {
         if let TokenType::Identifier(ref t) = self.peek().t {
-            let result = Some(t.clone());
+            let result = Some((t.clone(), self.peek().loc));
             self.advance();
             result
         } else {
@@ -442,18 +452,21 @@ impl Parser {
     }
 
     fn assign_stmt(&mut self) -> Result<Statement, ()> {
-        let ident = match self.advance() {
+        let (ident, loc) = match self.advance() {
             Token {
                 t: TokenType::Identifier(ref x),
-                ..
-            } => x.clone(),
-            Token { line, .. } => {
-                let l = *line;
-                self.error_handler
-                    .report_internal(l, "Assignment statement does not start with an identifier");
+                loc: loc,
+            } => (x.clone(), loc),
+            Token { loc, .. } => {
+                let loc = *loc;
+                self.error_handler.report_internal(
+                    loc,
+                    "Assignment statement does not start with an identifier",
+                );
                 return Err(());
             }
         };
+        let loc = *loc;
         if !self.next_match_report(
             TokenType::Equal,
             "Assignment identifier is not followed by an \"=\"",
@@ -467,6 +480,7 @@ impl Parser {
             var: Box::new(Variable {
                 ident: ident,
                 t: None,
+                loc: loc,
             }),
             expr: Box::new(expr),
         })
@@ -475,15 +489,15 @@ impl Parser {
     // The `let` token must have been consumed
     fn let_stmt(&mut self) -> Result<Statement, ()> {
         let next = self.advance();
-        let ident = match next {
+        let (ident, loc) = match next {
             Token {
                 t: TokenType::Identifier(ref x),
-                ..
-            } => x.clone(),
-            Token { line, .. } => {
-                let l = *line;
+                loc,
+            } => (x.clone(), *loc),
+            Token { loc, .. } => {
+                let loc = *loc;
                 self.error_handler.report(
-                    l,
+                    loc,
                     "Let statement requires an identifier after the \"let\" keyword",
                 );
                 return Err(());
@@ -502,6 +516,7 @@ impl Parser {
             var: Box::new(Variable {
                 ident: ident,
                 t: None,
+                loc: loc,
             }),
             expr: Box::new(expr),
         })
@@ -757,15 +772,16 @@ impl Parser {
 
         match &token.t {
             TokenType::NumberLit(n) => Ok(Expression::Literal {
-                value: Value::Number(*n),
+                value: Value::Number(*n, token.loc),
             }),
             TokenType::BooleanLit(b) => Ok(Expression::Literal {
-                value: Value::Boolean(*b),
+                value: Value::Boolean(*b, token.loc),
             }),
             TokenType::Identifier(ref x) => Ok(Expression::Variable {
                 var: Box::new(Variable {
                     ident: x.clone(),
                     t: None,
+                    loc: token.loc,
                 }),
             }),
             TokenType::LeftPar => {

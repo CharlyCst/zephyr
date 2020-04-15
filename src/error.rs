@@ -1,3 +1,4 @@
+#[derive(Copy, Clone)]
 pub struct Location {
     pub line: u32,
     pub pos: u32,
@@ -13,14 +14,19 @@ impl ErrorHandler {
         ErrorHandler { has_error: false }
     }
 
-    pub fn report(&mut self, line: usize, message: &str) {
+    pub fn report_line(&mut self, line: usize, message: &str) {
         self.has_error = true;
         println!("An error was found line {}: {}", line, message);
     }
 
-    pub fn report_internal(&mut self, line: usize, message: &str) {
+    pub fn report(&mut self, loc: Location, message: &str) {
         self.has_error = true;
-        println!("Internal error at line {}: {}", line, message);
+        println!("An error was found line {}: {}", loc.line, message);
+    }
+
+    pub fn report_internal(&mut self, loc: Location, message: &str) {
+        self.has_error = true;
+        println!("Internal error at line {}: {}", loc.line, message);
     }
 
     pub fn silent_report(&mut self) {

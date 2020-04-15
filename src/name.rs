@@ -162,20 +162,21 @@ impl NameResolver {
                     if let Some(known_t) = check_built_in_type(&t) {
                         params.push(known_t);
                     } else {
-                        self.error_handler.report(0, "Unknown parameter type"); // TODO add line
+                        self.error_handler
+                            .report(param.loc, "Unknown parameter type");
                     }
                 } else {
                     self.error_handler
-                        .report_internal(0, "No type associated to function parameter");
+                        .report_internal(param.loc, "No type associated to function parameter");
                 }
             }
 
             let mut results = Vec::new();
-            if let Some(t) = &fun.result {
+            if let Some((t, loc)) = &fun.result {
                 if let Some(known_t) = check_built_in_type(&t) {
                     results.push(known_t);
                 } else {
-                    self.error_handler.report(0, "Unknown result type"); // TODO add line
+                    self.error_handler.report(*loc, "Unknown result type");
                 }
             }
 
