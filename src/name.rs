@@ -1,5 +1,6 @@
 use crate::error::{ErrorHandler, Location};
 use crate::parse;
+use std::collections::HashMap;
 use std::fmt;
 
 pub struct Program {
@@ -144,7 +145,62 @@ pub enum TypeConstraint {
 pub struct ResolverState {
     names: NameStore,
     types: TypeVarStore,
+    contexts: Vec<HashMap<String, usize>>,
     constraints: Vec<TypeConstraint>,
+}
+
+impl ResolverState {
+    pub fn new() -> ResolverState {
+        let contexts = vec![HashMap::new()];
+        ResolverState {
+            names: NameStore::new(),
+            types: TypeVarStore::new(),
+            contexts: contexts,
+            constraints: Vec::new(),
+        }
+    }
+
+    pub fn new_scope(&mut self) {
+        self.contexts.push(HashMap::new());
+    }
+
+    pub fn exit_scope(&mut self) {
+        self.contexts.pop();
+    }
+
+    pub fn declare(
+        &mut self,
+        ident: String,
+        type_candidates: Vec<Type>,
+        loc: Location,
+    ) -> Result<(), Location> {
+        if let Some(n) = self.find_in_context(&ident) {
+            return Err(n.loc);
+        }
+
+        let ident_key = ident.clone();
+        let t_id = self.types.fresh(type_candidates);
+        let id = self.names.fresh(ident, loc, t_id);
+        self.add_in_context(ident_key, id);
+        Ok(())
+    }
+
+    fn find_in_context(&self, ident: &str) -> Option<&Name> {
+        for ctx in self.contexts.iter().rev() {
+            match ctx.get(ident) {
+                Some(id) => return Some(self.names.get(*id)),
+                None => (),
+            }
+        }
+        None
+    }
+
+    fn add_in_context(&mut self, name: String, id: usize) {
+        match self.contexts.last_mut() {
+            Some(ctx) => ctx.insert(name, id),
+            None => panic!("Empty context in name resolution"),
+        };
+    }
 }
 
 pub struct NameResolver {
@@ -159,13 +215,13 @@ impl NameResolver {
     }
 
     pub fn resolve(&mut self, funs: Vec<parse::Function>) -> Program {
-        let mut state = ResolverState {
-            names: NameStore::new(),
-            types: TypeVarStore::new(),
-            constraints: Vec::new(),
-        };
+        let mut state = ResolverState::new();
 
         self.register_functions(&funs, &mut state);
+
+        for fun in &funs {
+            self.resolve_function(fun, &mut state);
+        }
 
         Program {
             funs: funs,
@@ -175,6 +231,32 @@ impl NameResolver {
         }
     }
 
+    fn resolve_function(&mut self, fun: &parse::Function, state: &mut ResolverState) {
+        state.new_scope();
+
+        for param in &fun.params {
+            let t = match get_var_type(&param) {
+                Some(t) => t,
+                None => {
+                    self.error_handler
+                        .report(param.loc, "Missing or unrecognized type");
+                    continue;
+                }
+            };
+
+            if let Err(decl_loc) = state.declare(param.ident.clone(), t, param.loc) {
+                let error = format!(
+                    "Name {} already defined in current context at line {}",
+                    fun.ident, decl_loc.line
+                );
+                self.error_handler.report(fun.loc, &error);
+            }
+        }
+
+        state.exit_scope();
+    }
+
+    // must be called first to bring all global function declarations in scope
     fn register_functions(&mut self, funs: &Vec<parse::Function>, state: &mut ResolverState) {
         for fun in funs {
             let mut params = Vec::new();
@@ -201,17 +283,28 @@ impl NameResolver {
                 }
             }
 
-            let t_id = state.types.fresh(vec![Type::Fun(params, results)]);
-            state.names.fresh(
-                fun.ident.clone(),
-                Location {
-                    len: 0,
-                    line: 0,
-                    pos: 0,
-                },
-                t_id,
-            );
+            if let Err(decl_loc) =
+                state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc)
+            {
+                let error = format!(
+                    "Function {} already declared line {}",
+                    fun.ident, decl_loc.line
+                );
+                self.error_handler.report(fun.loc, &error);
+            }
         }
+    }
+}
+
+fn get_var_type(var: &parse::Variable) -> Option<Vec<Type>> {
+    if let Some(ref t) = var.t {
+        if let Some(known_t) = check_built_in_type(&t) {
+            Some(vec![known_t])
+        } else {
+            None
+        }
+    } else {
+        None
     }
 }
 

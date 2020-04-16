@@ -137,6 +137,7 @@ pub struct Function {
     pub result: Option<(String, Location)>,
     pub block: Block,
     pub exported: bool,
+    pub loc: Location,
 }
 
 impl fmt::Display for Function {
@@ -328,7 +329,7 @@ impl Parser {
         let exported = self.next_match(TokenType::Export);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
-            return Err(()); // Todo: synchronize to next function
+            return Err(());
         }
         let loc = self.peek().loc;
         let ident = match self.advance() {
@@ -366,6 +367,7 @@ impl Parser {
             result: result,
             block: block,
             exported: exported,
+            loc: loc,
         })
     }
 

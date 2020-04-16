@@ -52,8 +52,10 @@ fn compile(code: String, output_path: &str) {
     let mut name_resolver = name::NameResolver::new();
     let program = name_resolver.resolve(functions);
 
-    println!("\n{}", program.names);
-    println!("\n{}", program.types);
+    println!("\n/// Name Resolution ///\n");
+
+    println!("{}\n", program.names);
+    println!("{}", program.types);
 
     // let mut compiler = compile::Compiler::new();
     // let wasm_functions = compiler.compile(functions);

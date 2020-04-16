@@ -4,6 +4,6 @@ export fun Main() i32 {
     return 14 + 1
 }
 
-fun f(a: i64) i32{
-
+fun f(a i64) i32 {
+    let x = 0
 }
