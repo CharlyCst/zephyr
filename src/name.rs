@@ -34,6 +34,9 @@ impl fmt::Display for ConstraintStore {
                 TypeConstraint::Equality(t_1, t_2) => {
                     store.push_str(&format!("  {:>4} = {:>4}\n", t_1, t_2))
                 }
+                TypeConstraint::Return(fun_t, ret_t) => {
+                    store.push_str(&format!("  {:>4} -> {:>3}\n", fun_t, ret_t))
+                }
             };
         }
         store.push_str("}");
@@ -142,6 +145,7 @@ pub enum Type {
     F64,
     Bool,
     Any,
+    Unit,
     Fun(Vec<Type>, Vec<Type>),
 }
 
@@ -154,6 +158,7 @@ impl fmt::Display for Type {
             Type::F64 => write!(f, "f364"),
             Type::Bool => write!(f, "bool"),
             Type::Any => write!(f, "any"),
+            Type::Unit => write!(f, "unit"),
             Type::Fun(params, results) => {
                 let p_types = params
                     .iter()
@@ -178,6 +183,7 @@ pub struct TypeVariable {
 
 pub enum TypeConstraint {
     Equality(TypeId, TypeId),
+    Return(TypeId, TypeId), // Return(fun_type, returned_type)
 }
 
 pub struct ResolverState {
@@ -227,7 +233,7 @@ impl ResolverState {
         self.constraints.add(constraint)
     }
 
-    fn find_in_context(&self, ident: &str) -> Option<&Name> {
+    pub fn find_in_context(&self, ident: &str) -> Option<&Name> {
         for ctx in self.contexts.iter().rev() {
             match ctx.get(ident) {
                 Some(id) => return Some(self.names.get(*id)),
@@ -276,6 +282,15 @@ impl NameResolver {
     fn resolve_function(&mut self, fun: &parse::Function, state: &mut ResolverState) {
         state.new_scope();
 
+        let fun_t_id = if let Some(name) = state.find_in_context(&fun.ident) {
+            name.t_id
+        } else {
+            self.error_handler
+                .report_internal(fun.loc, "Function name is not yet in context");
+            state.exit_scope();
+            return;
+        };
+
         for param in &fun.params {
             let t = match get_var_type(&param) {
                 Some(t) => t,
@@ -295,38 +310,54 @@ impl NameResolver {
             }
         }
 
-        self.resolve_block(&fun.block, state);
-
+        self.resolve_block(&fun.block, state, fun_t_id);
         state.exit_scope();
     }
 
-    fn resolve_block(&mut self, block: &parse::Block, state: &mut ResolverState) {
+    fn resolve_block(&mut self, block: &parse::Block, state: &mut ResolverState, fun_t_id: TypeId) {
         state.new_scope();
 
         for stmt in &block.stmts {
             match stmt {
-                parse::Statement::AssignStmt {
-                    var: var,
-                    expr: expr,
-                } => {}
-                parse::Statement::LetStmt {
-                    var: var,
-                    expr: expr,
-                } => match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
-                    Ok(right_t_id) => {
-                        let left_t_id = self.resolve_expression(&expr, state);
-                        state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
-                    }
-                    Err(decl_loc) => {
-                        let error = format!(
-                            "Name {} already defined in current context at line {}",
-                            var.ident, decl_loc.line
+                parse::Statement::AssignStmt { var, expr } => {
+                    let right_t_id = if let Some(name) = state.find_in_context(&var.ident) {
+                        name.t_id
+                    } else {
+                        self.error_handler.report(
+                            var.loc,
+                            &format!("Variable name {} is not defined", var.ident),
                         );
-                        self.error_handler.report(var.loc, &error);
                         continue;
+                    };
+                    let left_t_id = self.resolve_expression(&expr, state);
+                    state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
+                }
+                parse::Statement::LetStmt { var, expr } => {
+                    match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
+                        Ok(right_t_id) => {
+                            let left_t_id = self.resolve_expression(&expr, state);
+                            state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
+                        }
+                        Err(decl_loc) => {
+                            let error = format!(
+                                "Name {} already defined in current context at line {}",
+                                var.ident, decl_loc.line
+                            );
+                            self.error_handler.report(var.loc, &error);
+                            continue;
+                        }
                     }
-                },
-                _ => (),
+                }
+                parse::Statement::ReturnStmt { expr } => {
+                    if let Some(ret_expr) = expr {
+                        let ret_t_id = self.resolve_expression(ret_expr, state);
+                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                    } else {
+                        let ret_t_id = state.types.fresh(vec![Type::Unit]);
+                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                    }
+                }
+                _ => panic!("Statement not implemented"), // TODO
             };
         }
 
@@ -348,6 +379,17 @@ impl NameResolver {
                 parse::Value::Integer(_, _) => state.types.fresh(vec![Type::I32, Type::I64]),
                 parse::Value::Boolean(_, _) => state.types.fresh(vec![Type::Bool]),
             },
+            parse::Expression::Variable { var } => {
+                if let Some(name) = state.find_in_context(&var.ident) {
+                    name.t_id
+                } else {
+                    self.error_handler.report(
+                        var.loc,
+                        &format!("Variable {} used but not declared", var.ident),
+                    );
+                    return 0;
+                }
+            }
             _ => panic!("Expression not implemented"), // TODO
         }
     }
