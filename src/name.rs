@@ -7,7 +7,38 @@ pub struct Program {
     pub funs: Vec<parse::Function>,
     pub names: NameStore,
     pub types: TypeVarStore,
-    pub constraints: Vec<TypeConstraint>,
+    pub constraints: ConstraintStore,
+}
+
+pub struct ConstraintStore {
+    constraints: Vec<TypeConstraint>,
+}
+
+impl ConstraintStore {
+    pub fn new() -> ConstraintStore {
+        let store = Vec::new();
+        ConstraintStore { constraints: store }
+    }
+
+    pub fn add(&mut self, constr: TypeConstraint) {
+        self.constraints.push(constr)
+    }
+}
+
+impl fmt::Display for ConstraintStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut store = String::from("ConstraintStore {\n");
+        store.push_str("  t_id ~ t_id\n\n");
+        for constr in &self.constraints {
+            match constr {
+                TypeConstraint::Equality(t_1, t_2) => {
+                    store.push_str(&format!("  {:>4} = {:>4}\n", t_1, t_2))
+                }
+            };
+        }
+        store.push_str("}");
+        write!(f, "{}", store)
+    }
 }
 
 pub struct NameStore {
@@ -41,9 +72,10 @@ impl fmt::Display for NameStore {
         let mut store = String::from("NameStore {\n");
         store.push_str("    id ~ t_id - name\n\n");
         for (idx, name) in self.names.iter().enumerate() {
-            store.push_str("  ");
-            store.push_str(&format!("{:>4} ~ {:>4} - {:} ", idx, name.t_id, name.name));
-            store.push_str("\n");
+            store.push_str(&format!(
+                "  {:>4} ~ {:>4} - {:}\n",
+                idx, name.t_id, name.name
+            ));
         }
         store.push_str("}");
         write!(f, "{}", store)
@@ -54,7 +86,7 @@ pub struct Name {
     id: usize,
     name: String,
     loc: Location,
-    t_id: usize,
+    t_id: TypeId,
 }
 
 pub struct TypeVarStore {
@@ -66,11 +98,11 @@ impl TypeVarStore {
         TypeVarStore { types: Vec::new() }
     }
 
-    fn get(&self, id: usize) -> &TypeVariable {
+    fn get(&self, id: TypeId) -> &TypeVariable {
         &self.types[id]
     }
 
-    fn fresh(&mut self, candidate: Vec<Type>) -> usize {
+    fn fresh(&mut self, candidate: Vec<Type>) -> TypeId {
         let id = self.types.len();
         let tv = TypeVariable {
             id: id,
@@ -101,11 +133,15 @@ impl fmt::Display for TypeVarStore {
     }
 }
 
+pub type TypeId = usize;
+
 pub enum Type {
     I32,
     I64,
     F32,
     F64,
+    Bool,
+    Any,
     Fun(Vec<Type>, Vec<Type>),
 }
 
@@ -116,6 +152,8 @@ impl fmt::Display for Type {
             Type::I64 => write!(f, "i64"),
             Type::F32 => write!(f, "f32"),
             Type::F64 => write!(f, "f364"),
+            Type::Bool => write!(f, "bool"),
+            Type::Any => write!(f, "any"),
             Type::Fun(params, results) => {
                 let p_types = params
                     .iter()
@@ -134,19 +172,19 @@ impl fmt::Display for Type {
 }
 
 pub struct TypeVariable {
-    id: usize,
+    id: TypeId,
     candidate: Vec<Type>,
 }
 
 pub enum TypeConstraint {
-    Equality(usize, usize),
+    Equality(TypeId, TypeId),
 }
 
 pub struct ResolverState {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
-    constraints: Vec<TypeConstraint>,
+    constraints: ConstraintStore,
 }
 
 impl ResolverState {
@@ -156,7 +194,7 @@ impl ResolverState {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts: contexts,
-            constraints: Vec::new(),
+            constraints: ConstraintStore::new(),
         }
     }
 
@@ -173,7 +211,7 @@ impl ResolverState {
         ident: String,
         type_candidates: Vec<Type>,
         loc: Location,
-    ) -> Result<(), Location> {
+    ) -> Result<TypeId, Location> {
         if let Some(n) = self.find_in_context(&ident) {
             return Err(n.loc);
         }
@@ -182,7 +220,11 @@ impl ResolverState {
         let t_id = self.types.fresh(type_candidates);
         let id = self.names.fresh(ident, loc, t_id);
         self.add_in_context(ident_key, id);
-        Ok(())
+        Ok(t_id)
+    }
+
+    pub fn new_constraint(&mut self, constraint: TypeConstraint) {
+        self.constraints.add(constraint)
     }
 
     fn find_in_context(&self, ident: &str) -> Option<&Name> {
@@ -253,7 +295,61 @@ impl NameResolver {
             }
         }
 
+        self.resolve_block(&fun.block, state);
+
         state.exit_scope();
+    }
+
+    fn resolve_block(&mut self, block: &parse::Block, state: &mut ResolverState) {
+        state.new_scope();
+
+        for stmt in &block.stmts {
+            match stmt {
+                parse::Statement::AssignStmt {
+                    var: var,
+                    expr: expr,
+                } => {}
+                parse::Statement::LetStmt {
+                    var: var,
+                    expr: expr,
+                } => match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
+                    Ok(right_t_id) => {
+                        let left_t_id = self.resolve_expression(&expr, state);
+                        state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
+                    }
+                    Err(decl_loc) => {
+                        let error = format!(
+                            "Name {} already defined in current context at line {}",
+                            var.ident, decl_loc.line
+                        );
+                        self.error_handler.report(var.loc, &error);
+                        continue;
+                    }
+                },
+                _ => (),
+            };
+        }
+
+        state.exit_scope();
+    }
+
+    fn resolve_expression(
+        &mut self,
+        expr: &parse::Expression,
+        state: &mut ResolverState,
+    ) -> TypeId {
+        match expr {
+            parse::Expression::Binary {
+                expr_left,
+                binop,
+                expr_right,
+            } => panic!("Binop not implemented"), // TODO
+            parse::Expression::Literal { value } => match value {
+                parse::Value::Integer(_, _) => state.types.fresh(vec![Type::I32, Type::I64]),
+                parse::Value::Boolean(_, _) => state.types.fresh(vec![Type::Bool]),
+            },
+            _ => panic!("Expression not implemented"), // TODO
+        }
     }
 
     // must be called first to bring all global function declarations in scope

@@ -55,7 +55,8 @@ fn compile(code: String, output_path: &str) {
     println!("\n/// Name Resolution ///\n");
 
     println!("{}\n", program.names);
-    println!("{}", program.types);
+    println!("{}\n", program.types);
+    println!("{}\n", program.constraints);
 
     // let mut compiler = compile::Compiler::new();
     // let wasm_functions = compiler.compile(functions);

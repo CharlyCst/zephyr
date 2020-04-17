@@ -3,7 +3,7 @@ use crate::scan::{Token, TokenType};
 use std::fmt;
 
 pub enum Value {
-    Number(u64, Location),
+    Integer(u64, Location),
     Boolean(bool, Location),
 }
 
@@ -64,7 +64,7 @@ impl fmt::Display for Expression {
             Expression::Literal { value: v } => match v {
                 Value::Boolean(true, _) => write!(f, "true"),
                 Value::Boolean(false, _) => write!(f, "false"),
-                Value::Number(n, _) => write!(f, "{}", n),
+                Value::Integer(n, _) => write!(f, "{}", n),
             },
             Expression::Call { fun, args } => write!(
                 f,
@@ -774,7 +774,7 @@ impl Parser {
 
         match &token.t {
             TokenType::NumberLit(n) => Ok(Expression::Literal {
-                value: Value::Number(*n, token.loc),
+                value: Value::Integer(*n, token.loc),
             }),
             TokenType::BooleanLit(b) => Ok(Expression::Literal {
                 value: Value::Boolean(*b, token.loc),

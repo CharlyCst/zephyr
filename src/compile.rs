@@ -114,7 +114,7 @@ impl Compiler {
 
     fn value(&mut self, value: &Value, opcode: &mut Vec<opcode::Instr>) {
         match value {
-            Value::Number(n, _) => {
+            Value::Integer(n, _) => {
                 opcode.push(opcode::INSTR_I32_CST);
                 opcode.extend(opcode::to_leb(*n as usize));
             }
