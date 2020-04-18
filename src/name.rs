@@ -34,6 +34,9 @@ impl fmt::Display for ConstraintStore {
                 TypeConstraint::Equality(t_1, t_2) => {
                     store.push_str(&format!("  {:>4} = {:>4}\n", t_1, t_2))
                 }
+                TypeConstraint::Included(t_1, t_2) => {
+                    store.push_str(&format!("  {:>4} ⊂ {:>4}\n", t_1, t_2))
+                }
                 TypeConstraint::Return(fun_t, ret_t) => {
                     store.push_str(&format!("  {:>4} -> {:>3}\n", fun_t, ret_t))
                 }
@@ -92,13 +95,26 @@ pub struct Name {
     t_id: TypeId,
 }
 
+const T_ID_BOOL: usize = 0;
+const T_ID_INTEGER: usize = 1;
+const T_ID_NUMERIC: usize = 2;
+const T_ID_BASIC: usize = 3;
+
 pub struct TypeVarStore {
     types: Vec<TypeVariable>,
 }
 
 impl TypeVarStore {
     fn new() -> TypeVarStore {
-        TypeVarStore { types: Vec::new() }
+        let mut store = TypeVarStore { types: Vec::new() };
+
+        // Do not change insertion order!
+        store.fresh(vec![Type::Bool]);
+        store.fresh(vec![Type::I32, Type::I64]);
+        store.fresh(vec![Type::F32, Type::F64, Type::I32, Type::I64]);
+        store.fresh(vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64]);
+
+        store
     }
 
     fn get(&self, id: TypeId) -> &TypeVariable {
@@ -138,6 +154,7 @@ impl fmt::Display for TypeVarStore {
 
 pub type TypeId = usize;
 
+#[derive(Debug, PartialEq)]
 pub enum Type {
     I32,
     I64,
@@ -155,7 +172,7 @@ impl fmt::Display for Type {
             Type::I32 => write!(f, "i32"),
             Type::I64 => write!(f, "i64"),
             Type::F32 => write!(f, "f32"),
-            Type::F64 => write!(f, "f364"),
+            Type::F64 => write!(f, "f64"),
             Type::Bool => write!(f, "bool"),
             Type::Any => write!(f, "any"),
             Type::Unit => write!(f, "unit"),
@@ -183,7 +200,8 @@ pub struct TypeVariable {
 
 pub enum TypeConstraint {
     Equality(TypeId, TypeId),
-    Return(TypeId, TypeId), // Return(fun_type, returned_type)
+    Included(TypeId, TypeId), // Included(t_1, t_2) <=> t_1 ⊂ y_2
+    Return(TypeId, TypeId),   // Return(fun_type, returned_type)
 }
 
 pub struct ResolverState {
@@ -348,6 +366,16 @@ impl NameResolver {
                         }
                     }
                 }
+                parse::Statement::IfStmt { expr, block } => {
+                    let expr_t_id = self.resolve_expression(expr, state);
+                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    self.resolve_block(block, state, fun_t_id);
+                }
+                parse::Statement::WhileStmt { expr, block } => {
+                    let expr_t_id = self.resolve_expression(expr, state);
+                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    self.resolve_block(block, state, fun_t_id);
+                }
                 parse::Statement::ReturnStmt { expr } => {
                     if let Some(ret_expr) = expr {
                         let ret_t_id = self.resolve_expression(ret_expr, state);
@@ -357,7 +385,9 @@ impl NameResolver {
                         state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
                     }
                 }
-                _ => panic!("Statement not implemented"), // TODO
+                parse::Statement::ExprStmt { expr } => {
+                    self.resolve_expression(expr, state);
+                }
             };
         }
 
@@ -374,10 +404,37 @@ impl NameResolver {
                 expr_left,
                 binop,
                 expr_right,
-            } => panic!("Binop not implemented"), // TODO
+            } => {
+                let left_t_id = self.resolve_expression(expr_left, state);
+                let right_t_id = self.resolve_expression(expr_right, state);
+                match binop {
+                    parse::BinaryOperator::Plus
+                    | parse::BinaryOperator::Multiply
+                    | parse::BinaryOperator::Minus
+                    | parse::BinaryOperator::Divide => {
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
+                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
+                        left_t_id
+                    }
+                    parse::BinaryOperator::Greater
+                    | parse::BinaryOperator::GreaterEqual
+                    | parse::BinaryOperator::Less
+                    | parse::BinaryOperator::LessEqual => {
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
+                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
+                        T_ID_BOOL
+                    }
+                    parse::BinaryOperator::Equal => {
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
+                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_BASIC));
+                        T_ID_BOOL
+                    }
+                    _ => panic!("Binop not implemented yet"), // TODO
+                }
+            }
             parse::Expression::Literal { value } => match value {
                 parse::Value::Integer(_, _) => state.types.fresh(vec![Type::I32, Type::I64]),
-                parse::Value::Boolean(_, _) => state.types.fresh(vec![Type::Bool]),
+                parse::Value::Boolean(_, _) => T_ID_BOOL,
             },
             parse::Expression::Variable { var } => {
                 if let Some(name) = state.find_in_context(&var.ident) {
@@ -453,5 +510,29 @@ fn check_built_in_type(t: &str) -> Option<Type> {
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_built_in_types_id() {
+        let store = TypeVarStore::new();
+
+        assert_eq!(vec![Type::Bool], store.get(T_ID_BOOL).candidate);
+        assert_eq!(
+            vec![Type::I32, Type::I64],
+            store.get(T_ID_INTEGER).candidate
+        );
+        assert_eq!(
+            vec![Type::F32, Type::F64, Type::I32, Type::I64],
+            store.get(T_ID_NUMERIC).candidate
+        );
+        assert_eq!(
+            vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64],
+            store.get(T_ID_BASIC).candidate
+        );
     }
 }

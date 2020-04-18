@@ -457,7 +457,7 @@ impl Parser {
         let (ident, loc) = match self.advance() {
             Token {
                 t: TokenType::Identifier(ref x),
-                loc: loc,
+                loc,
             } => (x.clone(), loc),
             Token { loc, .. } => {
                 let loc = *loc;
