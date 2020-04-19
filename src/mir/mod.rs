@@ -3,6 +3,9 @@ use crate::parse;
 use self::names::NameStore;
 use self::types::{ConstraintStore, TypeVarStore};
 
+pub use self::names::NameId;
+pub use self::types::TypeId;
+
 mod names;
 mod resolver;
 mod types;

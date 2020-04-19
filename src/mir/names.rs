@@ -2,8 +2,10 @@ use super::types::TypeId;
 use crate::error::Location;
 use std::fmt;
 
+pub type NameId = usize;
+
 pub struct Name {
-    pub id: usize,
+    pub n_id: NameId,
     pub name: String,
     pub loc: Location,
     pub t_id: TypeId,
@@ -25,7 +27,7 @@ impl NameStore {
     pub fn fresh(&mut self, name: String, loc: Location, t_id: usize) -> usize {
         let id = self.names.len();
         let n = Name {
-            id: id,
+            n_id: id,
             name: name,
             loc: loc,
             t_id: t_id,

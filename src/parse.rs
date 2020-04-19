@@ -1,10 +1,22 @@
 use crate::error::{ErrorHandler, Location};
+use crate::mir::{NameId, TypeId};
 use crate::scan::{Token, TokenType};
 use std::fmt;
 
+const NO_T_ID: TypeId = 0;
+const NO_N_ID: NameId = 0;
+
 pub enum Value {
-    Integer(u64, Location),
-    Boolean(bool, Location),
+    Integer {
+        val: u64,
+        loc: Location,
+        t_id: TypeId,
+    },
+    Boolean {
+        val: bool,
+        loc: Location,
+        t_id: TypeId,
+    },
 }
 
 pub enum BinaryOperator {
@@ -33,6 +45,7 @@ pub struct Variable {
     pub ident: String,
     pub t: Option<String>,
     pub loc: Location,
+    pub n_id: NameId,
 }
 
 pub enum Expression {
@@ -62,9 +75,9 @@ impl fmt::Display for Expression {
         match self {
             Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
             Expression::Literal { value: v } => match v {
-                Value::Boolean(true, _) => write!(f, "true"),
-                Value::Boolean(false, _) => write!(f, "false"),
-                Value::Integer(n, _) => write!(f, "{}", n),
+                Value::Boolean { val: true, .. } => write!(f, "true"),
+                Value::Boolean { val: false, .. } => write!(f, "false"),
+                Value::Integer { val: n, .. } => write!(f, "{}", n),
             },
             Expression::Call { fun, args } => write!(
                 f,
@@ -398,6 +411,7 @@ impl Parser {
                 ident: ident,
                 t: t,
                 loc: var_loc,
+                n_id: NO_N_ID,
             });
             if !self.next_match(TokenType::Comma) {
                 return params;
@@ -483,6 +497,7 @@ impl Parser {
                 ident: ident,
                 t: None,
                 loc: loc,
+                n_id: NO_N_ID,
             }),
             expr: Box::new(expr),
         })
@@ -519,6 +534,7 @@ impl Parser {
                 ident: ident,
                 t: None,
                 loc: loc,
+                n_id: NO_N_ID,
             }),
             expr: Box::new(expr),
         })
@@ -774,16 +790,25 @@ impl Parser {
 
         match &token.t {
             TokenType::NumberLit(n) => Ok(Expression::Literal {
-                value: Value::Integer(*n, token.loc),
+                value: Value::Integer {
+                    val: *n,
+                    loc: token.loc,
+                    t_id: NO_T_ID,
+                },
             }),
             TokenType::BooleanLit(b) => Ok(Expression::Literal {
-                value: Value::Boolean(*b, token.loc),
+                value: Value::Boolean {
+                    val: *b,
+                    loc: token.loc,
+                    t_id: NO_T_ID,
+                },
             }),
             TokenType::Identifier(ref x) => Ok(Expression::Variable {
                 var: Box::new(Variable {
                     ident: x.clone(),
                     t: None,
                     loc: token.loc,
+                    n_id: NO_N_ID,
                 }),
             }),
             TokenType::LeftPar => {

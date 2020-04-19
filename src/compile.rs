@@ -114,11 +114,11 @@ impl Compiler {
 
     fn value(&mut self, value: &Value, opcode: &mut Vec<opcode::Instr>) {
         match value {
-            Value::Integer(n, _) => {
+            Value::Integer { val: n, .. } => {
                 opcode.push(opcode::INSTR_I32_CST);
                 opcode.extend(opcode::to_leb(*n as usize));
             }
-            Value::Boolean(_, _) => self
+            Value::Boolean { .. } => self
                 .error_handler
                 .report_line(0, "Boolean are not yet supported"),
         }
