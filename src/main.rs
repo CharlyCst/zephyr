@@ -4,7 +4,7 @@ use std::fs;
 mod compile;
 mod encode;
 mod error;
-mod name;
+mod mir;
 mod opcode;
 mod parse;
 mod scan;
@@ -49,14 +49,7 @@ fn compile(code: String, output_path: &str) {
         std::process::exit(1);
     }
 
-    let mut name_resolver = name::NameResolver::new();
-    let program = name_resolver.resolve(functions);
-
-    println!("\n/// Name Resolution ///\n");
-
-    println!("{}\n", program.names);
-    println!("{}\n", program.types);
-    println!("{}\n", program.constraints);
+    mir::to_mir(functions);
 
     // let mut compiler = compile::Compiler::new();
     // let wasm_functions = compiler.compile(functions);
