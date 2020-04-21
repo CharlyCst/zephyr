@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fmt;
 
 pub mod id {
@@ -9,9 +10,22 @@ pub mod id {
 
 pub type TypeId = usize;
 
-pub struct TypeVariable {
-    id: TypeId,
-    candidate: Vec<Type>,
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum Type {
+    I32,
+    I64,
+    F32,
+    F64,
+    Bool,
+    Any,
+    Unit,
+    Fun(Vec<Type>, Vec<Type>),
+}
+
+pub enum TypeConstraint {
+    Equality(TypeId, TypeId),
+    Included(TypeId, TypeId), // Included(t_1, t_2) <=> t_1 ⊂ y_2
+    Return(TypeId, TypeId),   // Return(fun_type, returned_type)
 }
 
 pub struct ConstraintStore {
@@ -29,37 +43,21 @@ impl ConstraintStore {
     }
 }
 
-impl fmt::Display for ConstraintStore {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut store = String::from("ConstraintStore {\n");
-        store.push_str("  t_id ~ t_id\n\n");
-        for constr in &self.constraints {
-            match constr {
-                TypeConstraint::Equality(t_1, t_2) => {
-                    store.push_str(&format!("  {:>4} = {:>4}\n", t_1, t_2))
-                }
-                TypeConstraint::Included(t_1, t_2) => {
-                    store.push_str(&format!("  {:>4} ⊂ {:>4}\n", t_1, t_2))
-                }
-                TypeConstraint::Return(fun_t, ret_t) => {
-                    store.push_str(&format!("  {:>4} -> {:>3}\n", fun_t, ret_t))
-                }
-            };
-        }
-        store.push_str("}");
-        write!(f, "{}", store)
-    }
+pub struct TypeStore {
+    types: Vec<Type>,
 }
 
+// The store takes the responsibility for sorting type variable's candidates
 pub struct TypeVarStore {
-    types: Vec<TypeVariable>,
+    types: Vec<Vec<Type>>,
 }
 
 impl TypeVarStore {
     pub fn new() -> TypeVarStore {
         let mut store = TypeVarStore { types: Vec::new() };
 
-        // Do not change insertion order!
+        // If you need to change insertion order, update T_ID constants accordingly
+        // Tests are provided at the bottom of the file to ensure good ordering
         store.fresh(vec![Type::Bool]);
         store.fresh(vec![Type::I32, Type::I64]);
         store.fresh(vec![Type::F32, Type::F64, Type::I32, Type::I64]);
@@ -68,51 +66,30 @@ impl TypeVarStore {
         store
     }
 
-    pub fn get(&self, id: TypeId) -> &TypeVariable {
+    pub fn get(&self, id: TypeId) -> &Vec<Type> {
         &self.types[id]
     }
 
-    pub fn fresh(&mut self, candidate: Vec<Type>) -> TypeId {
+    pub fn replace(&mut self, id: TypeId, mut new_types: Vec<Type>) {
+        std::mem::replace(&mut self.types[id], new_types);
+    }
+
+    pub fn fresh(&mut self, mut candidate: Vec<Type>) -> TypeId {
+        candidate.sort_unstable(); // Ensure sorted elements
         let id = self.types.len();
-        let tv = TypeVariable {
-            id: id,
-            candidate: candidate,
-        };
-        self.types.push(tv);
+        self.types.push(candidate);
         id
     }
 }
 
-impl fmt::Display for TypeVarStore {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut store = String::from("TypeVarStore {\n");
-        store.push_str("  t_id - candidates\n\n");
-        for (idx, t) in self.types.iter().enumerate() {
-            let candidates = t
-                .candidate
-                .iter()
-                .map(|c| format!("{}", c))
-                .collect::<Vec<String>>()
-                .join(" | ");
-            store.push_str("  ");
-            store.push_str(&format!("{:>4} - {}", idx, candidates));
-            store.push_str("\n");
-        }
-        store.push_str("}");
-        write!(f, "{}", store)
-    }
-}
+impl<'a> IntoIterator for &'a ConstraintStore {
+    type Item = <std::slice::Iter<'a, TypeConstraint> as IntoIterator>::Item;
+    type IntoIter = <std::slice::Iter<'a, TypeConstraint> as IntoIterator>::IntoIter;
 
-#[derive(Debug, PartialEq)]
-pub enum Type {
-    I32,
-    I64,
-    F32,
-    F64,
-    Bool,
-    Any,
-    Unit,
-    Fun(Vec<Type>, Vec<Type>),
+    fn into_iter(self) -> Self::IntoIter {
+        let c = &self.constraints;
+        c.into_iter()
+    }
 }
 
 impl fmt::Display for Type {
@@ -142,10 +119,45 @@ impl fmt::Display for Type {
     }
 }
 
-pub enum TypeConstraint {
-    Equality(TypeId, TypeId),
-    Included(TypeId, TypeId), // Included(t_1, t_2) <=> t_1 ⊂ y_2
-    Return(TypeId, TypeId),   // Return(fun_type, returned_type)
+impl fmt::Display for TypeVarStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut store = String::from("TypeVarStore {\n");
+        store.push_str("  t_id - candidates\n\n");
+        for (idx, t) in self.types.iter().enumerate() {
+            let candidates = t
+                .iter()
+                .map(|c| format!("{}", c))
+                .collect::<Vec<String>>()
+                .join(" | ");
+            store.push_str("  ");
+            store.push_str(&format!("{:>4} - {}", idx, candidates));
+            store.push_str("\n");
+        }
+        store.push_str("}");
+        write!(f, "{}", store)
+    }
+}
+
+impl fmt::Display for ConstraintStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut store = String::from("ConstraintStore {\n");
+        store.push_str("  t_id ~ t_id\n\n");
+        for constr in &self.constraints {
+            match constr {
+                TypeConstraint::Equality(t_1, t_2) => {
+                    store.push_str(&format!("  {:>4} = {:>4}\n", t_1, t_2))
+                }
+                TypeConstraint::Included(t_1, t_2) => {
+                    store.push_str(&format!("  {:>4} ⊂ {:>4}\n", t_1, t_2))
+                }
+                TypeConstraint::Return(fun_t, ret_t) => {
+                    store.push_str(&format!("  {:>4} -> {:>3}\n", fun_t, ret_t))
+                }
+            };
+        }
+        store.push_str("}");
+        write!(f, "{}", store)
+    }
 }
 
 #[cfg(test)]
@@ -157,18 +169,15 @@ mod tests {
     fn test_built_in_types_id() {
         let store = TypeVarStore::new();
 
-        assert_eq!(vec![Type::Bool], store.get(id::T_ID_BOOL).candidate);
-        assert_eq!(
-            vec![Type::I32, Type::I64],
-            store.get(id::T_ID_INTEGER).candidate
-        );
+        assert_eq!(vec![Type::Bool], *store.get(id::T_ID_BOOL));
+        assert_eq!(vec![Type::I32, Type::I64], *store.get(id::T_ID_INTEGER));
         assert_eq!(
             vec![Type::F32, Type::F64, Type::I32, Type::I64],
-            store.get(id::T_ID_NUMERIC).candidate
+            *store.get(id::T_ID_NUMERIC)
         );
         assert_eq!(
             vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64],
-            store.get(id::T_ID_BASIC).candidate
+            *store.get(id::T_ID_BASIC)
         );
     }
 }
