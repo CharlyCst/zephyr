@@ -24,9 +24,14 @@ impl ErrorHandler {
         println!("An error was found line {}: {}", loc.line, message);
     }
 
-    pub fn report_internal(&mut self, loc: Location, message: &str) {
+    pub fn report_internal_loc(&mut self, loc: Location, message: &str) {
         self.has_error = true;
         println!("Internal error at line {}: {}", loc.line, message);
+    }
+
+    pub fn report_internal(&mut self, message: &str) {
+        self.has_error = true;
+        println!("Internal error: {}", message);
     }
 
     pub fn silent_report(&mut self) {

@@ -70,7 +70,7 @@ impl TypeVarStore {
         &self.types[id]
     }
 
-    pub fn replace(&mut self, id: TypeId, mut new_types: Vec<Type>) {
+    pub fn replace(&mut self, id: TypeId, new_types: Vec<Type>) {
         std::mem::replace(&mut self.types[id], new_types);
     }
 

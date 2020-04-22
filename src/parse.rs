@@ -475,7 +475,7 @@ impl Parser {
             } => (x.clone(), loc),
             Token { loc, .. } => {
                 let loc = *loc;
-                self.error_handler.report_internal(
+                self.error_handler.report_internal_loc(
                     loc,
                     "Assignment statement does not start with an identifier",
                 );

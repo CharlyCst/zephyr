@@ -108,7 +108,7 @@ impl NameResolver {
             name.t_id
         } else {
             self.error_handler
-                .report_internal(fun.loc, "Function name is not yet in context");
+                .report_internal_loc(fun.loc, "Function name is not yet in context");
             state.exit_scope();
             return;
         };
@@ -289,7 +289,7 @@ impl NameResolver {
                     }
                 } else {
                     self.error_handler
-                        .report_internal(param.loc, "No type associated to function parameter");
+                        .report_internal_loc(param.loc, "No type associated to function parameter");
                 }
             }
 
