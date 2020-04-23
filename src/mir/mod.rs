@@ -37,5 +37,7 @@ pub fn to_mir(functions: Vec<parse::Function>) {
     println!("\n/// Type Checking ///\n");
 
     let mut type_checker = type_check::TypeChecker::new();
-    type_checker.check(program);
+    let types_program = type_checker.check(program);
+
+    println!("{}", types_program.types);
 }

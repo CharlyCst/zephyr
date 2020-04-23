@@ -1,5 +1,5 @@
-use super::types::{Type, TypeConstraint, TypeVarStore};
-use super::Program;
+use super::types::{Type, TypeConstraint, TypeStore, TypeVarStore};
+use super::{Program, TypedProgram};
 use crate::error::ErrorHandler;
 
 use std::cmp::Ordering;
@@ -15,7 +15,7 @@ impl TypeChecker {
         }
     }
 
-    pub fn check(&mut self, mut prog: Program) {
+    pub fn check(&mut self, prog: Program) -> TypedProgram {
         let mut type_vars = prog.types;
         let constraints = prog.constraints;
 
@@ -38,7 +38,26 @@ impl TypeChecker {
             }
         }
 
-        println!("{}", type_vars);
+        let store = self.build_store(&type_vars);
+        TypedProgram {
+            funs: prog.funs,
+            names: prog.names,
+            types: store,
+        }
+    }
+
+    fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
+        let mut store = TypeStore::new();
+        for types in var_store {
+            if types.len() != 1 {
+                self.error_handler.silent_report();
+                store.put(Type::Bug);
+                continue;
+            }
+            store.put(types[0].clone())
+        }
+
+        store
     }
 
     // Apply a constraint, return true if the constraint helped removing type candidates,

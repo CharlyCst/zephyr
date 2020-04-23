@@ -7,6 +7,8 @@ pub mod id {
     pub const T_ID_NUMERIC: usize = 2;
     pub const T_ID_BASIC: usize = 3;
 }
+// Please update this const when adding/removing default T_ID
+const NB_DEFAULT_T_ID: usize = 4;
 
 pub type TypeId = usize;
 
@@ -19,6 +21,7 @@ pub enum Type {
     Bool,
     Any,
     Unit,
+    Bug, // Used to signal that an error occurred somewhere
     Fun(Vec<Type>, Vec<Type>),
 }
 
@@ -47,6 +50,25 @@ pub struct TypeStore {
     types: Vec<Type>,
 }
 
+impl TypeStore {
+    pub fn new() -> TypeStore {
+        // Padding types to compensate for TypeVarStore default types
+        let mut types = Vec::new();
+        for _ in 0..NB_DEFAULT_T_ID {
+            types.push(Type::Bug)
+        }
+        TypeStore { types: types }
+    }
+
+    pub fn put(&mut self, t: Type) {
+        self.types.push(t);
+    }
+
+    pub fn len(&self) -> usize {
+        self.types.len()
+    }
+}
+
 // The store takes the responsibility for sorting type variable's candidates
 pub struct TypeVarStore {
     types: Vec<Vec<Type>>,
@@ -58,6 +80,8 @@ impl TypeVarStore {
 
         // If you need to change insertion order, update T_ID constants accordingly
         // Tests are provided at the bottom of the file to ensure good ordering
+        // If you need to add an item, create a new constant T_ID_SOMETHING and update
+        // TypeStore::new method accordingly, tests will check the good initialization.
         store.fresh(vec![Type::Bool]);
         store.fresh(vec![Type::I32, Type::I64]);
         store.fresh(vec![Type::F32, Type::F64, Type::I32, Type::I64]);
@@ -79,6 +103,20 @@ impl TypeVarStore {
         let id = self.types.len();
         self.types.push(candidate);
         id
+    }
+
+    pub fn len(&self) -> usize {
+        self.types.len()
+    }
+}
+
+impl<'a> IntoIterator for &'a TypeVarStore {
+    type Item = <std::slice::Iter<'a, Vec<Type>> as IntoIterator>::Item;
+    type IntoIter = <std::slice::Iter<'a, Vec<Type>> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let c = &self.types[NB_DEFAULT_T_ID..];
+        c.into_iter()
     }
 }
 
@@ -102,6 +140,7 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Any => write!(f, "any"),
             Type::Unit => write!(f, "unit"),
+            Type::Bug => write!(f, "bug"),
             Type::Fun(params, results) => {
                 let p_types = params
                     .iter()
@@ -119,6 +158,20 @@ impl fmt::Display for Type {
     }
 }
 
+impl fmt::Display for TypeStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut store = String::from("TypeStore {\n");
+        store.push_str("  t_id - type\n\n");
+        let mut t_id = NB_DEFAULT_T_ID;
+        for t in &self.types[NB_DEFAULT_T_ID..] {
+            store.push_str(&format!("  {:>4} - {}\n", t_id, t));
+            t_id += 1;
+        }
+        store.push_str("}");
+        write!(f, "{}", store)
+    }
+}
+
 impl fmt::Display for TypeVarStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut store = String::from("TypeVarStore {\n");
@@ -129,9 +182,7 @@ impl fmt::Display for TypeVarStore {
                 .map(|c| format!("{}", c))
                 .collect::<Vec<String>>()
                 .join(" | ");
-            store.push_str("  ");
-            store.push_str(&format!("{:>4} - {}", idx, candidates));
-            store.push_str("\n");
+            store.push_str(&format!("  {:>4} - {}\n", idx, candidates));
         }
         store.push_str("}");
         write!(f, "{}", store)
@@ -166,18 +217,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_built_in_types_id() {
+    fn built_in_types_id() {
+        // Check that Type IDs correspond to the expected type candidates
         let store = TypeVarStore::new();
 
         assert_eq!(vec![Type::Bool], *store.get(id::T_ID_BOOL));
-        assert_eq!(vec![Type::I32, Type::I64], *store.get(id::T_ID_INTEGER));
-        assert_eq!(
-            vec![Type::F32, Type::F64, Type::I32, Type::I64],
-            *store.get(id::T_ID_NUMERIC)
-        );
-        assert_eq!(
-            vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64],
-            *store.get(id::T_ID_BASIC)
-        );
+
+        let mut v = vec![Type::I32, Type::I64];
+        v.sort_unstable();
+        assert_eq!(v, *store.get(id::T_ID_INTEGER));
+
+        let mut v = vec![Type::F32, Type::F64, Type::I32, Type::I64];
+        v.sort_unstable();
+        assert_eq!(v, *store.get(id::T_ID_NUMERIC));
+
+        let mut v = vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64];
+        v.sort_unstable();
+        assert_eq!(v, *store.get(id::T_ID_BASIC));
+    }
+
+    #[test]
+    fn type_store_init() {
+        // Both stores should be initialized with the same number of elements
+        let type_var_store = TypeVarStore::new();
+        let type_store = TypeStore::new();
+
+        assert_eq!(type_var_store.len(), type_store.len())
     }
 }
