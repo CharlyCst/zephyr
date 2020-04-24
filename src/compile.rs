@@ -1,3 +1,4 @@
+#[warn()]
 use crate::error::ErrorHandler;
 use crate::opcode;
 use crate::parse::{Block, Expression, Function as ForkFunction, Statement, Value};
@@ -82,7 +83,7 @@ impl Compiler {
     fn block(&mut self, block: &Block, opcode: &mut Vec<opcode::Instr>) {
         for stmt in block.stmts.iter() {
             match stmt {
-                Statement::ReturnStmt { expr } => {
+                Statement::ReturnStmt { expr, .. } => {
                     match expr {
                         Some(e) => self.expression(e, opcode),
                         None => (),

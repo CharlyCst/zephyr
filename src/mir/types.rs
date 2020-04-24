@@ -1,4 +1,5 @@
-use std::cmp;
+use crate::error::Location;
+
 use std::fmt;
 
 pub mod id {
@@ -71,7 +72,12 @@ impl TypeStore {
 
 // The store takes the responsibility for sorting type variable's candidates
 pub struct TypeVarStore {
-    types: Vec<Vec<Type>>,
+    types: Vec<TypeVariable>,
+}
+
+pub struct TypeVariable {
+    pub loc: Location,
+    pub types: Vec<Type>,
 }
 
 impl TypeVarStore {
@@ -82,26 +88,35 @@ impl TypeVarStore {
         // Tests are provided at the bottom of the file to ensure good ordering
         // If you need to add an item, create a new constant T_ID_SOMETHING and update
         // TypeStore::new method accordingly, tests will check the good initialization.
-        store.fresh(vec![Type::Bool]);
-        store.fresh(vec![Type::I32, Type::I64]);
-        store.fresh(vec![Type::F32, Type::F64, Type::I32, Type::I64]);
-        store.fresh(vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64]);
+        store.fresh(Location::dummy(), vec![Type::Bool]);
+        store.fresh(Location::dummy(), vec![Type::I32, Type::I64]);
+        store.fresh(
+            Location::dummy(),
+            vec![Type::F32, Type::F64, Type::I32, Type::I64],
+        );
+        store.fresh(
+            Location::dummy(),
+            vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64],
+        );
 
         store
     }
 
-    pub fn get(&self, id: TypeId) -> &Vec<Type> {
+    pub fn get(&self, id: TypeId) -> &TypeVariable {
         &self.types[id]
     }
 
     pub fn replace(&mut self, id: TypeId, new_types: Vec<Type>) {
-        std::mem::replace(&mut self.types[id], new_types);
+        std::mem::replace(&mut self.types[id].types, new_types);
     }
 
-    pub fn fresh(&mut self, mut candidate: Vec<Type>) -> TypeId {
+    pub fn fresh(&mut self, loc: Location, mut candidate: Vec<Type>) -> TypeId {
         candidate.sort_unstable(); // Ensure sorted elements
         let id = self.types.len();
-        self.types.push(candidate);
+        self.types.push(TypeVariable {
+            loc: loc,
+            types: candidate,
+        });
         id
     }
 
@@ -111,8 +126,8 @@ impl TypeVarStore {
 }
 
 impl<'a> IntoIterator for &'a TypeVarStore {
-    type Item = <std::slice::Iter<'a, Vec<Type>> as IntoIterator>::Item;
-    type IntoIter = <std::slice::Iter<'a, Vec<Type>> as IntoIterator>::IntoIter;
+    type Item = <std::slice::Iter<'a, TypeVariable> as IntoIterator>::Item;
+    type IntoIter = <std::slice::Iter<'a, TypeVariable> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         let c = &self.types[NB_DEFAULT_T_ID..];
@@ -178,6 +193,7 @@ impl fmt::Display for TypeVarStore {
         store.push_str("  t_id - candidates\n\n");
         for (idx, t) in self.types.iter().enumerate() {
             let candidates = t
+                .types
                 .iter()
                 .map(|c| format!("{}", c))
                 .collect::<Vec<String>>()
@@ -221,19 +237,19 @@ mod tests {
         // Check that Type IDs correspond to the expected type candidates
         let store = TypeVarStore::new();
 
-        assert_eq!(vec![Type::Bool], *store.get(id::T_ID_BOOL));
+        assert_eq!(vec![Type::Bool], store.get(id::T_ID_BOOL).types);
 
         let mut v = vec![Type::I32, Type::I64];
         v.sort_unstable();
-        assert_eq!(v, *store.get(id::T_ID_INTEGER));
+        assert_eq!(v, store.get(id::T_ID_INTEGER).types);
 
         let mut v = vec![Type::F32, Type::F64, Type::I32, Type::I64];
         v.sort_unstable();
-        assert_eq!(v, *store.get(id::T_ID_NUMERIC));
+        assert_eq!(v, store.get(id::T_ID_NUMERIC).types);
 
         let mut v = vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64];
         v.sort_unstable();
-        assert_eq!(v, *store.get(id::T_ID_BASIC));
+        assert_eq!(v, store.get(id::T_ID_BASIC).types);
     }
 
     #[test]

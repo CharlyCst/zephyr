@@ -141,6 +141,7 @@ pub enum Statement {
     },
     ReturnStmt {
         expr: Option<Expression>,
+        loc: Location,
     },
 }
 
@@ -217,7 +218,7 @@ impl fmt::Display for Statement {
             Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
             Statement::IfStmt { expr, block } => write!(f, "if {} {};", expr, block),
             Statement::WhileStmt { expr, block } => write!(f, "while {} {};", expr, block),
-            Statement::ReturnStmt { expr } => match expr {
+            Statement::ReturnStmt { expr, .. } => match expr {
                 Some(e) => write!(f, "return {};", e),
                 None => write!(f, "return;"),
             },
@@ -267,6 +268,15 @@ impl Parser {
     fn peek(&self) -> &Token {
         let cur = self.current;
         &self.tokens[cur]
+    }
+
+    fn previous(&self) -> &Token {
+        let prev = self.current - 1;
+        if prev > 0 {
+            &self.tokens[prev]
+        } else {
+            &self.tokens[0]
+        }
     }
 
     fn peekpeek(&self) -> &Token {
@@ -574,16 +584,23 @@ impl Parser {
 
     // The `return` token must have been consumed
     fn return_stmt(&mut self) -> Result<Statement, ()> {
+        let loc = self.previous().loc;
         let expr = self.expression();
         match expr {
             Ok(e) => {
                 self.consume_semi_colon();
-                Ok(Statement::ReturnStmt { expr: Some(e) })
+                Ok(Statement::ReturnStmt {
+                    expr: Some(e),
+                    loc: loc,
+                })
             }
             Err(()) => {
                 self.back(); // expression consumes one character
                 self.consume_semi_colon();
-                Ok(Statement::ReturnStmt { expr: None })
+                Ok(Statement::ReturnStmt {
+                    expr: None,
+                    loc: loc,
+                })
             }
         }
     }

@@ -45,7 +45,7 @@ impl ResolverState {
         }
 
         let ident_key = ident.clone();
-        let t_id = self.types.fresh(type_candidates);
+        let t_id = self.types.fresh(loc, type_candidates);
         let n_id = self.names.fresh(ident, loc, t_id);
         self.add_in_context(ident_key, n_id);
         Ok((n_id, t_id))
@@ -192,12 +192,12 @@ impl NameResolver {
                     state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
                     self.resolve_block(block, state, fun_t_id);
                 }
-                parse::Statement::ReturnStmt { expr } => {
+                parse::Statement::ReturnStmt { expr, loc } => {
                     if let Some(ret_expr) = expr {
                         let ret_t_id = self.resolve_expression(ret_expr, state);
                         state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
                     } else {
-                        let ret_t_id = state.types.fresh(vec![Type::Unit]);
+                        let ret_t_id = state.types.fresh(*loc, vec![Type::Unit]);
                         state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
                     }
                 }
@@ -249,8 +249,8 @@ impl NameResolver {
                 }
             }
             parse::Expression::Literal { value } => match value {
-                parse::Value::Integer { mut t_id, .. } => {
-                    let fresh_t_id = state.types.fresh(vec![Type::I32, Type::I64]);
+                parse::Value::Integer { mut t_id, loc, .. } => {
+                    let fresh_t_id = state.types.fresh(*loc, vec![Type::I32, Type::I64]);
                     t_id = fresh_t_id;
                     fresh_t_id
                 }

@@ -1,3 +1,5 @@
+#[warn()]
+
 pub const MAGIC_NUMBER: u32 = 0x6d736100;
 pub const VERSION: u32 = 0x1;
 

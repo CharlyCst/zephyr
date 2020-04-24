@@ -5,6 +5,17 @@ pub struct Location {
     pub len: u32,
 }
 
+impl Location {
+    // Use to create empty location when needed
+    pub fn dummy() -> Location {
+        Location {
+            line: 0,
+            pos: 0,
+            len: 0,
+        }
+    }
+}
+
 pub struct ErrorHandler {
     has_error: bool,
 }

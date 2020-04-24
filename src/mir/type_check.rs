@@ -48,13 +48,13 @@ impl TypeChecker {
 
     fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
         let mut store = TypeStore::new();
-        for types in var_store {
-            if types.len() != 1 {
+        for var in var_store {
+            if var.types.len() != 1 {
                 self.error_handler.silent_report();
                 store.put(Type::Bug);
                 continue;
             }
-            store.put(types[0].clone())
+            store.put(var.types[0].clone())
         }
 
         store
@@ -75,8 +75,8 @@ impl TypeChecker {
     }
 
     fn constr_equality(&mut self, t_id_1: usize, t_id_2: usize, store: &mut TypeVarStore) -> bool {
-        let t_1 = store.get(t_id_1);
-        let t_2 = store.get(t_id_2);
+        let t_1 = &store.get(t_id_1).types;
+        let t_2 = &store.get(t_id_2).types;
 
         // Special cases
         if t_1.len() > 0 && t_1[0] == Type::Any {
@@ -94,9 +94,9 @@ impl TypeChecker {
 
         // Can not infer types
         if t_1.len() == 0 || t_2.len() == 0 {
-            // TODO: Improve error handling
+            let loc = store.get(t_id_1).loc;
             self.error_handler
-                .report_line(0, "Could not infer a type satisfying constraints");
+                .report(loc, "Could not infer a type satisfying constraints");
             return false;
         }
 
@@ -128,8 +128,8 @@ impl TypeChecker {
     }
 
     fn constr_included(&mut self, t_id_1: usize, t_id_2: usize, store: &mut TypeVarStore) -> bool {
-        let t_1 = store.get(t_id_1);
-        let t_2 = store.get(t_id_2);
+        let t_1 = &store.get(t_id_1).types;
+        let t_2 = &store.get(t_id_2).types;
 
         // Special case
         if t_1.len() > 0 && t_1[0] == Type::Any {
@@ -170,40 +170,43 @@ impl TypeChecker {
         let t_fun = store.get(t_id_fun);
         let ts = store.get(t_id);
 
-        if t_fun.len() != 1 {
+        if t_fun.types.len() != 1 {
             self.error_handler
-                .report_internal("Return type constraint with ambiguous fun type");
+                .report_internal_loc(t_fun.loc, "Return type constraint with ambiguous fun type");
             return false;
         }
 
-        let ret_t = match &t_fun[0] {
+        let ret_t = match &t_fun.types[0] {
             Type::Fun(_, ret_t) => ret_t,
             _ => {
-                self.error_handler
-                    .report_internal("Return type constraint used on a non function type");
+                self.error_handler.report_internal_loc(
+                    t_fun.loc,
+                    "Return type constraint used on a non function type",
+                );
                 return false;
             }
         };
 
         if ret_t.len() != 1 {
-            self.error_handler
-                .report_internal("Function returning multiple values are not yet supported");
+            self.error_handler.report_internal_loc(
+                t_fun.loc,
+                "Function returning multiple values are not yet supported",
+            );
             return false;
         }
 
         let ret_t = &ret_t[0];
-        for t in ts {
+        for t in &ts.types {
             if t == ret_t {
-                let progress = ts.len() > 1;
+                let progress = ts.types.len() > 1;
                 let typ = vec![t.clone()];
                 store.replace(t_id, typ);
                 return progress;
             }
         }
 
-        // TODO: improve error handling
         self.error_handler
-            .report_line(0, "Return value has wrong type");
+            .report(ts.loc, "Return value has wrong type");
         return false;
     }
 }
