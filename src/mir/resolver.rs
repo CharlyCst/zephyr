@@ -4,7 +4,7 @@ use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::error::{ErrorHandler, Location};
 use crate::parse;
 
-use super::Program;
+use super::ResolvedProgram;
 
 use std::collections::HashMap;
 
@@ -84,7 +84,7 @@ impl NameResolver {
         }
     }
 
-    pub fn resolve(&mut self, mut funs: Vec<parse::Function>) -> Program {
+    pub fn resolve(&mut self, mut funs: Vec<parse::Function>) -> ResolvedProgram {
         let mut state = ResolverState::new();
 
         self.register_functions(&funs, &mut state);
@@ -93,7 +93,7 @@ impl NameResolver {
             self.resolve_function(fun, &mut state);
         }
 
-        Program {
+        ResolvedProgram {
             funs: funs,
             names: state.names,
             types: state.types,

@@ -1,5 +1,5 @@
 use super::types::{Type, TypeConstraint, TypeStore, TypeVarStore};
-use super::{Program, TypedProgram};
+use super::{ResolvedProgram, TypedProgram};
 use crate::error::ErrorHandler;
 
 use std::cmp::Ordering;
@@ -15,7 +15,7 @@ impl TypeChecker {
         }
     }
 
-    pub fn check(&mut self, prog: Program) -> TypedProgram {
+    pub fn check(&mut self, prog: ResolvedProgram) -> TypedProgram {
         let mut type_vars = prog.types;
         let constraints = prog.constraints;
 

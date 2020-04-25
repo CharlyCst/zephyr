@@ -6,12 +6,14 @@ use self::types::{ConstraintStore, TypeStore, TypeVarStore};
 pub use self::names::NameId;
 pub use self::types::TypeId;
 
+mod ast_to_mir;
+mod mir;
 mod names;
 mod resolver;
 mod type_check;
 mod types;
 
-pub struct Program {
+pub struct ResolvedProgram {
     pub funs: Vec<parse::Function>,
     pub names: NameStore,
     pub types: TypeVarStore,
@@ -23,6 +25,8 @@ pub struct TypedProgram {
     pub names: NameStore,
     pub types: TypeStore,
 }
+
+pub use mir::Program;
 
 pub fn to_mir(functions: Vec<parse::Function>) {
     let mut name_resolver = resolver::NameResolver::new();
@@ -37,7 +41,14 @@ pub fn to_mir(functions: Vec<parse::Function>) {
     println!("\n/// Type Checking ///\n");
 
     let mut type_checker = type_check::TypeChecker::new();
-    let types_program = type_checker.check(program);
+    let typed_program = type_checker.check(program);
 
-    println!("{}", types_program.types);
+    println!("{}", typed_program.types);
+
+    println!("\n/// Type Checking ///\n");
+
+    let mut mir_producer = ast_to_mir::MIRProducer::new();
+    let mir = mir_producer.produce(typed_program);
+
+    println!("{}", mir);
 }
