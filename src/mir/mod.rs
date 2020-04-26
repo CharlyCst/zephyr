@@ -14,14 +14,14 @@ mod type_check;
 mod types;
 
 pub struct ResolvedProgram {
-    pub funs: Vec<parse::Function>,
+    pub funs: Vec<names::Function>,
     pub names: NameStore,
     pub types: TypeVarStore,
     pub constraints: ConstraintStore,
 }
 
 pub struct TypedProgram {
-    pub funs: Vec<parse::Function>,
+    pub funs: Vec<names::Function>,
     pub names: NameStore,
     pub types: TypeStore,
 }
@@ -45,10 +45,10 @@ pub fn to_mir(functions: Vec<parse::Function>) {
 
     println!("{}", typed_program.types);
 
-    println!("\n/// Type Checking ///\n");
+    println!("\n/// MIR Production ///\n");
 
     let mut mir_producer = ast_to_mir::MIRProducer::new();
-    let mir = mir_producer.produce(typed_program);
+    let mir = mir_producer.reduce(typed_program);
 
     println!("{}", mir);
 }

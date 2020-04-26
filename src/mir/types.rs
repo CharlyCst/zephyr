@@ -61,6 +61,10 @@ impl TypeStore {
         TypeStore { types: types }
     }
 
+    pub fn get(&self, id: TypeId) -> &Type {
+        &self.types[id]
+    }
+
     pub fn put(&mut self, t: Type) {
         self.types.push(t);
     }

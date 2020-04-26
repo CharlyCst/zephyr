@@ -1,4 +1,4 @@
-use super::names::{Name, NameId, NameStore};
+use super::names::{Function, Name, NameId, NameStore};
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::error::{ErrorHandler, Location};
@@ -84,34 +84,45 @@ impl NameResolver {
         }
     }
 
-    pub fn resolve(&mut self, mut funs: Vec<parse::Function>) -> ResolvedProgram {
+    pub fn resolve(&mut self, funs: Vec<parse::Function>) -> ResolvedProgram {
         let mut state = ResolverState::new();
+        let mut named_funs = Vec::with_capacity(funs.len());
 
         self.register_functions(&funs, &mut state);
 
-        for fun in &mut funs {
-            self.resolve_function(fun, &mut state);
+        for fun in funs.into_iter() {
+            if let Some(named_fun) = self.resolve_function(fun, &mut state) {
+                named_funs.push(named_fun);
+            }
         }
 
         ResolvedProgram {
-            funs: funs,
+            funs: named_funs,
             names: state.names,
             types: state.types,
             constraints: state.constraints,
         }
     }
 
-    fn resolve_function(&mut self, fun: &mut parse::Function, state: &mut ResolverState) {
+    fn resolve_function(
+        &mut self,
+        mut fun: parse::Function,
+        state: &mut ResolverState,
+    ) -> Option<Function> {
         state.new_scope();
+        let mut locals = Vec::new();
 
-        let fun_t_id = if let Some(name) = state.find_in_context(&fun.ident) {
-            name.t_id
+        // Get the function name from global context. All functions must have been registered at that point.
+        let fun_name = if let Some(name) = state.find_in_context(&fun.ident) {
+            name
         } else {
             self.error_handler
                 .report_internal_loc(fun.loc, "Function name is not yet in context");
             state.exit_scope();
-            return;
+            return None;
         };
+        let fun_t_id = fun_name.t_id;
+        let fun_n_id = fun_name.n_id;
 
         for param in &mut fun.params {
             let t = match get_var_type(&param) {
@@ -137,14 +148,25 @@ impl NameResolver {
             }
         }
 
-        self.resolve_block(&mut fun.block, state, fun_t_id);
+        self.resolve_block(&mut fun.block, state, &mut locals, fun_t_id);
         state.exit_scope();
+
+        return Some(Function {
+            ident: fun.ident,
+            params: fun.params,
+            locals: locals,
+            block: fun.block,
+            exported: fun.exported,
+            loc: fun.loc,
+            n_id: fun_n_id,
+        });
     }
 
     fn resolve_block(
         &mut self,
         block: &mut parse::Block,
         state: &mut ResolverState,
+        locals: &mut Vec<NameId>,
         fun_t_id: TypeId,
     ) {
         state.new_scope();
@@ -158,7 +180,10 @@ impl NameResolver {
                     } else {
                         self.error_handler.report(
                             var.loc,
-                            &format!("Variable name {} is not defined", var.ident),
+                            &format!(
+                                "Variable name {} is not defined in current scope",
+                                var.ident
+                            ),
                         );
                         continue;
                     };
@@ -169,6 +194,7 @@ impl NameResolver {
                     match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
                         Ok((n_id, right_t_id)) => {
                             var.n_id = n_id;
+                            locals.push(n_id);
                             let left_t_id = self.resolve_expression(expr, state);
                             state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
                         }
@@ -185,12 +211,12 @@ impl NameResolver {
                 parse::Statement::IfStmt { expr, block } => {
                     let expr_t_id = self.resolve_expression(expr, state);
                     state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
-                    self.resolve_block(block, state, fun_t_id);
+                    self.resolve_block(block, state, locals, fun_t_id);
                 }
                 parse::Statement::WhileStmt { expr, block } => {
                     let expr_t_id = self.resolve_expression(expr, state);
                     state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
-                    self.resolve_block(block, state, fun_t_id);
+                    self.resolve_block(block, state, locals, fun_t_id);
                 }
                 parse::Statement::ReturnStmt { expr, loc } => {
                     if let Some(ret_expr) = expr {

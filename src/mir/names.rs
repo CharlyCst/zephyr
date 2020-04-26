@@ -1,8 +1,19 @@
 use super::types::TypeId;
 use crate::error::Location;
+use crate::parse::{Block, Variable};
 use std::fmt;
 
 pub type NameId = usize;
+
+pub struct Function {
+    pub ident: String,
+    pub params: Vec<Variable>,
+    pub locals: Vec<NameId>,
+    pub block: Block,
+    pub exported: bool,
+    pub loc: Location,
+    pub n_id: NameId,
+}
 
 pub struct Name {
     pub n_id: NameId,
@@ -20,11 +31,11 @@ impl NameStore {
         NameStore { names: Vec::new() }
     }
 
-    pub fn get(&self, id: usize) -> &Name {
+    pub fn get(&self, id: NameId) -> &Name {
         &self.names[id]
     }
 
-    pub fn fresh(&mut self, name: String, loc: Location, t_id: usize) -> usize {
+    pub fn fresh(&mut self, name: String, loc: Location, t_id: TypeId) -> NameId {
         let id = self.names.len();
         let n = Name {
             n_id: id,

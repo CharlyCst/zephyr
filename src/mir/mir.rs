@@ -11,6 +11,7 @@ pub struct Function {
     pub ret_types: Vec<Type>,
     pub locals: Vec<Local>,
     pub blocks: Vec<Block>,
+    pub exported: bool,
 }
 
 pub struct Local {
