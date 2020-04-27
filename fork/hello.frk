@@ -1,9 +1,6 @@
 // This code is written in fork
 
-fun f(a i64) i32 {
-    let x = 0
-    while (x < 10) {
-        x = x + 1
-    }
+fun f() i32 {
+    let x = 42
     return x
 }

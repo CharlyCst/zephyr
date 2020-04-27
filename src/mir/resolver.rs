@@ -8,7 +8,7 @@ use super::ResolvedProgram;
 
 use std::collections::HashMap;
 
-pub struct ResolverState {
+struct ResolverState {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
