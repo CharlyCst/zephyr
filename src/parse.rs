@@ -25,6 +25,7 @@ pub enum BinaryOperator {
     And,
 }
 
+#[derive(Copy, Clone)]
 pub enum UnaryOperator {
     Minus,
     Not,

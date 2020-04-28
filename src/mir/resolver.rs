@@ -269,6 +269,7 @@ impl NameResolver {
                     }
                 }
             };
+            stmts.push(named_stmt);
         }
 
         state.exit_scope();
@@ -281,6 +282,29 @@ impl NameResolver {
         state: &mut State,
     ) -> (Expression, TypeId) {
         match expr {
+            parse::Expression::Unary { unop, expr } => {
+                let (expr, t_id) = self.resolve_expression(expr, state);
+                match unop {
+                    parse::UnaryOperator::Minus => {
+                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_NUMERIC));
+                        let expr = Expression::Unary {
+                            expr: Box::new(expr),
+                            unop: *unop,
+                            t_id: t_id,
+                        };
+                        (expr, t_id)
+                    }
+                    parse::UnaryOperator::Not => {
+                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_BOOL));
+                        let expr = Expression::Unary {
+                            expr: Box::new(expr),
+                            unop: *unop,
+                            t_id: t_id,
+                        };
+                        (expr, t_id)
+                    }
+                }
+            }
             parse::Expression::Binary {
                 expr_left,
                 binop,

@@ -1,4 +1,3 @@
-use super::types::Type;
 use std::fmt;
 
 pub struct Program {
@@ -42,6 +41,7 @@ pub enum Statement {
     Set { l_id: LocalId },
     Get { l_id: LocalId },
     Const { val: Value },
+    Unop { unop: Unop },
 }
 
 pub enum Terminator {
@@ -54,6 +54,20 @@ pub enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
+}
+
+pub enum Unop {
+    Not,
+    Minus(Type),
+}
+
+pub enum Type {
+    Bug,
+    I32,
+    I64,
+    F32,
+    F64,
+    Fun(Vec<Type>, Vec<Type>),
 }
 
 impl fmt::Display for Program {
@@ -127,6 +141,10 @@ impl fmt::Display for Statement {
             },
             Statement::Get { l_id } => write!(f, "get _{}", l_id),
             Statement::Set { l_id } => write!(f, "set _{}", l_id),
+            Statement::Unop { unop } => match unop {
+                Unop::Minus(t) => write!(f, "{}.neg", t),
+                Unop::Not => write!(f, "not"),
+            },
         }
     }
 }
@@ -143,5 +161,30 @@ impl fmt::Display for Terminator {
 impl fmt::Display for Local {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "        _{}\n", self.id)
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Bug => write!(f, "bug"),
+            Type::I32 => write!(f, "i32"),
+            Type::I64 => write!(f, "i64"),
+            Type::F32 => write!(f, "f32"),
+            Type::F64 => write!(f, "f64"),
+            Type::Fun(params, results) => {
+                let p_types = params
+                    .iter()
+                    .map(|param| format!("{}", param))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                let r_types = results
+                    .iter()
+                    .map(|result| format!("{}", result))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "fun({}) {}", p_types, r_types)
+            }
+        }
     }
 }

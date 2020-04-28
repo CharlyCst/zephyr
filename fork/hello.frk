@@ -1,6 +1,6 @@
 // This code is written in fork
 
 fun f() i32 {
-    let x = 42
-    return x
+    let x = -42
+    return -x
 }
