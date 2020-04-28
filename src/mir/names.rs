@@ -1,10 +1,13 @@
 use super::types::TypeId;
 use crate::error::Location;
-use crate::parse::{Block, Variable};
+use crate::parse::{BinaryOperator, UnaryOperator};
 use std::fmt;
 
 pub type NameId = usize;
 
+// Defining named and typed AST nodes.
+// In the future we may want to consider moving this
+// into a new HIR phase.
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
@@ -15,6 +18,81 @@ pub struct Function {
     pub n_id: NameId,
 }
 
+pub struct Block {
+    pub stmts: Vec<Statement>,
+}
+
+pub enum Statement {
+    ExprStmt {
+        expr: Box<Expression>,
+    },
+    LetStmt {
+        var: Box<Variable>,
+        expr: Box<Expression>,
+    },
+    AssignStmt {
+        var: Box<Variable>,
+        expr: Box<Expression>,
+    },
+    IfStmt {
+        expr: Box<Expression>,
+        block: Block,
+    },
+    WhileStmt {
+        expr: Box<Expression>,
+        block: Block,
+    },
+    ReturnStmt {
+        expr: Option<Expression>,
+        loc: Location,
+    },
+}
+
+pub struct Variable {
+    pub ident: String,
+    pub loc: Location,
+    pub n_id: NameId,
+}
+
+pub enum Value {
+    Integer {
+        val: u64,
+        loc: Location,
+        t_id: TypeId,
+    },
+    Boolean {
+        val: bool,
+        loc: Location,
+        t_id: TypeId,
+    },
+}
+
+pub enum Expression {
+    Variable {
+        var: Variable,
+    },
+    Literal {
+        value: Value,
+    },
+    Binary {
+        expr_left: Box<Expression>,
+        binop: BinaryOperator,
+        expr_right: Box<Expression>,
+        t_id: TypeId,
+    },
+    Unary {
+        unop: UnaryOperator,
+        expr: Box<Expression>,
+        t_id: TypeId,
+    },
+    Call {
+        fun: Box<Expression>,
+        args: Vec<Expression>,
+        t_id: TypeId,
+    },
+}
+
+// Stuff relative to names
 pub struct Name {
     pub n_id: NameId,
     pub name: String,

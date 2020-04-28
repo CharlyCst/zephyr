@@ -1,4 +1,4 @@
-use super::names::{Function, Name, NameId, NameStore};
+use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::error::{ErrorHandler, Location};
@@ -8,17 +8,17 @@ use super::ResolvedProgram;
 
 use std::collections::HashMap;
 
-struct ResolverState {
+struct State {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
     constraints: ConstraintStore,
 }
 
-impl ResolverState {
-    pub fn new() -> ResolverState {
+impl State {
+    pub fn new() -> State {
         let contexts = vec![HashMap::new()];
-        ResolverState {
+        State {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts: contexts,
@@ -85,7 +85,7 @@ impl NameResolver {
     }
 
     pub fn resolve(&mut self, funs: Vec<parse::Function>) -> ResolvedProgram {
-        let mut state = ResolverState::new();
+        let mut state = State::new();
         let mut named_funs = Vec::with_capacity(funs.len());
 
         self.register_functions(&funs, &mut state);
@@ -107,10 +107,11 @@ impl NameResolver {
     fn resolve_function(
         &mut self,
         mut fun: parse::Function,
-        state: &mut ResolverState,
+        state: &mut State,
     ) -> Option<Function> {
         state.new_scope();
         let mut locals = Vec::new();
+        let mut fun_params = Vec::new();
 
         // Get the function name from global context. All functions must have been registered at that point.
         let fun_name = if let Some(name) = state.find_in_context(&fun.ident) {
@@ -124,7 +125,7 @@ impl NameResolver {
         let fun_t_id = fun_name.t_id;
         let fun_n_id = fun_name.n_id;
 
-        for param in &mut fun.params {
+        for param in fun.params.into_iter() {
             let t = match get_var_type(&param) {
                 Some(t) => t,
                 None => {
@@ -135,9 +136,11 @@ impl NameResolver {
             };
 
             match state.declare(param.ident.clone(), t, param.loc) {
-                Ok((n_id, _)) => {
-                    param.n_id = n_id;
-                }
+                Ok((n_id, _)) => fun_params.push(Variable {
+                    ident: param.ident,
+                    loc: param.loc,
+                    n_id: n_id,
+                }),
                 Err(decl_loc) => {
                     let error = format!(
                         "Name {} already defined in current context at line {}",
@@ -148,14 +151,14 @@ impl NameResolver {
             }
         }
 
-        self.resolve_block(&mut fun.block, state, &mut locals, fun_t_id);
+        let block = self.resolve_block(fun.block, state, &mut locals, fun_t_id);
         state.exit_scope();
 
         return Some(Function {
             ident: fun.ident,
-            params: fun.params,
+            params: fun_params,
             locals: locals,
-            block: fun.block,
+            block: block,
             exported: fun.exported,
             loc: fun.loc,
             n_id: fun_n_id,
@@ -164,19 +167,24 @@ impl NameResolver {
 
     fn resolve_block(
         &mut self,
-        block: &mut parse::Block,
-        state: &mut ResolverState,
+        block: parse::Block,
+        state: &mut State,
         locals: &mut Vec<NameId>,
         fun_t_id: TypeId,
-    ) {
+    ) -> Block {
         state.new_scope();
+        let mut stmts = Vec::new();
 
-        for stmt in block.stmts.iter_mut() {
-            match stmt {
-                parse::Statement::AssignStmt { var, expr } => {
-                    let right_t_id = if let Some(name) = state.find_in_context(&var.ident) {
-                        var.n_id = name.n_id;
-                        name.t_id
+        for stmt in block.stmts.into_iter() {
+            let named_stmt = match stmt {
+                parse::Statement::AssignStmt { var, mut expr } => {
+                    let (var, var_t_id) = if let Some(name) = state.find_in_context(&var.ident) {
+                        let var = Variable {
+                            ident: var.ident,
+                            loc: var.loc,
+                            n_id: name.n_id,
+                        };
+                        (var, name.t_id)
                     } else {
                         self.error_handler.report(
                             var.loc,
@@ -187,16 +195,27 @@ impl NameResolver {
                         );
                         continue;
                     };
-                    let left_t_id = self.resolve_expression(expr, state);
-                    state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
+                    let (expr, t_id) = self.resolve_expression(&mut expr, state);
+                    state.new_constraint(TypeConstraint::Equality(var_t_id, t_id));
+                    Statement::AssignStmt {
+                        var: Box::new(var),
+                        expr: Box::new(expr),
+                    }
                 }
-                parse::Statement::LetStmt { var, expr } => {
+                parse::Statement::LetStmt { var, mut expr } => {
                     match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
-                        Ok((n_id, right_t_id)) => {
-                            var.n_id = n_id;
+                        Ok((n_id, var_t_id)) => {
                             locals.push(n_id);
-                            let left_t_id = self.resolve_expression(expr, state);
-                            state.new_constraint(TypeConstraint::Equality(right_t_id, left_t_id));
+                            let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                            state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id));
+                            Statement::LetStmt {
+                                var: Box::new(Variable {
+                                    ident: var.ident,
+                                    loc: var.loc,
+                                    n_id,
+                                }),
+                                expr: Box::new(expr),
+                            }
                         }
                         Err(decl_loc) => {
                             let error = format!(
@@ -208,47 +227,67 @@ impl NameResolver {
                         }
                     }
                 }
-                parse::Statement::IfStmt { expr, block } => {
-                    let expr_t_id = self.resolve_expression(expr, state);
+                parse::Statement::IfStmt { mut expr, block } => {
+                    let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
                     state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
-                    self.resolve_block(block, state, locals, fun_t_id);
-                }
-                parse::Statement::WhileStmt { expr, block } => {
-                    let expr_t_id = self.resolve_expression(expr, state);
-                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
-                    self.resolve_block(block, state, locals, fun_t_id);
-                }
-                parse::Statement::ReturnStmt { expr, loc } => {
-                    if let Some(ret_expr) = expr {
-                        let ret_t_id = self.resolve_expression(ret_expr, state);
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
-                    } else {
-                        let ret_t_id = state.types.fresh(*loc, vec![Type::Unit]);
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                    let block = self.resolve_block(block, state, locals, fun_t_id);
+                    Statement::IfStmt {
+                        expr: Box::new(expr),
+                        block: block,
                     }
                 }
-                parse::Statement::ExprStmt { expr } => {
-                    self.resolve_expression(expr, state);
+                parse::Statement::WhileStmt { mut expr, block } => {
+                    let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    let block = self.resolve_block(block, state, locals, fun_t_id);
+                    Statement::WhileStmt {
+                        expr: Box::new(expr),
+                        block: block,
+                    }
+                }
+                parse::Statement::ReturnStmt { expr, loc } => {
+                    if let Some(mut ret_expr) = expr {
+                        let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state);
+                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                        Statement::ReturnStmt {
+                            expr: Some(expr),
+                            loc: loc,
+                        }
+                    } else {
+                        let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
+                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                        Statement::ReturnStmt {
+                            expr: None,
+                            loc: loc,
+                        }
+                    }
+                }
+                parse::Statement::ExprStmt { mut expr } => {
+                    let (expr, _) = self.resolve_expression(&mut expr, state);
+                    Statement::ExprStmt {
+                        expr: Box::new(expr),
+                    }
                 }
             };
         }
 
         state.exit_scope();
+        Block { stmts: stmts }
     }
 
     fn resolve_expression(
         &mut self,
         expr: &mut parse::Expression,
-        state: &mut ResolverState,
-    ) -> TypeId {
+        state: &mut State,
+    ) -> (Expression, TypeId) {
         match expr {
             parse::Expression::Binary {
                 expr_left,
                 binop,
                 expr_right,
             } => {
-                let left_t_id = self.resolve_expression(expr_left, state);
-                let right_t_id = self.resolve_expression(expr_right, state);
+                let (left_expr, left_t_id) = self.resolve_expression(expr_left, state);
+                let (right_expr, right_t_id) = self.resolve_expression(expr_right, state);
                 match binop {
                     parse::BinaryOperator::Plus
                     | parse::BinaryOperator::Multiply
@@ -256,7 +295,13 @@ impl NameResolver {
                     | parse::BinaryOperator::Divide => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
                         state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
-                        left_t_id
+                        let expr = Expression::Binary {
+                            expr_left: Box::new(left_expr),
+                            binop: *binop,
+                            expr_right: Box::new(right_expr),
+                            t_id: left_t_id,
+                        };
+                        (expr, left_t_id)
                     }
                     parse::BinaryOperator::Greater
                     | parse::BinaryOperator::GreaterEqual
@@ -264,37 +309,74 @@ impl NameResolver {
                     | parse::BinaryOperator::LessEqual => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
                         state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
-                        T_ID_BOOL
+                        let expr = Expression::Binary {
+                            expr_left: Box::new(left_expr),
+                            binop: *binop,
+                            expr_right: Box::new(right_expr),
+                            t_id: T_ID_BOOL,
+                        };
+                        (expr, T_ID_BOOL)
                     }
                     parse::BinaryOperator::Equal => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
                         state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_BASIC));
-                        T_ID_BOOL
+                        let expr = Expression::Binary {
+                            expr_left: Box::new(left_expr),
+                            binop: *binop,
+                            expr_right: Box::new(right_expr),
+                            t_id: T_ID_BOOL,
+                        };
+                        (expr, T_ID_BOOL)
                     }
                     _ => panic!("Binop not implemented yet"), // TODO
                 }
             }
             parse::Expression::Literal { value } => match value {
-                parse::Value::Integer { mut t_id, loc, .. } => {
+                parse::Value::Integer { val, loc } => {
                     let fresh_t_id = state.types.fresh(*loc, vec![Type::I32, Type::I64]);
-                    t_id = fresh_t_id;
-                    fresh_t_id
+                    let expr = Expression::Literal {
+                        value: Value::Integer {
+                            val: *val,
+                            loc: *loc,
+                            t_id: fresh_t_id,
+                        },
+                    };
+                    (expr, fresh_t_id)
                 }
-                parse::Value::Boolean { mut t_id, .. } => {
-                    t_id = T_ID_BOOL;
-                    T_ID_BOOL
+                parse::Value::Boolean { val, loc } => {
+                    let expr = Expression::Literal {
+                        value: Value::Boolean {
+                            val: *val,
+                            loc: *loc,
+                            t_id: T_ID_BOOL,
+                        },
+                    };
+                    (expr, T_ID_BOOL)
                 }
             },
             parse::Expression::Variable { var } => {
                 if let Some(name) = state.find_in_context(&var.ident) {
-                    var.n_id = name.n_id;
-                    name.t_id
+                    let expr = Expression::Variable {
+                        var: Variable {
+                            ident: var.ident.clone(),
+                            loc: var.loc,
+                            n_id: name.n_id,
+                        },
+                    };
+                    (expr, name.t_id)
                 } else {
                     self.error_handler.report(
                         var.loc,
                         &format!("Variable {} used but not declared", var.ident),
                     );
-                    return 0;
+                    let dummy_expr = Expression::Literal {
+                        value: Value::Boolean {
+                            loc: var.loc,
+                            val: false,
+                            t_id: T_ID_BOOL,
+                        },
+                    };
+                    return (dummy_expr, T_ID_BOOL);
                 }
             }
             _ => panic!("Expression not implemented"), // TODO
@@ -302,7 +384,7 @@ impl NameResolver {
     }
 
     // must be called first to bring all global function declarations in scope
-    fn register_functions(&mut self, funs: &Vec<parse::Function>, state: &mut ResolverState) {
+    fn register_functions(&mut self, funs: &Vec<parse::Function>, state: &mut State) {
         for fun in funs {
             let mut params = Vec::new();
             for param in fun.params.iter() {

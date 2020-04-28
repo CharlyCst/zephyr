@@ -1,14 +1,13 @@
 use super::mir::{
     BasicBlock, BasicBlockId, Function, Local, Program, Statement, Terminator, Value,
 };
-use super::names::{Function as NameFun, NameStore};
+use super::names::{
+    Block, Expression as Expr, Function as NameFun, NameStore, Statement as S, Value as V,
+};
 use super::types::{Type, TypeStore};
 use super::TypedProgram;
 
 use crate::error::ErrorHandler;
-use crate::parse;
-use crate::parse::{Block, Expression as Expr, Statement as S};
-
 use std::convert::TryInto;
 
 struct State {
@@ -119,18 +118,17 @@ impl MIRProducer {
     fn reduce_expr(&mut self, expression: &Expr, stmts: &mut Vec<Statement>, s: &mut State) {
         match expression {
             Expr::Literal { value } => match value {
-                parse::Value::Integer { val, .. } => stmts.push(Statement::Const {
+                V::Integer { val, .. } => stmts.push(Statement::Const {
                     val: Value::I64((*val).try_into().unwrap()),
                 }),
-                parse::Value::Boolean { val, .. } => stmts.push(Statement::Const {
+                V::Boolean { val, .. } => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),
             },
             Expr::Variable { var } => stmts.push(Statement::Get { l_id: var.n_id }),
-            _ => self.error_handler.report_internal(&format!(
-                "Expression not yet handled in MIR: {}",
-                expression
-            )),
+            _ => self
+                .error_handler
+                .report_internal("Expression not yet handled in MIR: {"),
         }
     }
 }

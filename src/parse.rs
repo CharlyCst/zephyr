@@ -1,24 +1,13 @@
 use crate::error::{ErrorHandler, Location};
-use crate::mir::{NameId, TypeId};
 use crate::scan::{Token, TokenType};
 use std::fmt;
 
-const NO_T_ID: TypeId = 0;
-const NO_N_ID: NameId = 0;
-
 pub enum Value {
-    Integer {
-        val: u64,
-        loc: Location,
-        t_id: TypeId,
-    },
-    Boolean {
-        val: bool,
-        loc: Location,
-        t_id: TypeId,
-    },
+    Integer { val: u64, loc: Location },
+    Boolean { val: bool, loc: Location },
 }
 
+#[derive(Copy, Clone)]
 pub enum BinaryOperator {
     Equal,
     NotEqual,
@@ -45,12 +34,11 @@ pub struct Variable {
     pub ident: String,
     pub t: Option<String>,
     pub loc: Location,
-    pub n_id: NameId,
 }
 
 pub enum Expression {
     Variable {
-        var: Box<Variable>,
+        var: Variable,
     },
     Literal {
         value: Value,
@@ -421,7 +409,6 @@ impl Parser {
                 ident: ident,
                 t: t,
                 loc: var_loc,
-                n_id: NO_N_ID,
             });
             if !self.next_match(TokenType::Comma) {
                 return params;
@@ -507,7 +494,6 @@ impl Parser {
                 ident: ident,
                 t: None,
                 loc: loc,
-                n_id: NO_N_ID,
             }),
             expr: Box::new(expr),
         })
@@ -544,7 +530,6 @@ impl Parser {
                 ident: ident,
                 t: None,
                 loc: loc,
-                n_id: NO_N_ID,
             }),
             expr: Box::new(expr),
         })
@@ -810,23 +795,20 @@ impl Parser {
                 value: Value::Integer {
                     val: *n,
                     loc: token.loc,
-                    t_id: NO_T_ID,
                 },
             }),
             TokenType::BooleanLit(b) => Ok(Expression::Literal {
                 value: Value::Boolean {
                     val: *b,
                     loc: token.loc,
-                    t_id: NO_T_ID,
                 },
             }),
             TokenType::Identifier(ref x) => Ok(Expression::Variable {
-                var: Box::new(Variable {
+                var: Variable {
                     ident: x.clone(),
                     t: None,
                     loc: token.loc,
-                    n_id: NO_N_ID,
-                }),
+                },
             }),
             TokenType::LeftPar => {
                 let expr = self.expression()?;
