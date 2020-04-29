@@ -3,13 +3,14 @@ use crate::error::Location;
 use std::fmt;
 
 pub mod id {
-    pub const T_ID_BOOL: usize = 0;
-    pub const T_ID_INTEGER: usize = 1;
-    pub const T_ID_NUMERIC: usize = 2;
-    pub const T_ID_BASIC: usize = 3;
+    pub const T_ID_BUG: usize = 0;
+    pub const T_ID_BOOL: usize = 1;
+    pub const T_ID_INTEGER: usize = 2;
+    pub const T_ID_NUMERIC: usize = 3;
+    pub const T_ID_BASIC: usize = 4;
 }
 // Please update this const when adding/removing default T_ID
-const NB_DEFAULT_T_ID: usize = 4;
+const NB_DEFAULT_T_ID: usize = 5;
 
 pub type TypeId = usize;
 
@@ -58,6 +59,7 @@ impl TypeStore {
         for _ in 0..NB_DEFAULT_T_ID {
             types.push(Type::Bug)
         }
+        types[id::T_ID_BOOL] = Type::Bool; // This one is actually used as a result value
         TypeStore { types: types }
     }
 
@@ -92,6 +94,7 @@ impl TypeVarStore {
         // Tests are provided at the bottom of the file to ensure good ordering
         // If you need to add an item, create a new constant T_ID_SOMETHING and update
         // TypeStore::new method accordingly, tests will check the good initialization.
+        store.fresh(Location::dummy(), vec![Type::Bug]);
         store.fresh(Location::dummy(), vec![Type::Bool]);
         store.fresh(Location::dummy(), vec![Type::I32, Type::I64]);
         store.fresh(
@@ -240,6 +243,7 @@ mod tests {
     fn built_in_types_id() {
         // Check that Type IDs correspond to the expected type candidates
         let store = TypeVarStore::new();
+        assert_eq!(vec![Type::Bug], store.get(id::T_ID_BUG).types);
 
         assert_eq!(vec![Type::Bool], store.get(id::T_ID_BOOL).types);
 

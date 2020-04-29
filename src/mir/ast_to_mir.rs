@@ -2,12 +2,17 @@ use super::mir::*;
 use super::names::{
     Block, Expression as Expr, Function as NameFun, NameStore, Statement as S, Value as V,
 };
-use super::types::{Type as ASTTypes, TypeStore};
+use super::types::{Type as ASTTypes, TypeId, TypeStore};
 use super::TypedProgram;
 
 use crate::error::ErrorHandler;
-use crate::parse;
+use crate::parse::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use std::convert::TryInto;
+
+enum FromBinop {
+    Binop(Binop),
+    Relop(Relop),
+}
 
 struct State {
     pub names: NameStore,
@@ -47,19 +52,23 @@ impl MIRProducer {
         let mut funs = Vec::with_capacity(prog.funs.len());
 
         for fun in prog.funs.into_iter() {
-            funs.push(self.reduce_fun(fun, &mut state));
+            match self.reduce_fun(fun, &mut state) {
+                Ok(fun) => funs.push(fun),
+                Err(err) => self.error_handler.report_internal(&err),
+            }
         }
 
         Program { funs: funs }
     }
 
-    fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Function {
+    fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Result<Function, String> {
         let fun_name = s.names.get(fun.n_id);
         let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
-            (
-                param_t.into_iter().map(|t| self.convert_types(t)).collect(),
-                ret_t.into_iter().map(|t| self.convert_types(t)).collect(),
-            )
+            let param_t: Result<Vec<Type>, String> =
+                param_t.into_iter().map(|t| convert_type(t)).collect();
+            let ret_t: Result<Vec<Type>, String> =
+                ret_t.into_iter().map(|t| convert_type(t)).collect();
+            (param_t?, ret_t?)
         } else {
             self.error_handler
                 .report_internal_loc(fun.loc, "Function does not have function type");
@@ -67,19 +76,19 @@ impl MIRProducer {
         };
 
         let locals = fun.locals.iter().map(|l| Local { id: *l }).collect();
-        let blocks = self.reduce_block(fun.block, s);
+        let blocks = self.reduce_block(fun.block, s)?;
 
-        Function {
+        Ok(Function {
             ident: fun.ident,
             param_types: param_t,
             ret_types: ret_t,
             locals: locals,
             blocks: blocks,
             exported: fun.exported,
-        }
+        })
     }
 
-    fn reduce_block(&mut self, block: Block, s: &mut State) -> Vec<BasicBlock> {
+    fn reduce_block(&mut self, block: Block, s: &mut State) -> Result<Vec<BasicBlock>, String> {
         self.reduce_block_rec(block, Vec::new(), s)
     }
 
@@ -88,22 +97,22 @@ impl MIRProducer {
         block: Block,
         mut basic_blocks: Vec<BasicBlock>,
         s: &mut State,
-    ) -> Vec<BasicBlock> {
+    ) -> Result<Vec<BasicBlock>, String> {
         let mut current_bb = BasicBlock::new(s.fresh_bb_id());
 
         for statement in &block.stmts {
             match statement {
                 S::AssignStmt { var, expr } => {
-                    self.reduce_expr(expr, &mut current_bb.stmts, s);
+                    self.reduce_expr(expr, &mut current_bb.stmts, s)?;
                     current_bb.stmts.push(Statement::Set { l_id: var.n_id });
                 }
                 S::LetStmt { var, expr } => {
-                    self.reduce_expr(expr, &mut current_bb.stmts, s);
+                    self.reduce_expr(expr, &mut current_bb.stmts, s)?;
                     current_bb.stmts.push(Statement::Set { l_id: var.n_id });
                 }
                 S::ReturnStmt { expr, .. } => {
                     if let Some(e) = expr {
-                        self.reduce_expr(e, &mut current_bb.stmts, s);
+                        self.reduce_expr(e, &mut current_bb.stmts, s)?;
                     }
                     current_bb.terminator = Some(Terminator::Return)
                 }
@@ -114,22 +123,25 @@ impl MIRProducer {
         }
 
         basic_blocks.push(current_bb);
-        basic_blocks
+        Ok(basic_blocks)
     }
 
     // Push new statements that execute the given expression
-    fn reduce_expr(&mut self, expression: &Expr, stmts: &mut Vec<Statement>, s: &mut State) {
+    fn reduce_expr(
+        &mut self,
+        expression: &Expr,
+        stmts: &mut Vec<Statement>,
+        s: &mut State,
+    ) -> Result<(), String> {
         match expression {
             Expr::Literal { value } => match value {
                 V::Integer { val, t_id, .. } => {
-                    let t = self.convert_types(s.types.get(*t_id));
+                    let t = get_type(*t_id, s)?;
                     let val = match t {
                         Type::I32 => Value::I32((*val).try_into().unwrap()),
                         Type::I64 => Value::I64((*val).try_into().unwrap()),
                         _ => {
-                            self.error_handler
-                                .report_internal("Integer constant of non integer type");
-                            return;
+                            return Err(String::from("Integer constant of non integer type"));
                         }
                     };
                     stmts.push(Statement::Const { val: val })
@@ -139,41 +151,162 @@ impl MIRProducer {
                 }),
             },
             Expr::Variable { var } => stmts.push(Statement::Get { l_id: var.n_id }),
-            Expr::Unary { unop, expr, t_id } => match unop {
-                parse::UnaryOperator::Minus => {
-                    let t = self.convert_types(s.types.get(*t_id));
-                    self.reduce_expr(expr, stmts, s);
-                    stmts.push(Statement::Unop {
-                        unop: Unop::Minus(t),
-                    });
+            Expr::Binary {
+                expr_left,
+                binop,
+                expr_right,
+                t_id,
+            } => {
+                let t = get_type(*t_id, s)?;
+                let from_binop = get_binop(*binop, t)?;
+                self.reduce_expr(expr_left, stmts, s)?;
+                self.reduce_expr(expr_right, stmts, s)?;
+                match from_binop {
+                    FromBinop::Binop(binop) => stmts.push(Statement::Binop { binop: binop }),
+                    FromBinop::Relop(relop) => stmts.push(Statement::Relop { relop: relop }),
                 }
-                parse::UnaryOperator::Not => {
-                    self.reduce_expr(expr, stmts, s);
-                    stmts.push(Statement::Unop { unop: Unop::Not });
-                }
-            },
+            }
+            Expr::Unary { unop, expr, t_id } => {
+                let t = get_type(*t_id, s)?;
+                let mut unop_stmts = get_unop(*unop, t)?;
+                self.reduce_expr(expr, stmts, s)?;
+                stmts.append(&mut unop_stmts);
+            }
             _ => self
                 .error_handler
                 .report_internal("Expression not yet handled in MIR: {"),
         }
+        Ok(())
     }
+}
 
-    fn convert_types(&mut self, t: &ASTTypes) -> Type {
-        match t {
-            ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
-                self.error_handler
-                    .report_internal(&format!("Invalid type in MIR generation: {}", t));
-                Type::Bug
+fn get_unop(unop: ASTUnop, t: Type) -> Result<Vec<Statement>, String> {
+    match unop {
+        ASTUnop::Minus => {
+            let neg = match t {
+                Type::I32 => Some(Unop::I32Neg),
+                Type::I64 => Some(Unop::I64Neg),
+                Type::F32 => Some(Unop::F32Neg),
+                Type::F64 => Some(Unop::F64Neg),
+                _ => None,
+            };
+            if let Some(neg) = neg {
+                Ok(vec![Statement::Unop { unop: neg }])
+            } else {
+                Err(String::from("Negating non numerical value"))
             }
-            ASTTypes::I32 => Type::I32,
-            ASTTypes::I64 => Type::I64,
-            ASTTypes::F32 => Type::F32,
-            ASTTypes::F64 => Type::F64,
-            ASTTypes::Bool => Type::I32,
-            ASTTypes::Fun(param, ret) => Type::Fun(
-                param.into_iter().map(|t| self.convert_types(t)).collect(),
-                ret.into_iter().map(|t| self.convert_types(t)).collect(),
-            ),
+        }
+        ASTUnop::Not => Ok(vec![
+            Statement::Const { val: Value::I32(1) },
+            Statement::Binop {
+                binop: Binop::I32Xor,
+            },
+        ]),
+    }
+}
+
+fn get_binop(binop: ASTBinop, t: Type) -> Result<FromBinop, String> {
+    match t {
+        Type::I32 => match binop {
+            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::I32Add)),
+            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::I32Sub)),
+            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::I32Mul)),
+            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::I32Div)),
+
+            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::I32Eq)),
+            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::I32Ne)),
+            ASTBinop::Less => Ok(FromBinop::Relop(Relop::I32Lt)),
+            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::I32Gt)),
+            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::I32Le)),
+            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::I32Ge)),
+
+            _ => Err(String::from("Bad binary operator for i32")),
+        },
+        Type::I64 => match binop {
+            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::I64Add)),
+            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::I64Sub)),
+            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::I64Mul)),
+            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::I64Div)),
+
+            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::I64Eq)),
+            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::I64Ne)),
+            ASTBinop::Less => Ok(FromBinop::Relop(Relop::I64Lt)),
+            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::I64Gt)),
+            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::I64Le)),
+            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::I64Ge)),
+
+            _ => Err(String::from("Bad binary operator for i64")),
+        },
+        Type::F32 => match binop {
+            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::F32Add)),
+            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::F32Sub)),
+            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::F32Mul)),
+            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::F32Div)),
+
+            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::F32Eq)),
+            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::F32Ne)),
+            ASTBinop::Less => Ok(FromBinop::Relop(Relop::F32Lt)),
+            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::F32Gt)),
+            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::F32Le)),
+            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::F32Ge)),
+
+            _ => Err(String::from("Bad binary operator for f32")),
+        },
+        Type::F64 => match binop {
+            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::F64Add)),
+            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::F64Sub)),
+            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::F64Mul)),
+            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::F64Div)),
+
+            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::F64Eq)),
+            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::F64Ne)),
+            ASTBinop::Less => Ok(FromBinop::Relop(Relop::F64Lt)),
+            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::F64Gt)),
+            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::F64Le)),
+            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::F64Ge)),
+
+            _ => Err(String::from("Bad binary operator for f64")),
+        },
+        _ => Err(String::from("Binop not yet implemented")),
+    }
+}
+
+fn get_type(t_id: TypeId, s: &State) -> Result<Type, String> {
+    let t = s.types.get(t_id);
+    match t {
+        ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => Err(format!(
+            "Invalid type in MIR generation: {} for t_id: {}",
+            t, t_id
+        )),
+        ASTTypes::I32 => Ok(Type::I32),
+        ASTTypes::I64 => Ok(Type::I64),
+        ASTTypes::F32 => Ok(Type::F32),
+        ASTTypes::F64 => Ok(Type::F64),
+        ASTTypes::Bool => Ok(Type::I32),
+        ASTTypes::Fun(param, ret) => {
+            let param: Result<Vec<Type>, String> =
+                param.into_iter().map(|t| convert_type(t)).collect();
+            let ret: Result<Vec<Type>, String> = ret.into_iter().map(|t| convert_type(t)).collect();
+            Ok(Type::Fun(param?, ret?))
+        }
+    }
+}
+
+fn convert_type(t: &ASTTypes) -> Result<Type, String> {
+    match t {
+        ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
+            Err(format!("Invalid type in MIR generation: {}", t))
+        }
+        ASTTypes::I32 => Ok(Type::I32),
+        ASTTypes::I64 => Ok(Type::I64),
+        ASTTypes::F32 => Ok(Type::F32),
+        ASTTypes::F64 => Ok(Type::F64),
+        ASTTypes::Bool => Ok(Type::I32),
+        ASTTypes::Fun(param, ret) => {
+            let param: Result<Vec<Type>, String> =
+                param.into_iter().map(|t| convert_type(t)).collect();
+            let ret: Result<Vec<Type>, String> = ret.into_iter().map(|t| convert_type(t)).collect();
+            Ok(Type::Fun(param?, ret?))
         }
     }
 }
