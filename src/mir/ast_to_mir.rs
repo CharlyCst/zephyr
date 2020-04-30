@@ -89,41 +89,103 @@ impl MIRProducer {
     }
 
     fn reduce_block(&mut self, block: Block, s: &mut State) -> Result<Vec<BasicBlock>, String> {
-        self.reduce_block_rec(block, Vec::new(), s)
+        let mut basic_blocks = Vec::new();
+        self.reduce_block_rec(block, &mut basic_blocks, s)?;
+        Ok(basic_blocks)
     }
 
     fn reduce_block_rec(
         &mut self,
         block: Block,
-        mut basic_blocks: Vec<BasicBlock>,
+        basic_blocks: &mut Vec<BasicBlock>,
         s: &mut State,
-    ) -> Result<Vec<BasicBlock>, String> {
+    ) -> Result<(), String> {
         let mut current_bb = BasicBlock::new(s.fresh_bb_id());
 
-        for statement in &block.stmts {
+        for statement in block.stmts.into_iter() {
             match statement {
                 S::AssignStmt { var, expr } => {
-                    self.reduce_expr(expr, &mut current_bb.stmts, s)?;
+                    self.reduce_expr(&expr, &mut current_bb.stmts, s)?;
                     current_bb.stmts.push(Statement::Set { l_id: var.n_id });
                 }
                 S::LetStmt { var, expr } => {
-                    self.reduce_expr(expr, &mut current_bb.stmts, s)?;
+                    self.reduce_expr(&expr, &mut current_bb.stmts, s)?;
                     current_bb.stmts.push(Statement::Set { l_id: var.n_id });
+                }
+                S::ExprStmt { expr } => {
+                    self.reduce_expr(&expr, &mut current_bb.stmts, s)?;
+                    // Drop the result to conserve stack height
+                    current_bb.stmts.push(Statement::Parametric {
+                        param: Parametric::Drop,
+                    });
                 }
                 S::ReturnStmt { expr, .. } => {
                     if let Some(e) = expr {
-                        self.reduce_expr(e, &mut current_bb.stmts, s)?;
+                        self.reduce_expr(&e, &mut current_bb.stmts, s)?;
                     }
                     current_bb.terminator = Some(Terminator::Return)
                 }
-                _ => self
-                    .error_handler
-                    .report_internal("Statement not yet handled in MIR"),
+                S::WhileStmt { expr, block } => {
+                    // Condition block
+                    let cond_bb_id = s.fresh_bb_id();
+                    let mut cond_bb = BasicBlock::new(cond_bb_id);
+                    self.reduce_expr(&expr, &mut cond_bb.stmts, s)?;
+
+                    // Loop body blocks
+                    let mut bodies = Vec::new();
+                    self.reduce_block_rec(block, &mut bodies, s)?;
+                    let body_bb_id = bodies[0].id;
+
+                    // End of loop block
+                    let new_current_bb_id = s.fresh_bb_id();
+                    let new_current_bb = BasicBlock::new(new_current_bb_id);
+
+                    current_bb.terminator = Some(Terminator::Goto(cond_bb_id));
+                    cond_bb.terminator = Some(Terminator::BrIf(body_bb_id, new_current_bb_id));
+                    if let Some(mut last_body_bb) = bodies.last_mut() {
+                        if last_body_bb.terminator.is_none() {
+                            last_body_bb.terminator = Some(Terminator::Goto(cond_bb_id))
+                        }
+                    }
+
+                    basic_blocks.push(current_bb);
+                    basic_blocks.push(cond_bb);
+                    basic_blocks.extend(bodies);
+                    current_bb = new_current_bb;
+                }
+                S::IfStmt { expr, block } => {
+                    // Condition block
+                    let cond_bb_id = s.fresh_bb_id();
+                    let mut cond_bb = BasicBlock::new(cond_bb_id);
+                    self.reduce_expr(&expr, &mut cond_bb.stmts, s)?;
+
+                    // Then block
+                    let mut then_blocks = Vec::new();
+                    self.reduce_block_rec(block, &mut then_blocks, s)?;
+                    let then_bb_id = then_blocks[0].id;
+
+                    // End of if block
+                    let new_current_bb_id = s.fresh_bb_id();
+                    let new_current_bb = BasicBlock::new(new_current_bb_id);
+
+                    current_bb.terminator = Some(Terminator::Goto(cond_bb_id));
+                    cond_bb.terminator = Some(Terminator::BrIf(then_bb_id, new_current_bb_id));
+                    if let Some(mut last_then_bb) = then_blocks.last_mut() {
+                        if last_then_bb.terminator.is_none() {
+                            last_then_bb.terminator = Some(Terminator::Goto(new_current_bb_id))
+                        }
+                    }
+
+                    basic_blocks.push(current_bb);
+                    basic_blocks.push(cond_bb);
+                    basic_blocks.extend(then_blocks);
+                    current_bb = new_current_bb;
+                }
             }
         }
 
         basic_blocks.push(current_bb);
-        Ok(basic_blocks)
+        Ok(())
     }
 
     // Push new statements that execute the given expression

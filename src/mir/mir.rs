@@ -44,11 +44,13 @@ pub enum Statement {
     Unop { unop: Unop },
     Binop { binop: Binop },
     Relop { relop: Relop },
+    Parametric { param: Parametric },
 }
 
 pub enum Terminator {
     Return,
     Goto(BasicBlockId),
+    BrIf(BasicBlockId, BasicBlockId), // true, false
 }
 
 pub enum Value {
@@ -116,6 +118,10 @@ pub enum Relop {
     F64Gt,
     F64Le,
     F64Ge,
+}
+
+pub enum Parametric {
+    Drop,
 }
 
 pub enum Type {
@@ -200,6 +206,7 @@ impl fmt::Display for Statement {
             Statement::Unop { unop } => write!(f, "{}", unop),
             Statement::Binop { binop } => write!(f, "{}", binop),
             Statement::Relop { relop } => write!(f, "{}", relop),
+            Statement::Parametric { param } => write!(f, "{}", param),
         }
     }
 }
@@ -276,11 +283,20 @@ impl fmt::Display for Relop {
     }
 }
 
+impl fmt::Display for Parametric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Parametric::Drop => write!(f, "drop"),
+        }
+    }
+}
+
 impl fmt::Display for Terminator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Terminator::Goto(bb_id) => write!(f, "goto bb{}", bb_id),
             Terminator::Return => write!(f, "return"),
+            Terminator::Goto(bb_id) => write!(f, "goto bb{}", bb_id),
+            Terminator::BrIf(tbb, fbb) => write!(f, "br_if bb{}, bb{}", tbb, fbb),
         }
     }
 }
