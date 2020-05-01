@@ -104,11 +104,7 @@ impl NameResolver {
         }
     }
 
-    fn resolve_function(
-        &mut self,
-        mut fun: parse::Function,
-        state: &mut State,
-    ) -> Option<Function> {
+    fn resolve_function(&mut self, fun: parse::Function, state: &mut State) -> Option<Function> {
         state.new_scope();
         let mut locals = Vec::new();
         let mut fun_params = Vec::new();

@@ -71,7 +71,7 @@ impl TypeStore {
         self.types.push(t);
     }
 
-    pub fn len(&self) -> usize {
+    pub fn _len(&self) -> usize {
         self.types.len()
     }
 }
@@ -266,6 +266,6 @@ mod tests {
         let type_var_store = TypeVarStore::new();
         let type_store = TypeStore::new();
 
-        assert_eq!(type_var_store.len(), type_store.len())
+        assert_eq!(type_var_store.len(), type_store._len())
     }
 }
