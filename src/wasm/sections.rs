@@ -25,11 +25,11 @@ impl SectionType {
             let mut fun_type = Vec::new();
 
             for t in fun.param_types.iter() {
-                params.push(type_to_bytes(t))
+                params.push(type_to_bytes(*t))
             }
 
             for t in fun.ret_types.iter() {
-                results.push(type_to_bytes(t))
+                results.push(type_to_bytes(*t))
             }
 
             fun_type.push(Func);

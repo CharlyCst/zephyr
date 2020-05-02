@@ -85,11 +85,11 @@ pub enum Expression {
         expr: Box<Expression>,
         t_id: TypeId,
     },
-    Call {
-        fun: Box<Expression>,
-        args: Vec<Expression>,
-        t_id: TypeId,
-    },
+    // Call {
+    //     fun: Box<Expression>,
+    //     args: Vec<Expression>,
+    //     t_id: TypeId,
+    // },
 }
 
 // Stuff relative to names

@@ -8,6 +8,7 @@ pub struct Function {
     pub export_name: Option<String>,
 }
 
+#[derive(Copy, Clone)]
 pub enum Type {
     I32,
     I64,

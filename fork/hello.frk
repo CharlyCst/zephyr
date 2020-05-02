@@ -1,9 +1,9 @@
 // This code is written in fork
 
-export fun Main() i32 {
-//    let x = 0
+export fun Main(a i32) i32 {
+    let x = a + 1
 //    while x < 42 {
 //        x = x + 1
 //    }
-    return 42
+    return x
 }

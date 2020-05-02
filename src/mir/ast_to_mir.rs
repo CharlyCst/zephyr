@@ -76,11 +76,13 @@ impl MIRProducer {
             (vec![], vec![])
         };
 
-        let locals = fun.locals.iter().map(|l| Local { id: *l }).collect();
+        let params = fun.params.iter().map(|p| p.n_id).collect();
+        let locals = self.get_locals(&fun, s)?;
         let block = self.reduce_block(fun.block, s)?;
 
         Ok(Function {
             ident: fun.ident,
+            params: params,
             param_types: param_t,
             ret_types: ret_t,
             locals: locals,
@@ -89,11 +91,31 @@ impl MIRProducer {
         })
     }
 
+    fn get_locals(&mut self, fun: &NameFun, s: &State) -> Result<Vec<Local>, String> {
+        let mut locals = Vec::new();
+        for local_name in &fun.locals {
+            let t_id = s.names.get(*local_name).t_id;
+            let t = match s.types.get(t_id) {
+                ASTTypes::I32 => Type::I32,
+                ASTTypes::I64 => Type::I64,
+                ASTTypes::F32 => Type::F32,
+                ASTTypes::F64 => Type::F64,
+                _ => return Err(String::from("Invalid parameter type")),
+            };
+            locals.push(Local {
+                id: *local_name,
+                t: t,
+            })
+        }
+
+        Ok(locals)
+    }
+
     fn reduce_block(&mut self, block: NameBlock, s: &mut State) -> Result<Block, String> {
         let id = s.fresh_bb_id();
         let mut stmts = Vec::new();
         self.reduce_block_rec(block, &mut stmts, s)?;
-        let mut reduced_block = Block::Block {
+        let reduced_block = Block::Block {
             id: id,
             stmts: stmts,
         };
@@ -226,7 +248,7 @@ impl MIRProducer {
             }
             Expr::Unary { unop, expr, t_id } => {
                 let t = get_type(*t_id, s)?;
-                let mut unop_stmts = get_unop(*unop, t)?;
+                let mut unop_stmts = get_unop(*unop, t);
                 self.reduce_expr(expr, stmts, s)?;
                 stmts.append(&mut unop_stmts);
             }
@@ -238,28 +260,23 @@ impl MIRProducer {
     }
 }
 
-fn get_unop(unop: ASTUnop, t: Type) -> Result<Vec<Statement>, String> {
+fn get_unop(unop: ASTUnop, t: Type) -> Vec<Statement> {
     match unop {
         ASTUnop::Minus => {
             let neg = match t {
-                Type::I32 => Some(Unop::I32Neg),
-                Type::I64 => Some(Unop::I64Neg),
-                Type::F32 => Some(Unop::F32Neg),
-                Type::F64 => Some(Unop::F64Neg),
-                _ => None,
+                Type::I32 => Unop::I32Neg,
+                Type::I64 => Unop::I64Neg,
+                Type::F32 => Unop::F32Neg,
+                Type::F64 => Unop::F64Neg,
             };
-            if let Some(neg) = neg {
-                Ok(vec![Statement::Unop { unop: neg }])
-            } else {
-                Err(String::from("Negating non numerical value"))
-            }
+            vec![Statement::Unop { unop: neg }]
         }
-        ASTUnop::Not => Ok(vec![
+        ASTUnop::Not => vec![
             Statement::Const { val: Value::I32(1) },
             Statement::Binop {
                 binop: Binop::I32Xor,
             },
-        ]),
+        ],
     }
 }
 
@@ -325,7 +342,6 @@ fn get_binop(binop: ASTBinop, t: Type) -> Result<FromBinop, String> {
 
             _ => Err(String::from("Bad binary operator for f64")),
         },
-        _ => Err(String::from("Binop not yet implemented")),
     }
 }
 
@@ -341,12 +357,7 @@ fn get_type(t_id: TypeId, s: &State) -> Result<Type, String> {
         ASTTypes::F32 => Ok(Type::F32),
         ASTTypes::F64 => Ok(Type::F64),
         ASTTypes::Bool => Ok(Type::I32),
-        ASTTypes::Fun(param, ret) => {
-            let param: Result<Vec<Type>, String> =
-                param.into_iter().map(|t| convert_type(t)).collect();
-            let ret: Result<Vec<Type>, String> = ret.into_iter().map(|t| convert_type(t)).collect();
-            Ok(Type::Fun(param?, ret?))
-        }
+        ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
     }
 }
 
@@ -360,11 +371,6 @@ fn convert_type(t: &ASTTypes) -> Result<Type, String> {
         ASTTypes::F32 => Ok(Type::F32),
         ASTTypes::F64 => Ok(Type::F64),
         ASTTypes::Bool => Ok(Type::I32),
-        ASTTypes::Fun(param, ret) => {
-            let param: Result<Vec<Type>, String> =
-                param.into_iter().map(|t| convert_type(t)).collect();
-            let ret: Result<Vec<Type>, String> = ret.into_iter().map(|t| convert_type(t)).collect();
-            Ok(Type::Fun(param?, ret?))
-        }
+        ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
     }
 }

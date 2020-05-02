@@ -34,15 +34,19 @@ pub const BlockType: Type = 0x40;
 
 // Instructions
 pub type Instr = u8;
+// Control
 pub const INSTR_UNREACHABLE: Instr = 0x00;
 pub const INSTR_NOP: Instr = 0x01;
 pub const INSTR_END: Instr = 0x0b;
 pub const INSTR_RETURN: Instr = 0x0f;
+// Variables
+pub const INSTR_LOCAL_GET: Instr = 0x20;
+pub const INSTR_LOCAL_SET: Instr = 0x21;
+// Numerical
 pub const INSTR_I32_CST: Instr = 0x41;
 pub const INSTR_I64_CST: Instr = 0x42;
 pub const INSTR_F32_CST: Instr = 0x43;
 pub const INSTR_F64_CST: Instr = 0x44;
-
 pub const INSTR_I32_ADD: Instr = 0x6a;
 
 const LEB_MASK: usize = 0x0000007f;
@@ -64,7 +68,7 @@ pub fn to_leb<'a>(val: usize) -> Vec<u8> {
     leb
 }
 
-pub fn type_to_bytes(t: &wasm::Type) -> u8 {
+pub fn type_to_bytes(t: wasm::Type) -> u8 {
     match t {
         wasm::Type::F32 => F32,
         wasm::Type::F64 => F64,

@@ -6,6 +6,7 @@ pub struct Program {
 
 pub struct Function {
     pub ident: String,
+    pub params: Vec<LocalId>,
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
     pub locals: Vec<Local>,
@@ -17,6 +18,7 @@ pub type LocalId = usize; // For now NameId are used as LocalId
 
 pub struct Local {
     pub id: LocalId,
+    pub t: Type,
 }
 
 pub type BasicBlockId = usize;
@@ -126,12 +128,12 @@ pub enum Parametric {
     Drop,
 }
 
+#[derive(Copy, Clone)]
 pub enum Type {
     I32,
     I64,
     F32,
     F64,
-    Fun(Vec<Type>, Vec<Type>),
 }
 
 impl fmt::Display for Program {
@@ -351,19 +353,6 @@ impl fmt::Display for Type {
             Type::I64 => write!(f, "i64"),
             Type::F32 => write!(f, "f32"),
             Type::F64 => write!(f, "f64"),
-            Type::Fun(params, results) => {
-                let p_types = params
-                    .iter()
-                    .map(|param| format!("{}", param))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                let r_types = results
-                    .iter()
-                    .map(|result| format!("{}", result))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                write!(f, "fun({}) {}", p_types, r_types)
-            }
         }
     }
 }
