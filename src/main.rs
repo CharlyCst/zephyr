@@ -48,15 +48,11 @@ fn compile(code: String, output_path: &str) {
     }
 
     let mir_program = mir::to_mir(functions);
-    wasm::to_wasm(mir_program);
+    let binary = wasm::to_wasm(mir_program);
 
-    // let mut compiler = compile::Compiler::new();
-    // let wasm_functions = compiler.compile(functions);
-
-    // let module = encode::Module::new(wasm_functions);
-    // match fs::write(output_path, module.encode()) {
-    //     Ok(_) => (),
-    //     Err(e) => println!("{}", e),
-    // }
+    match fs::write(output_path, binary) {
+        Ok(_) => (),
+        Err(e) => println!("{}", e),
+    }
     std::process::exit(0);
 }

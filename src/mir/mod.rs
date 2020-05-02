@@ -5,6 +5,7 @@ use self::types::{ConstraintStore, TypeStore, TypeVarStore};
 
 pub use self::names::NameId;
 pub use self::types::TypeId;
+pub use mir::*;
 
 mod ast_to_mir;
 mod mir;
