@@ -28,7 +28,7 @@ pub struct TypedProgram {
 
 pub use mir::Program;
 
-pub fn to_mir(functions: Vec<parse::Function>) {
+pub fn to_mir(functions: Vec<parse::Function>) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new();
     let program = name_resolver.resolve(functions);
 
@@ -51,4 +51,6 @@ pub fn to_mir(functions: Vec<parse::Function>) {
     let mir = mir_producer.reduce(typed_program);
 
     println!("{}", mir);
+
+    mir
 }

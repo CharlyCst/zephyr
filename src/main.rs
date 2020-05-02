@@ -1,13 +1,11 @@
 use std::env;
 use std::fs;
 
-mod compile;
-mod encode;
 mod error;
 mod mir;
-mod opcode;
 mod parse;
 mod scan;
+mod wasm;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -49,7 +47,8 @@ fn compile(code: String, output_path: &str) {
         std::process::exit(1);
     }
 
-    mir::to_mir(functions);
+    let mir_program = mir::to_mir(functions);
+    wasm::to_wasm(mir_program);
 
     // let mut compiler = compile::Compiler::new();
     // let wasm_functions = compiler.compile(functions);
