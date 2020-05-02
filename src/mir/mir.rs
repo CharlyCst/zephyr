@@ -9,7 +9,7 @@ pub struct Function {
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
     pub locals: Vec<Local>,
-    pub blocks: Vec<BasicBlock>,
+    pub body: Block,
     pub exported: bool,
 }
 
@@ -21,36 +21,38 @@ pub struct Local {
 
 pub type BasicBlockId = usize;
 
-pub struct BasicBlock {
-    pub id: BasicBlockId,
-    pub stmts: Vec<Statement>,
-    pub terminator: Option<Terminator>,
-}
-
-impl BasicBlock {
-    pub fn new(id: BasicBlockId) -> BasicBlock {
-        BasicBlock {
-            id: id,
-            stmts: vec![],
-            terminator: None,
-        }
-    }
+pub enum Block {
+    Block {
+        id: BasicBlockId,
+        stmts: Vec<Statement>,
+    },
+    Loop {
+        id: BasicBlockId,
+        stmts: Vec<Statement>,
+    },
+    If {
+        id: BasicBlockId,
+        then_stmts: Vec<Statement>,
+        else_stmts: Vec<Statement>,
+    },
 }
 
 pub enum Statement {
     Set { l_id: LocalId },
     Get { l_id: LocalId },
     Const { val: Value },
+    Block { block: Box<Block> },
     Unop { unop: Unop },
     Binop { binop: Binop },
     Relop { relop: Relop },
+    Control { cntrl: Control },
     Parametric { param: Parametric },
 }
 
-pub enum Terminator {
+pub enum Control {
     Return,
-    Goto(BasicBlockId),
-    BrIf(BasicBlockId, BasicBlockId), // true, false
+    Br(BasicBlockId),
+    BrIf(BasicBlockId),
 }
 
 pub enum Value {
@@ -164,49 +166,84 @@ impl fmt::Display for Function {
             .map(|l| format!("{}", l))
             .collect::<Vec<String>>()
             .join("");
-        let blocks = self
-            .blocks
-            .iter()
-            .map(|b| format!("{}", b))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let mut body = Vec::new();
+        for line in format!("{}", self.body).split("\n") {
+            let mut indented_line = String::from("    ");
+            indented_line.push_str(line);
+            body.push(indented_line)
+        }
         write!(
             f,
-            "    {}({}) {} {{\n{}{}    }}",
-            self.ident, params, ret, locals, blocks
+            "  {}({}) {} {{\n{}{}\n  }}",
+            self.ident,
+            params,
+            ret,
+            locals,
+            body.iter().map(|s| &**s).collect::<Vec<&str>>().join("\n")
         )
     }
 }
 
-impl fmt::Display for BasicBlock {
+impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut block = format!("        bb{} {{\n", self.id);
-        for stmt in &self.stmts {
-            block.push_str(&format!("            {}\n", stmt))
+        let mut strs = Vec::new();
+        let stmts = match self {
+            Block::Block { id, stmts } => {
+                strs.push(format!("block {} {{", id));
+                stmts
+            }
+            Block::Loop { id, stmts } => {
+                strs.push(format!("loop {} {{", id));
+                stmts
+            }
+            Block::If { id, then_stmts, .. } => {
+                strs.push(format!("if {} {{", id));
+                then_stmts
+            }
+        };
+        for stmt in stmts.iter() {
+            for line in format!("{}", stmt).split("\n") {
+                let mut indented_line = String::from("  ");
+                indented_line.push_str(line);
+                strs.push(indented_line)
+            }
         }
-        if let Some(term) = &self.terminator {
-            block.push_str(&format!("            {}\n", term))
-        }
-        block.push_str("        }\n");
-        write!(f, "{}", block)
+        if let Block::If { else_stmts, .. } = self {
+            strs.push(String::from("} else {"));
+            for stmt in else_stmts.iter() {
+                for line in format!("{}", stmt).split("\n") {
+                    let mut indented_line = String::from("  ");
+                    indented_line.push_str(line);
+                    strs.push(indented_line)
+                }
+            }
+        };
+        strs.push(String::from("}"));
+        write!(
+            f,
+            "{}",
+            strs.iter().map(|s| &**s).collect::<Vec<&str>>().join("\n"),
+        )
     }
 }
 
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Const { val } => match val {
-                Value::I32(x) => write!(f, "i32 {}", x),
-                Value::I64(x) => write!(f, "i64 {}", x),
-                Value::F32(x) => write!(f, "f32 {}", x),
-                Value::F64(x) => write!(f, "f64 {}", x),
-            },
             Statement::Get { l_id } => write!(f, "get _{}", l_id),
             Statement::Set { l_id } => write!(f, "set _{}", l_id),
             Statement::Unop { unop } => write!(f, "{}", unop),
             Statement::Binop { binop } => write!(f, "{}", binop),
             Statement::Relop { relop } => write!(f, "{}", relop),
             Statement::Parametric { param } => write!(f, "{}", param),
+            Statement::Block { block } => write!(f, "{}", block),
+            Statement::Control { cntrl } => write!(f, "{}", cntrl),
+            Statement::Const { val } => match val {
+                Value::I32(x) => write!(f, "i32 {}", x),
+                Value::I64(x) => write!(f, "i64 {}", x),
+                Value::F32(x) => write!(f, "f32 {}", x),
+                Value::F64(x) => write!(f, "f64 {}", x),
+            },
         }
     }
 }
@@ -291,19 +328,19 @@ impl fmt::Display for Parametric {
     }
 }
 
-impl fmt::Display for Terminator {
+impl fmt::Display for Control {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Terminator::Return => write!(f, "return"),
-            Terminator::Goto(bb_id) => write!(f, "goto bb{}", bb_id),
-            Terminator::BrIf(tbb, fbb) => write!(f, "br_if bb{}, bb{}", tbb, fbb),
+            Control::Return => write!(f, "return"),
+            Control::Br(bb_id) => write!(f, "br {}", bb_id),
+            Control::BrIf(bb_id) => write!(f, "br_if {}", bb_id),
         }
     }
 }
 
 impl fmt::Display for Local {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "        _{}\n", self.id)
+        write!(f, "    _{}\n", self.id)
     }
 }
 
