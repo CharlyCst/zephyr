@@ -17,6 +17,7 @@ pub enum TokenType {
     Plus,
     Slash,
     Star,
+    Percent,
     Bang,
     Equal,
     Greater,
@@ -132,6 +133,7 @@ impl Scanner {
             '-' => self.add_token(tokens, TokenType::Minus),
             '+' => self.add_token(tokens, TokenType::Plus),
             '*' => self.add_token(tokens, TokenType::Star),
+            '%' => self.add_token(tokens, TokenType::Percent),
             '!' => {
                 if self.next_match('=') {
                     self.add_token(tokens, TokenType::BangEqual)

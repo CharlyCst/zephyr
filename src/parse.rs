@@ -18,6 +18,7 @@ pub enum BinaryOperator {
     Plus,
     Minus,
     Multiply,
+    Remainder,
     Divide,
     BitwiseOr,
     BitwiseAnd,
@@ -98,6 +99,7 @@ impl fmt::Display for Expression {
                     BinaryOperator::LessEqual => "<=",
                     BinaryOperator::Minus => "-",
                     BinaryOperator::Multiply => "*",
+                    BinaryOperator::Remainder => "%",
                     BinaryOperator::NotEqual => "!=",
                     BinaryOperator::Or => "||",
                     BinaryOperator::Plus => "+",
@@ -734,6 +736,7 @@ impl Parser {
             let binop = match self.peek().t {
                 TokenType::Star => BinaryOperator::Multiply,
                 TokenType::Slash => BinaryOperator::Divide,
+                TokenType::Percent => BinaryOperator::Remainder,
                 _ => break,
             };
             self.advance();

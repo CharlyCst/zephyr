@@ -309,6 +309,17 @@ impl NameResolver {
                 let (left_expr, left_t_id) = self.resolve_expression(expr_left, state);
                 let (right_expr, right_t_id) = self.resolve_expression(expr_right, state);
                 match binop {
+                    parse::BinaryOperator::Remainder => {
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
+                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_INTEGER));
+                        let expr = Expression::Binary {
+                            expr_left: Box::new(left_expr),
+                            binop: *binop,
+                            expr_right: Box::new(right_expr),
+                            t_id: left_t_id,
+                        };
+                        (expr, left_t_id)
+                    }
                     parse::BinaryOperator::Plus
                     | parse::BinaryOperator::Multiply
                     | parse::BinaryOperator::Minus

@@ -28,7 +28,7 @@ comparison     -> bitwise_or (("<" | ">" | "<=" | ">=") bitwise_or)*
 bitwise_or     -> bitwise_and ("|" bitwise_and)*
 bitwise_and    -> addition ("&" addition)*
 addition       -> multiplication (("+" | "-") multiplication)*
-multiplication -> unary (("/" | "*") unary)*
+multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
 call           -> primary ( "(" arguments? ")" )*
 primary        -> NUMBER | BOOLEAN | IDENTIFIER | "false" | "true"

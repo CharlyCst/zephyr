@@ -100,7 +100,8 @@ impl MIRProducer {
                 ASTTypes::I64 => Type::I64,
                 ASTTypes::F32 => Type::F32,
                 ASTTypes::F64 => Type::F64,
-                _ => return Err(String::from("Invalid parameter type")),
+                ASTTypes::Bool => Type::I32,
+                _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
             };
             locals.push(Local {
                 id: *local_name,
@@ -287,6 +288,7 @@ fn get_binop(binop: ASTBinop, t: Type) -> Result<FromBinop, String> {
             ASTBinop::Minus => Ok(FromBinop::Binop(Binop::I32Sub)),
             ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::I32Mul)),
             ASTBinop::Divide => Ok(FromBinop::Binop(Binop::I32Div)),
+            ASTBinop::Remainder => Ok(FromBinop::Binop(Binop::I32Rem)),
 
             ASTBinop::Equal => Ok(FromBinop::Relop(Relop::I32Eq)),
             ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::I32Ne)),
@@ -302,6 +304,7 @@ fn get_binop(binop: ASTBinop, t: Type) -> Result<FromBinop, String> {
             ASTBinop::Minus => Ok(FromBinop::Binop(Binop::I64Sub)),
             ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::I64Mul)),
             ASTBinop::Divide => Ok(FromBinop::Binop(Binop::I64Div)),
+            ASTBinop::Remainder => Ok(FromBinop::Binop(Binop::I64Rem)),
 
             ASTBinop::Equal => Ok(FromBinop::Relop(Relop::I64Eq)),
             ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::I64Ne)),

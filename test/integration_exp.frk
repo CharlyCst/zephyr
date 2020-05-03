@@ -1,0 +1,34 @@
+export fun Main() i32 {
+    // Parameters
+    let a = 3
+    let b = 9
+    let result = 19683
+
+    // Start
+    if b == 0 {
+        return 1
+    }
+
+    let n = b
+    let x = a
+    let acc = 1
+
+    while n > 1 {
+        if n % 2 == 1 {
+            acc = acc * x
+        }
+        x = x * x
+        n = n / 2
+    }
+    x = x * acc
+
+    // check the result
+    if x == result {
+        return 42
+    }
+    return 1
+
+    // For now necessary for type checking, remove this asap
+    return x
+    return n
+}

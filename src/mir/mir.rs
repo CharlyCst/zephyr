@@ -77,11 +77,13 @@ pub enum Binop {
     I32Sub,
     I32Mul,
     I32Div,
+    I32Rem,
 
     I64Add,
     I64Sub,
     I64Mul,
     I64Div,
+    I64Rem,
 
     F32Add,
     F32Sub,
@@ -269,11 +271,13 @@ impl fmt::Display for Binop {
             Binop::I32Sub => write!(f, "i32.sub"),
             Binop::I32Mul => write!(f, "i32.mul"),
             Binop::I32Div => write!(f, "i32.div"),
+            Binop::I32Rem => write!(f, "i32.rem"),
 
             Binop::I64Add => write!(f, "i64.add"),
             Binop::I64Sub => write!(f, "i64.sub"),
             Binop::I64Mul => write!(f, "i64.mul"),
             Binop::I64Div => write!(f, "i64.div"),
+            Binop::I64Rem => write!(f, "i64.rem"),
 
             Binop::F32Add => write!(f, "f32.add"),
             Binop::F32Sub => write!(f, "f32.sub"),

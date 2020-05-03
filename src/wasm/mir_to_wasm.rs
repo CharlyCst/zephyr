@@ -231,12 +231,14 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::I32Sub => INSTR_I32_SUB,
         mir::Binop::I32Mul => INSTR_I32_MUL,
         mir::Binop::I32Div => INSTR_I32_DIV_U,
+        mir::Binop::I32Rem => INSTR_I32_REM_U,
         mir::Binop::I32Xor => INSTR_I32_XOR,
 
         mir::Binop::I64Add => INSTR_I64_ADD,
         mir::Binop::I64Sub => INSTR_I64_SUB,
         mir::Binop::I64Mul => INSTR_I64_MUL,
         mir::Binop::I64Div => INSTR_I64_DIV_U,
+        mir::Binop::I64Rem => INSTR_I64_REM_U,
 
         _ => unimplemented!(),
     }
