@@ -1,12 +1,13 @@
-use crate::error::ErrorHandler;
+use crate::error::{ErrorHandler, Location};
 use crate::scan::{Token, TokenType};
 use std::fmt;
 
 pub enum Value {
-    Number(u64),
-    Boolean(bool),
+    Integer { val: u64, loc: Location },
+    Boolean { val: bool, loc: Location },
 }
 
+#[derive(Copy, Clone)]
 pub enum BinaryOperator {
     Equal,
     NotEqual,
@@ -17,6 +18,7 @@ pub enum BinaryOperator {
     Plus,
     Minus,
     Multiply,
+    Remainder,
     Divide,
     BitwiseOr,
     BitwiseAnd,
@@ -24,19 +26,21 @@ pub enum BinaryOperator {
     And,
 }
 
+#[derive(Copy, Clone)]
 pub enum UnaryOperator {
     Minus,
     Not,
 }
 
 pub struct Variable {
-    ident: String,
-    t: Option<String>,
+    pub ident: String,
+    pub t: Option<String>,
+    pub loc: Location,
 }
 
 pub enum Expression {
     Variable {
-        var: Box<Variable>,
+        var: Variable,
     },
     Literal {
         value: Value,
@@ -61,9 +65,9 @@ impl fmt::Display for Expression {
         match self {
             Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
             Expression::Literal { value: v } => match v {
-                Value::Boolean(true) => write!(f, "true"),
-                Value::Boolean(false) => write!(f, "false"),
-                Value::Number(n) => write!(f, "{}", n),
+                Value::Boolean { val: true, .. } => write!(f, "true"),
+                Value::Boolean { val: false, .. } => write!(f, "false"),
+                Value::Integer { val: n, .. } => write!(f, "{}", n),
             },
             Expression::Call { fun, args } => write!(
                 f,
@@ -95,6 +99,7 @@ impl fmt::Display for Expression {
                     BinaryOperator::LessEqual => "<=",
                     BinaryOperator::Minus => "-",
                     BinaryOperator::Multiply => "*",
+                    BinaryOperator::Remainder => "%",
                     BinaryOperator::NotEqual => "!=",
                     BinaryOperator::Or => "||",
                     BinaryOperator::Plus => "+",
@@ -127,15 +132,17 @@ pub enum Statement {
     },
     ReturnStmt {
         expr: Option<Expression>,
+        loc: Location,
     },
 }
 
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
-    pub result: Option<String>,
+    pub result: Option<(String, Location)>,
     pub block: Block,
     pub exported: bool,
+    pub loc: Location,
 }
 
 impl fmt::Display for Function {
@@ -155,7 +162,7 @@ impl fmt::Display for Function {
             })
             .collect::<Vec<String>>()
             .join(", ");
-        let result_type = if let Some(ref t) = self.result {
+        let result_type = if let Some((ref t, _)) = self.result {
             let mut t = t.clone();
             t.push_str(" ");
             t
@@ -202,7 +209,7 @@ impl fmt::Display for Statement {
             Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
             Statement::IfStmt { expr, block } => write!(f, "if {} {};", expr, block),
             Statement::WhileStmt { expr, block } => write!(f, "while {} {};", expr, block),
-            Statement::ReturnStmt { expr } => match expr {
+            Statement::ReturnStmt { expr, .. } => match expr {
                 Some(e) => write!(f, "return {};", e),
                 None => write!(f, "return;"),
             },
@@ -254,6 +261,15 @@ impl Parser {
         &self.tokens[cur]
     }
 
+    fn previous(&self) -> &Token {
+        let prev = self.current - 1;
+        if prev > 0 {
+            &self.tokens[prev]
+        } else {
+            &self.tokens[0]
+        }
+    }
+
     fn peekpeek(&self) -> &Token {
         let next = self.current + 1;
         if next >= self.tokens.len() {
@@ -293,8 +309,8 @@ impl Parser {
             self.advance();
             true
         } else {
-            let line = self.peek().line;
-            self.error_handler.report(line, err);
+            let loc = self.peek().loc;
+            self.error_handler.report(loc, err);
             false
         }
     }
@@ -316,9 +332,9 @@ impl Parser {
     fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
-            let l = semi_colon.line;
+            let loc = semi_colon.loc;
             self.error_handler
-                .report(l, "Expect statement ender, try to add a line break");
+                .report(loc, "Expect statement ender, try to add a line break");
             self.synchronize();
         }
     }
@@ -327,9 +343,9 @@ impl Parser {
         let exported = self.next_match(TokenType::Export);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
-            return Err(()); // Todo: synchronize to next function
+            return Err(());
         }
-        let line = self.peek().line;
+        let loc = self.peek().loc;
         let ident = match self.advance() {
             Token {
                 t: TokenType::Identifier(ref x),
@@ -337,7 +353,7 @@ impl Parser {
             } => x.clone(),
             _ => {
                 self.error_handler
-                    .report(line, "Top level declaration must be functions");
+                    .report(loc, "Top level declaration must be functions");
                 self.synchronize_fun();
                 return Err(());
             }
@@ -365,28 +381,38 @@ impl Parser {
             result: result,
             block: block,
             exported: exported,
+            loc: loc,
         })
     }
 
     fn parameters(&mut self) -> Vec<Variable> {
         let mut params = Vec::new();
-        while let TokenType::Identifier(ref param) = self.advance().t {
+        while let Token {
+            t: TokenType::Identifier(ref param),
+            loc: var_loc,
+        } = self.advance()
+        {
             let ident = param.clone();
+            let var_loc = *var_loc;
             let token = self.advance();
-            let l = token.line;
+            let loc = token.loc;
             let t = match token {
                 Token {
                     t: TokenType::Identifier(ref x),
                     ..
                 } => Some(x.clone()),
                 _ => {
-                    self.error_handler.report(l, "Expected parameter type");
+                    self.error_handler.report(loc, "Expected parameter type");
                     self.back();
                     None
                 }
             };
 
-            params.push(Variable { ident: ident, t: t });
+            params.push(Variable {
+                ident: ident,
+                t: t,
+                loc: var_loc,
+            });
             if !self.next_match(TokenType::Comma) {
                 return params;
             }
@@ -395,9 +421,9 @@ impl Parser {
         params
     }
 
-    fn result(&mut self) -> Option<String> {
+    fn result(&mut self) -> Option<(String, Location)> {
         if let TokenType::Identifier(ref t) = self.peek().t {
-            let result = Some(t.clone());
+            let result = Some((t.clone(), self.peek().loc));
             self.advance();
             result
         } else {
@@ -442,18 +468,21 @@ impl Parser {
     }
 
     fn assign_stmt(&mut self) -> Result<Statement, ()> {
-        let ident = match self.advance() {
+        let (ident, loc) = match self.advance() {
             Token {
                 t: TokenType::Identifier(ref x),
-                ..
-            } => x.clone(),
-            Token { line, .. } => {
-                let l = *line;
-                self.error_handler
-                    .report_internal(l, "Assignment statement does not start with an identifier");
+                loc,
+            } => (x.clone(), loc),
+            Token { loc, .. } => {
+                let loc = *loc;
+                self.error_handler.report_internal_loc(
+                    loc,
+                    "Assignment statement does not start with an identifier",
+                );
                 return Err(());
             }
         };
+        let loc = *loc;
         if !self.next_match_report(
             TokenType::Equal,
             "Assignment identifier is not followed by an \"=\"",
@@ -467,6 +496,7 @@ impl Parser {
             var: Box::new(Variable {
                 ident: ident,
                 t: None,
+                loc: loc,
             }),
             expr: Box::new(expr),
         })
@@ -475,15 +505,15 @@ impl Parser {
     // The `let` token must have been consumed
     fn let_stmt(&mut self) -> Result<Statement, ()> {
         let next = self.advance();
-        let ident = match next {
+        let (ident, loc) = match next {
             Token {
                 t: TokenType::Identifier(ref x),
-                ..
-            } => x.clone(),
-            Token { line, .. } => {
-                let l = *line;
+                loc,
+            } => (x.clone(), *loc),
+            Token { loc, .. } => {
+                let loc = *loc;
                 self.error_handler.report(
-                    l,
+                    loc,
                     "Let statement requires an identifier after the \"let\" keyword",
                 );
                 return Err(());
@@ -502,6 +532,7 @@ impl Parser {
             var: Box::new(Variable {
                 ident: ident,
                 t: None,
+                loc: loc,
             }),
             expr: Box::new(expr),
         })
@@ -541,16 +572,23 @@ impl Parser {
 
     // The `return` token must have been consumed
     fn return_stmt(&mut self) -> Result<Statement, ()> {
+        let loc = self.previous().loc;
         let expr = self.expression();
         match expr {
             Ok(e) => {
                 self.consume_semi_colon();
-                Ok(Statement::ReturnStmt { expr: Some(e) })
+                Ok(Statement::ReturnStmt {
+                    expr: Some(e),
+                    loc: loc,
+                })
             }
             Err(()) => {
                 self.back(); // expression consumes one character
                 self.consume_semi_colon();
-                Ok(Statement::ReturnStmt { expr: None })
+                Ok(Statement::ReturnStmt {
+                    expr: None,
+                    loc: loc,
+                })
             }
         }
     }
@@ -698,6 +736,7 @@ impl Parser {
             let binop = match self.peek().t {
                 TokenType::Star => BinaryOperator::Multiply,
                 TokenType::Slash => BinaryOperator::Divide,
+                TokenType::Percent => BinaryOperator::Remainder,
                 _ => break,
             };
             self.advance();
@@ -757,16 +796,23 @@ impl Parser {
 
         match &token.t {
             TokenType::NumberLit(n) => Ok(Expression::Literal {
-                value: Value::Number(*n),
+                value: Value::Integer {
+                    val: *n,
+                    loc: token.loc,
+                },
             }),
             TokenType::BooleanLit(b) => Ok(Expression::Literal {
-                value: Value::Boolean(*b),
+                value: Value::Boolean {
+                    val: *b,
+                    loc: token.loc,
+                },
             }),
             TokenType::Identifier(ref x) => Ok(Expression::Variable {
-                var: Box::new(Variable {
+                var: Variable {
                     ident: x.clone(),
                     t: None,
-                }),
+                    loc: token.loc,
+                },
             }),
             TokenType::LeftPar => {
                 let expr = self.expression()?;

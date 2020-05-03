@@ -1,12 +1,11 @@
 use std::env;
 use std::fs;
 
-mod compile;
-mod encode;
 mod error;
-mod opcode;
+mod mir;
 mod parse;
 mod scan;
+mod wasm;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -48,11 +47,10 @@ fn compile(code: String, output_path: &str) {
         std::process::exit(1);
     }
 
-    let mut compiler = compile::Compiler::new();
-    let wasm_functions = compiler.compile(functions);
+    let mir_program = mir::to_mir(functions);
+    let binary = wasm::to_wasm(mir_program);
 
-    let module = encode::Module::new(wasm_functions);
-    match fs::write(output_path, module.encode()) {
+    match fs::write(output_path, binary) {
         Ok(_) => (),
         Err(e) => println!("{}", e),
     }

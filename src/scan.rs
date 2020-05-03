@@ -1,4 +1,4 @@
-use crate::error::ErrorHandler;
+use crate::error::{ErrorHandler, Location};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -17,6 +17,7 @@ pub enum TokenType {
     Plus,
     Slash,
     Star,
+    Percent,
     Bang,
     Equal,
     Greater,
@@ -55,12 +56,9 @@ pub enum TokenType {
     EOF,
 }
 
-#[derive(Debug)]
 pub struct Token {
     pub t: TokenType,
-    pub line: usize,
-    pub pos: usize,
-    pub len: usize,
+    pub loc: Location,
 }
 
 impl fmt::Display for Token {
@@ -135,6 +133,7 @@ impl Scanner {
             '-' => self.add_token(tokens, TokenType::Minus),
             '+' => self.add_token(tokens, TokenType::Plus),
             '*' => self.add_token(tokens, TokenType::Star),
+            '%' => self.add_token(tokens, TokenType::Percent),
             '!' => {
                 if self.next_match('=') {
                     self.add_token(tokens, TokenType::BangEqual)
@@ -201,7 +200,7 @@ impl Scanner {
                     self.identifier(tokens)
                 } else {
                     self.error_handler
-                        .report(self.line, &format!("Unexpected character {}", c))
+                        .report(self.get_loc(), &format!("Unexpected character {}", c))
                 }
             }
         }
@@ -241,12 +240,22 @@ impl Scanner {
     fn add_token(&mut self, tokens: &mut Vec<Token>, t: TokenType) {
         let token = Token {
             t: t,
-            line: self.line,
-            pos: self.start,
-            len: self.current - self.start,
+            loc: Location {
+                line: self.line as u32,
+                pos: self.start as u32,
+                len: (self.current - self.start) as u32,
+            },
         };
         self.check_stmt_ender(&token);
         tokens.push(token);
+    }
+
+    fn get_loc(&self) -> Location {
+        Location {
+            line: self.line as u32,
+            pos: self.start as u32,
+            len: (self.current - self.start) as u32,
+        }
     }
 
     fn is_at_end(&self) -> bool {
@@ -274,7 +283,7 @@ impl Scanner {
         match str_val.parse::<u64>() {
             Ok(n) => self.add_token(tokens, TokenType::NumberLit(n)),
             Err(_) => self.error_handler.report(
-                self.line,
+                self.get_loc(),
                 &format!("Could not parse {} as a number", str_val),
             ),
         }

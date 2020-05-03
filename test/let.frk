@@ -1,0 +1,6 @@
+// Test let statement
+
+export fun Main() i32 {
+    let x = 42
+    return x
+}
