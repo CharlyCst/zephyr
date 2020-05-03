@@ -153,17 +153,29 @@ impl Compiler {
                         .error_handler
                         .report_internal("Control expression not yet implemented"),
                 },
-                mir::Statement::Binop { binop } => match binop {
-                    mir::Binop::I32Add => code.push(INSTR_I32_ADD),
-                    _ => self
-                        .error_handler
-                        .report_internal("Binop not yet implemented"),
-                },
+                mir::Statement::Binop { binop } => code.push(get_binop(binop)),
                 _ => self
                     .error_handler
                     .report_internal("Statement not yet implemented"),
             }
         }
+    }
+}
+
+fn get_binop(binop: mir::Binop) -> Instr {
+    match binop {
+        mir::Binop::I32Add => INSTR_I32_ADD,
+        mir::Binop::I32Sub => INSTR_I32_SUB,
+        mir::Binop::I32Mul => INSTR_I32_MUL,
+        mir::Binop::I32Div => INSTR_I32_DIV_U,
+        mir::Binop::I32Xor => INSTR_I32_XOR,
+
+        mir::Binop::I64Add => INSTR_I64_ADD,
+        mir::Binop::I64Sub => INSTR_I64_SUB,
+        mir::Binop::I64Mul => INSTR_I64_MUL,
+        mir::Binop::I64Div => INSTR_I64_DIV_U,
+
+        _ => unimplemented!(),
     }
 }
 
