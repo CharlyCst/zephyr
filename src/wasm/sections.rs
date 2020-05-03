@@ -32,7 +32,7 @@ impl SectionType {
                 results.push(type_to_bytes(*t))
             }
 
-            fun_type.push(Func);
+            fun_type.push(FUNC);
             fun_type.append(&mut to_leb(params.len()));
             fun_type.extend(params);
             fun_type.append(&mut to_leb(results.len()));

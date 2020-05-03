@@ -24,20 +24,26 @@ pub const KIND_FUNC: Kind = 0;
 
 // Types
 type Type = u8;
+pub const BLOCK_TYPE: Type = 0x40;
+pub const FUNC: Type = 0x60;
+pub const ANY_FUNC: Type = 0x70;
 pub const I32: Type = 0x7f;
 pub const I64: Type = 0x7e;
 pub const F32: Type = 0x7d;
 pub const F64: Type = 0x7c;
-pub const AnyFunc: Type = 0x70;
-pub const Func: Type = 0x60;
-pub const BlockType: Type = 0x40;
 
 // Instructions
 pub type Instr = u8;
 // Control
 pub const INSTR_UNREACHABLE: Instr = 0x00;
 pub const INSTR_NOP: Instr = 0x01;
+pub const INSTR_BLOCK: Instr = 0x02;
+pub const INSTR_LOOP: Instr = 0x03;
+pub const INSTR_IF: Instr = 0x04;
+pub const INSTR_ELSE: Instr = 0x05;
 pub const INSTR_END: Instr = 0x0b;
+pub const INSTR_BR: Instr = 0x0c;
+pub const INSTR_BR_IF: Instr = 0x0d;
 pub const INSTR_RETURN: Instr = 0x0f;
 // Variables
 pub const INSTR_LOCAL_GET: Instr = 0x20;

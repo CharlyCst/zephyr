@@ -7,6 +7,35 @@ use crate::mir;
 use std::collections::HashMap;
 
 type LocalsMap = HashMap<mir::LocalId, usize>;
+type BlocksMap = HashMap<mir::BasicBlockId, usize>;
+
+struct CompilerState {
+    locals: LocalsMap,
+    blocks: BlocksMap,
+    depth: usize,
+}
+
+impl CompilerState {
+    pub fn new() -> CompilerState {
+        CompilerState {
+            locals: HashMap::new(),
+            blocks: HashMap::new(),
+            depth: 0,
+        }
+    }
+    pub fn block_start(&mut self, label: mir::BasicBlockId) {
+        self.blocks.insert(label, self.depth);
+        self.depth += 1;
+    }
+
+    pub fn block_end(&mut self) {
+        self.depth -= 1;
+    }
+
+    pub fn get_label(&self, label: mir::BasicBlockId) -> usize {
+        self.depth - self.blocks[&label] - 1
+    }
+}
 
 pub struct Compiler {
     error_handler: ErrorHandler,
@@ -32,7 +61,7 @@ impl Compiler {
     fn function(&mut self, fun: mir::Function) -> wasm::Function {
         let mut params = Vec::new();
         let mut results = Vec::new();
-        let mut locals = HashMap::new();
+        let mut state = CompilerState::new();
 
         for param in fun.param_types.iter() {
             let t = mir_t_to_wasm(*param);
@@ -59,8 +88,8 @@ impl Compiler {
         };
 
         let mut code = Vec::new();
-        self.locals(&fun, &mut locals, &mut code);
-        self.body(fun.body, &locals, &mut code);
+        self.locals(&fun, &mut state.locals, &mut code);
+        self.body(fun.body, &mut state, &mut code);
         code.push(INSTR_END);
 
         wasm::Function {
@@ -90,10 +119,12 @@ impl Compiler {
         code.extend(local_decl);
     }
 
-    fn body(&mut self, block: mir::Block, locals_map: &LocalsMap, code: &mut Vec<Instr>) {
+    fn body(&mut self, block: mir::Block, s: &mut CompilerState, code: &mut Vec<Instr>) {
         match block {
-            mir::Block::Block { id, stmts } => {
-                self.statements(stmts, locals_map, code);
+            mir::Block::Block { stmts, id } => {
+                s.block_start(id);
+                self.statements(stmts, s, code);
+                s.block_end();
             }
             _ => self
                 .error_handler
@@ -101,33 +132,58 @@ impl Compiler {
         }
     }
 
-    fn block(&mut self, block: &mir::Block, locals_map: &LocalsMap, code: &mut Vec<Instr>) {
+    fn block(&mut self, block: mir::Block, s: &mut CompilerState, code: &mut Vec<Instr>) {
         match block {
-            mir::Block::Block { id, stmts } => {}
-            mir::Block::Loop { id, stmts } => {}
+            mir::Block::Block { stmts, id } => {
+                s.block_start(id);
+                code.push(INSTR_BLOCK);
+                code.push(BLOCK_TYPE);
+                self.statements(stmts, s, code);
+                code.push(INSTR_END);
+                s.block_end();
+            }
+            mir::Block::Loop { stmts, id } => {
+                s.block_start(id);
+                code.push(INSTR_LOOP);
+                code.push(BLOCK_TYPE);
+                self.statements(stmts, s, code);
+                code.push(INSTR_END);
+                s.block_end();
+            }
             mir::Block::If {
-                id,
                 then_stmts,
                 else_stmts,
-            } => {}
+                id,
+            } => {
+                s.block_start(id);
+                code.push(INSTR_IF);
+                code.push(BLOCK_TYPE);
+                self.statements(then_stmts, s, code);
+                if else_stmts.len() > 0 {
+                    code.push(INSTR_ELSE);
+                    self.statements(else_stmts, s, code);
+                }
+                code.push(INSTR_END);
+                s.block_end();
+            }
         }
     }
 
     fn statements(
         &mut self,
         stmts: Vec<mir::Statement>,
-        locals_map: &LocalsMap,
+        s: &mut CompilerState,
         code: &mut Vec<Instr>,
     ) {
         for stmt in stmts {
             match stmt {
                 mir::Statement::Set { l_id } => {
-                    let local_idx = locals_map[&l_id];
+                    let local_idx = s.locals[&l_id];
                     code.push(INSTR_LOCAL_SET);
                     code.extend(to_leb(local_idx));
                 }
                 mir::Statement::Get { l_id } => {
-                    let local_idx = locals_map[&l_id];
+                    let local_idx = s.locals[&l_id];
                     code.push(INSTR_LOCAL_GET);
                     code.extend(to_leb(local_idx));
                 }
@@ -149,11 +205,18 @@ impl Compiler {
                 },
                 mir::Statement::Control { cntrl } => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
-                    _ => self
-                        .error_handler
-                        .report_internal("Control expression not yet implemented"),
+                    mir::Control::Br(label) => {
+                        code.push(INSTR_BR);
+                        code.extend(to_leb(s.get_label(label)));
+                    }
+                    mir::Control::BrIf(label) => {
+                        code.push(INSTR_BR_IF);
+                        code.extend(to_leb(s.get_label(label)));
+                    }
                 },
+                mir::Statement::Block { block } => self.block(*block, s, code),
                 mir::Statement::Binop { binop } => code.push(get_binop(binop)),
+                mir::Statement::Relop { relop } => code.push(get_relop(relop)),
                 _ => self
                     .error_handler
                     .report_internal("Statement not yet implemented"),
@@ -174,6 +237,24 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::I64Sub => INSTR_I64_SUB,
         mir::Binop::I64Mul => INSTR_I64_MUL,
         mir::Binop::I64Div => INSTR_I64_DIV_U,
+
+        _ => unimplemented!(),
+    }
+}
+
+fn get_relop(relop: mir::Relop) -> Instr {
+    match relop {
+        mir::Relop::I32Eq => INSTR_I32_EQ,
+        mir::Relop::I32Lt => INSTR_I32_LT_S,
+        mir::Relop::I32Gt => INSTR_I32_GT_S,
+        mir::Relop::I32Le => INSTR_I32_LE_S,
+        mir::Relop::I32Ge => INSTR_I32_GE_S,
+
+        mir::Relop::I64Eq => INSTR_I64_EQ,
+        mir::Relop::I64Lt => INSTR_I64_LT_S,
+        mir::Relop::I64Gt => INSTR_I64_GT_S,
+        mir::Relop::I64Le => INSTR_I64_LE_S,
+        mir::Relop::I64Ge => INSTR_I64_GE_S,
 
         _ => unimplemented!(),
     }
