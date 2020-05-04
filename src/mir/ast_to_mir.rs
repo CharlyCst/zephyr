@@ -237,8 +237,9 @@ impl MIRProducer {
                 binop,
                 expr_right,
                 t_id,
+                op_t_id,
             } => {
-                let t = get_type(*t_id, s)?;
+                let t = get_type(*op_t_id, s)?;
                 let from_binop = get_binop(*binop, t)?;
                 self.reduce_expr(expr_left, stmts, s)?;
                 self.reduce_expr(expr_right, stmts, s)?;

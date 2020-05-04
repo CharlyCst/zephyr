@@ -78,7 +78,8 @@ pub enum Expression {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
         expr_right: Box<Expression>,
-        t_id: TypeId,
+        t_id: TypeId,    // Result type
+        op_t_id: TypeId, // Operands types
     },
     Unary {
         unop: UnaryOperator,

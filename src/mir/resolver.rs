@@ -317,6 +317,7 @@ impl NameResolver {
                             binop: *binop,
                             expr_right: Box::new(right_expr),
                             t_id: left_t_id,
+                            op_t_id: left_t_id,
                         };
                         (expr, left_t_id)
                     }
@@ -331,6 +332,7 @@ impl NameResolver {
                             binop: *binop,
                             expr_right: Box::new(right_expr),
                             t_id: left_t_id,
+                            op_t_id: left_t_id,
                         };
                         (expr, left_t_id)
                     }
@@ -345,6 +347,7 @@ impl NameResolver {
                             binop: *binop,
                             expr_right: Box::new(right_expr),
                             t_id: T_ID_BOOL,
+                            op_t_id: left_t_id,
                         };
                         (expr, T_ID_BOOL)
                     }
@@ -356,6 +359,7 @@ impl NameResolver {
                             binop: *binop,
                             expr_right: Box::new(right_expr),
                             t_id: T_ID_BOOL,
+                            op_t_id: left_t_id,
                         };
                         (expr, T_ID_BOOL)
                     }
