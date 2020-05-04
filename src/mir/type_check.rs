@@ -1,3 +1,4 @@
+use super::types::id::T_ID_INTEGER;
 use super::types::{Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
 use crate::error::ErrorHandler;
@@ -47,18 +48,32 @@ impl TypeChecker {
     }
 
     fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
+        let integers = var_store.get(T_ID_INTEGER);
         let mut store = TypeStore::new();
         for var in var_store {
-            if var.types.len() != 1 {
-                self.error_handler.silent_report();
-                store.put(Type::Bug);
-                continue;
+            if var.types.len() == 1 {
+                store.put(var.types[0].clone())
+            } else if var.types.len() == 0 {
+                // TODO: improve error handling...
+                self.error_handler
+                    .report_line(0, "Could not find a type satisfying constraint")
+            } else {
+                // Choose arbitrary type if applicable
+                if var.types == integers.types {
+                    store.put(Type::I64);
+                } else {
+                    // TODO: improve error handling...
+                    self.error_handler.report_line(0, "Could not infer type")
+                }
             }
-            store.put(var.types[0].clone())
         }
 
         store
     }
+
+    // fn try_reduce(types: Vec<Type>) -> Result<Type, String>{
+    //     if types.len() == 1 {}
+    // }
 
     // Apply a constraint, return true if the constraint helped removing type candidates,
     // i.e. we are making progress

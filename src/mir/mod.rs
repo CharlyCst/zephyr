@@ -1,4 +1,4 @@
-use crate::parse;
+use crate::ast;
 
 use self::names::NameStore;
 use self::types::{ConstraintStore, TypeStore, TypeVarStore};
@@ -29,9 +29,9 @@ pub struct TypedProgram {
 
 pub use mir::Program;
 
-pub fn to_mir(functions: Vec<parse::Function>) -> mir::Program {
+pub fn to_mir(ast_program: ast::Program) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new();
-    let program = name_resolver.resolve(functions);
+    let program = name_resolver.resolve(ast_program.funs);
 
     println!("\n/// Name Resolution ///\n");
 

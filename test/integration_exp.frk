@@ -27,8 +27,4 @@ export fun Main() i32 {
         return 42
     }
     return 1
-
-    // For now necessary for type checking, remove this asap
-    return x
-    return n
 }
