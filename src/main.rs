@@ -1,10 +1,9 @@
 use std::env;
 use std::fs;
 
+mod ast;
 mod error;
 mod mir;
-mod parse;
-mod scan;
 mod wasm;
 
 fn main() {
@@ -21,33 +20,8 @@ fn main() {
 }
 
 fn compile(code: String, output_path: &str) {
-    println!("\n/// Scanning ///\n");
-
-    let mut scanner = scan::Scanner::new(code);
-    let tokens = scanner.scan();
-
-    for token in tokens.iter() {
-        print!("{}", token);
-    }
-    println!("");
-
-    println!("\n/// Parsing ///\n");
-
-    let mut parser = parse::Parser::new(tokens);
-    let functions = parser.parse();
-
-    for stmt in functions.iter() {
-        println!("{}", stmt);
-    }
-
-    if parser.success() {
-        println!("\nSuccess");
-    } else {
-        println!("\nFailure");
-        std::process::exit(1);
-    }
-
-    let mir_program = mir::to_mir(functions);
+    let ast_program = ast::get_ast(code);
+    let mir_program = mir::to_mir(ast_program);
     let binary = wasm::to_wasm(mir_program);
 
     match fs::write(output_path, binary) {

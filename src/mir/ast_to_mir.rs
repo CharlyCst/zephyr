@@ -6,8 +6,8 @@ use super::names::{
 use super::types::{Type as ASTTypes, TypeId, TypeStore};
 use super::TypedProgram;
 
+use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use crate::error::ErrorHandler;
-use crate::parse::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use std::convert::TryInto;
 
 enum FromBinop {

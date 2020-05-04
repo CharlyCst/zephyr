@@ -1,6 +1,6 @@
 use super::types::TypeId;
+use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
-use crate::parse::{BinaryOperator, UnaryOperator};
 use std::fmt;
 
 pub type NameId = usize;
