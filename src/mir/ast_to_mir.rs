@@ -37,15 +37,13 @@ impl State {
     }
 }
 
-pub struct MIRProducer {
-    error_handler: ErrorHandler,
+pub struct MIRProducer<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl MIRProducer {
-    pub fn new() -> MIRProducer {
-        MIRProducer {
-            error_handler: ErrorHandler::new(),
-        }
+impl<'a> MIRProducer<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> MIRProducer {
+        MIRProducer { err: error_handler }
     }
 
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
@@ -55,7 +53,7 @@ impl MIRProducer {
         for fun in prog.funs.into_iter() {
             match self.reduce_fun(fun, &mut state) {
                 Ok(fun) => funs.push(fun),
-                Err(err) => self.error_handler.report_internal(&err),
+                Err(err) => self.err.report_internal_no_loc(err),
             }
         }
 
@@ -71,8 +69,10 @@ impl MIRProducer {
                 ret_t.into_iter().map(|t| convert_type(t)).collect();
             (param_t?, ret_t?)
         } else {
-            self.error_handler
-                .report_internal_loc(fun.loc, "Function does not have function type");
+            self.err.report_internal(
+                fun.loc,
+                String::from("Function does not have function type"),
+            );
             (vec![], vec![])
         };
 
@@ -255,8 +255,8 @@ impl MIRProducer {
                 stmts.append(&mut unop_stmts);
             }
             _ => self
-                .error_handler
-                .report_internal("Expression not yet handled in MIR: {"),
+                .err
+                .report_internal_no_loc(String::from("Expression not yet handled in MIR: {")),
         }
         Ok(())
     }

@@ -73,15 +73,13 @@ impl State {
     }
 }
 
-pub struct NameResolver {
-    error_handler: ErrorHandler,
+pub struct NameResolver<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl NameResolver {
-    pub fn new() -> NameResolver {
-        NameResolver {
-            error_handler: ErrorHandler::new(),
-        }
+impl<'a> NameResolver<'a> {
+    pub fn new(error_handler: &'a mut ErrorHandler) -> NameResolver {
+        NameResolver { err: error_handler }
     }
 
     pub fn resolve(&mut self, funs: Vec<ast::Function>) -> ResolvedProgram {
@@ -113,8 +111,8 @@ impl NameResolver {
         let fun_name = if let Some(name) = state.find_in_context(&fun.ident) {
             name
         } else {
-            self.error_handler
-                .report_internal_loc(fun.loc, "Function name is not yet in context");
+            self.err
+                .report_internal(fun.loc, String::from("Function name is not yet in context"));
             state.exit_scope();
             return None;
         };
@@ -125,8 +123,8 @@ impl NameResolver {
             let t = match get_var_type(&param) {
                 Some(t) => t,
                 None => {
-                    self.error_handler
-                        .report(param.loc, "Missing or unrecognized type");
+                    self.err
+                        .report(param.loc, String::from("Missing or unrecognized type"));
                     continue;
                 }
             };
@@ -138,11 +136,9 @@ impl NameResolver {
                     n_id: n_id,
                 }),
                 Err(decl_loc) => {
-                    let error = format!(
-                        "Name {} already defined in current context at line {}",
-                        fun.ident, decl_loc.line
-                    );
-                    self.error_handler.report(fun.loc, &error);
+                    // TODO: find a way to indicate line of definition
+                    let error = format!("Name {} already defined in current context", fun.ident);
+                    self.err.report(fun.loc, error);
                 }
             }
         }
@@ -182,9 +178,9 @@ impl NameResolver {
                         };
                         (var, name.t_id)
                     } else {
-                        self.error_handler.report(
+                        self.err.report(
                             var.loc,
-                            &format!(
+                            format!(
                                 "Variable name {} is not defined in current scope",
                                 var.ident
                             ),
@@ -214,11 +210,10 @@ impl NameResolver {
                             }
                         }
                         Err(decl_loc) => {
-                            let error = format!(
-                                "Name {} already defined in current context at line {}",
-                                var.ident, decl_loc.line
-                            );
-                            self.error_handler.report(var.loc, &error);
+                            // TODO: find a way to indicate line of duplicate
+                            let error =
+                                format!("Name {} already defined in current context", var.ident,);
+                            self.err.report(var.loc, error);
                             continue;
                         }
                     }
@@ -400,9 +395,9 @@ impl NameResolver {
                     };
                     (expr, name.t_id)
                 } else {
-                    self.error_handler.report(
+                    self.err.report(
                         var.loc,
-                        &format!("Variable {} used but not declared", var.ident),
+                        format!("Variable {} used but not declared", var.ident),
                     );
                     let dummy_expr = Expression::Literal {
                         value: Value::Boolean {
@@ -427,12 +422,14 @@ impl NameResolver {
                     if let Some(known_t) = check_built_in_type(&t) {
                         params.push(known_t);
                     } else {
-                        self.error_handler
-                            .report(param.loc, "Unknown parameter type");
+                        self.err
+                            .report(param.loc, format!("Unknown parameter type: {}", t));
                     }
                 } else {
-                    self.error_handler
-                        .report_internal_loc(param.loc, "No type associated to function parameter");
+                    self.err.report_internal(
+                        param.loc,
+                        String::from("No type associated to function parameter"),
+                    );
                 }
             }
 
@@ -441,18 +438,15 @@ impl NameResolver {
                 if let Some(known_t) = check_built_in_type(&t) {
                     results.push(known_t);
                 } else {
-                    self.error_handler.report(*loc, "Unknown result type");
+                    self.err.report(*loc, format!("Unknown result type: {}", t));
                 }
             }
 
             if let Err(decl_loc) =
                 state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc)
             {
-                let error = format!(
-                    "Function {} already declared line {}",
-                    fun.ident, decl_loc.line
-                );
-                self.error_handler.report(fun.loc, &error);
+                let error = format!("Function {} declared multiple times", fun.ident);
+                self.err.report(fun.loc, error);
             }
         }
     }

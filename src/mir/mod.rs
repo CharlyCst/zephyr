@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::error::ErrorHandler;
 
 use self::names::NameStore;
 use self::types::{ConstraintStore, TypeStore, TypeVarStore};
@@ -29,8 +30,8 @@ pub struct TypedProgram {
 
 pub use mir::Program;
 
-pub fn to_mir(ast_program: ast::Program) -> mir::Program {
-    let mut name_resolver = resolver::NameResolver::new();
+pub fn to_mir(ast_program: ast::Program, error_handler: &mut ErrorHandler) -> mir::Program {
+    let mut name_resolver = resolver::NameResolver::new(error_handler);
     let program = name_resolver.resolve(ast_program.funs);
 
     println!("\n/// Name Resolution ///\n");
@@ -41,14 +42,14 @@ pub fn to_mir(ast_program: ast::Program) -> mir::Program {
 
     println!("\n/// Type Checking ///\n");
 
-    let mut type_checker = type_check::TypeChecker::new();
+    let mut type_checker = type_check::TypeChecker::new(error_handler);
     let typed_program = type_checker.check(program);
 
     println!("{}", typed_program.types);
 
     println!("\n/// MIR Production ///\n");
 
-    let mut mir_producer = ast_to_mir::MIRProducer::new();
+    let mut mir_producer = ast_to_mir::MIRProducer::new(error_handler);
     let mir = mir_producer.reduce(typed_program);
 
     println!("{}", mir);
