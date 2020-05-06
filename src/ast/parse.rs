@@ -2,14 +2,14 @@ use super::ast::*;
 use super::tokens::{Token, TokenType};
 use crate::error::{ErrorHandler, Location};
 
-pub struct Parser<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Parser<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
     tokens: Vec<Token>,
     current: usize,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, error_handler: &'a mut ErrorHandler) -> Parser<'a> {
+impl<'a, 'b> Parser<'a, 'b> {
+    pub fn new(tokens: Vec<Token>, error_handler: &'b mut ErrorHandler<'a>) -> Parser<'a, 'b> {
         Parser {
             err: error_handler,
             tokens: tokens,

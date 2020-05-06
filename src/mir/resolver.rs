@@ -73,12 +73,12 @@ impl State {
     }
 }
 
-pub struct NameResolver<'a> {
-    err: &'a mut ErrorHandler,
+pub struct NameResolver<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
 }
 
-impl<'a> NameResolver<'a> {
-    pub fn new(error_handler: &'a mut ErrorHandler) -> NameResolver {
+impl<'a, 'b> NameResolver<'a, 'b> {
+    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> NameResolver<'a, 'b> {
         NameResolver { err: error_handler }
     }
 

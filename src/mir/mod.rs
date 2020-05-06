@@ -30,7 +30,10 @@ pub struct TypedProgram {
 
 pub use mir::Program;
 
-pub fn to_mir(ast_program: ast::Program, error_handler: &mut ErrorHandler) -> mir::Program {
+pub fn to_mir<'a, 'b>(
+    ast_program: ast::Program,
+    error_handler: &'b mut ErrorHandler<'a>,
+) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
     let program = name_resolver.resolve(ast_program.funs);
 
@@ -47,12 +50,16 @@ pub fn to_mir(ast_program: ast::Program, error_handler: &mut ErrorHandler) -> mi
 
     println!("{}", typed_program.types);
 
+    error_handler.print_and_exit();
+
     println!("\n/// MIR Production ///\n");
 
     let mut mir_producer = ast_to_mir::MIRProducer::new(error_handler);
     let mir = mir_producer.reduce(typed_program);
 
     println!("{}", mir);
+
+    error_handler.print_and_exit();
 
     mir
 }

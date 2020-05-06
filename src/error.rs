@@ -22,16 +22,18 @@ impl Location {
     }
 }
 
-pub struct ErrorHandler {
+pub struct ErrorHandler<'a> {
     has_error: bool,
     errors: Vec<Error>,
+    code: &'a str,
 }
 
-impl ErrorHandler {
-    pub fn new() -> ErrorHandler {
+impl<'a> ErrorHandler<'a> {
+    pub fn new(code: &str) -> ErrorHandler {
         ErrorHandler {
             has_error: false,
             errors: Vec::new(),
+            code: code,
         }
     }
 
@@ -75,7 +77,20 @@ impl ErrorHandler {
         self.has_error = true;
     }
 
-    pub fn failed(&self) -> bool {
-        self.has_error
+    // If at least one error has been reported, print the errors and exit
+    pub fn print_and_exit(&self) {
+        if !self.has_error {
+            return;
+        }
+
+        for error in &self.errors {
+            ErrorHandler::print(error);
+        }
+
+        std::process::exit(65);
+    }
+
+    fn print(e: &Error) {
+        println!("{}", e.message);
     }
 }

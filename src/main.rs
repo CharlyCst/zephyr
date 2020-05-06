@@ -13,15 +13,15 @@ fn main() {
         output_path = &args[2];
     } else if args.len() != 2 {
         println!("Usage: fork <file> [out]");
-        std::process::exit(1);
+        std::process::exit(64);
     }
     let code = fs::read_to_string(&args[1]).expect("File not found");
     compile(code, output_path);
 }
 
 fn compile(code: String, output_path: &str) {
-    let mut error_handler = error::ErrorHandler::new();
-    let ast_program = ast::get_ast(code, &mut error_handler);
+    let mut error_handler = error::ErrorHandler::new(&code);
+    let ast_program = ast::get_ast(&code, &mut error_handler);
     let mir_program = mir::to_mir(ast_program, &mut error_handler);
     let binary = wasm::to_wasm(mir_program, &mut error_handler);
 

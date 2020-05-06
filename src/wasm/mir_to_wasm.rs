@@ -37,12 +37,12 @@ impl CompilerState {
     }
 }
 
-pub struct Compiler<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Compiler<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
 }
 
-impl<'a> Compiler<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> Compiler {
+impl<'a, 'b> Compiler<'a, 'b> {
+    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> Compiler<'a, 'b> {
         Compiler { err: error_handler }
     }
 

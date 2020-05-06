@@ -5,12 +5,12 @@ use crate::error::ErrorHandler;
 
 use std::cmp::Ordering;
 
-pub struct TypeChecker<'a> {
-    err: &'a mut ErrorHandler,
+pub struct TypeChecker<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
 }
 
-impl<'a> TypeChecker<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> TypeChecker {
+impl<'a, 'b> TypeChecker<'a, 'b> {
+    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> TypeChecker<'a, 'b> {
         TypeChecker { err: error_handler }
     }
 

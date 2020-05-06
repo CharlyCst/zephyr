@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 const RADIX: u32 = 10;
 
-pub struct Scanner<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Scanner<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
     code: Vec<char>,
     start: usize,
     current: usize,
@@ -14,8 +14,8 @@ pub struct Scanner<'a> {
     parenthesis_count: i32,
 }
 
-impl<'a> Scanner<'a> {
-    pub fn new(code: String, error_handler: &'a mut ErrorHandler) -> Scanner {
+impl<'a, 'b> Scanner<'a, 'b> {
+    pub fn new(code: &str, error_handler: &'b mut ErrorHandler<'a>) -> Scanner<'a, 'b> {
         let keywords: HashMap<String, TokenType> = [
             (String::from("let"), TokenType::Let),
             (String::from("var"), TokenType::Var),
@@ -34,7 +34,7 @@ impl<'a> Scanner<'a> {
 
         Scanner {
             err: error_handler,
-            code: code.chars().collect(),
+            code: code.chars().collect(), // TODO: remove this copy
             start: 0,
             current: 0,
             keywords: keywords,
