@@ -23,7 +23,7 @@ fn compile(code: String, output_path: &str) {
     let mut error_handler = error::ErrorHandler::new();
     let ast_program = ast::get_ast(code, &mut error_handler);
     let mir_program = mir::to_mir(ast_program, &mut error_handler);
-    let binary = wasm::to_wasm(mir_program);
+    let binary = wasm::to_wasm(mir_program, &mut error_handler);
 
     match fs::write(output_path, binary) {
         Ok(_) => (),

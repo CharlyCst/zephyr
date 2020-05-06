@@ -37,15 +37,13 @@ impl CompilerState {
     }
 }
 
-pub struct Compiler {
-    error_handler: ErrorHandler,
+pub struct Compiler<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl Compiler {
-    pub fn new() -> Compiler {
-        Compiler {
-            error_handler: ErrorHandler::new(),
-        }
+impl<'a> Compiler<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> Compiler {
+        Compiler { err: error_handler }
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
@@ -78,8 +76,9 @@ impl Compiler {
                 Some(String::from("_start")) // WASI main function
             } else {
                 if fun.ident == "main" {
-                    self.error_handler
-                        .report_line(0, "Main function must be capitalized") // TODO report line
+                    self.err
+                        .report_no_loc(String::from("Main function must be capitalized"))
+                    // TODO report line
                 }
                 Some(fun.ident.clone())
             }
@@ -126,9 +125,9 @@ impl Compiler {
                 self.statements(stmts, s, code);
                 s.block_end();
             }
-            _ => self
-                .error_handler
-                .report_internal("The body of a function must by a Block::Block"),
+            _ => self.err.report_internal_no_loc(String::from(
+                "The body of a function must by a Block::Block",
+            )),
         }
     }
 
@@ -197,11 +196,11 @@ impl Compiler {
                         code.extend(to_leb(x as usize));
                     }
                     mir::Value::F32(_) => self
-                        .error_handler
-                        .report_internal("Floating points not yet supported"),
+                        .err
+                        .report_internal_no_loc(String::from("Floating points not yet supported")),
                     mir::Value::F64(_) => self
-                        .error_handler
-                        .report_internal("Floating points not yet supported"),
+                        .err
+                        .report_internal_no_loc(String::from("Floating points not yet supported")),
                 },
                 mir::Statement::Control { cntrl } => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
@@ -218,8 +217,8 @@ impl Compiler {
                 mir::Statement::Binop { binop } => code.push(get_binop(binop)),
                 mir::Statement::Relop { relop } => code.push(get_relop(relop)),
                 _ => self
-                    .error_handler
-                    .report_internal("Statement not yet implemented"),
+                    .err
+                    .report_internal_no_loc(String::from("Statement not yet implemented")),
             }
         }
     }
