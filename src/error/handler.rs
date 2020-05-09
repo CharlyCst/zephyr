@@ -1,60 +1,9 @@
-use std::cmp::Ordering;
+use super::errors::{Error, ErrorType, Location};
 
 const RED: &'static str = "\x1B[31m";
 const MAGENTA: &'static str = "\x1B[35m";
 const BOLD: &'static str = "\x1B[1m";
 const END: &'static str = "\x1B[0m";
-
-#[derive(Copy, Clone, Ord, Eq, PartialEq, PartialOrd)]
-pub struct Location {
-    pub pos: u32,
-    pub len: u32,
-}
-
-struct Error {
-    loc: Option<Location>,
-    t: ErrorType,
-    message: String,
-}
-
-#[derive(Copy, Clone)]
-enum ErrorType {
-    Internal,
-    Any,
-}
-
-// Error without location are the smallest
-impl Ord for Error {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self.loc, other.loc) {
-            (None, None) => Ordering::Equal,
-            (Some(_), None) => Ordering::Greater,
-            (None, Some(_)) => Ordering::Less,
-            (Some(loc_1), Some(loc_2)) => loc_1.cmp(&loc_2),
-        }
-    }
-}
-
-impl PartialOrd for Error {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Eq for Error {}
-
-impl PartialEq for Error {
-    fn eq(&self, other: &Self) -> bool {
-        self.loc == other.loc
-    }
-}
-
-impl Location {
-    // Use to create empty location when needed
-    pub fn dummy() -> Location {
-        Location { pos: 0, len: 0 }
-    }
-}
 
 pub struct ErrorHandler<'a> {
     has_error: bool,

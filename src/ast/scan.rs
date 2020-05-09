@@ -134,7 +134,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                     self.identifier(tokens)
                 } else {
                     self.err
-                        .report(self.get_loc(), format!("Unexpected character {}", c))
+                        .report(self.get_loc(), format!("Unexpected character \"{}\"", c))
                 }
             }
         }
