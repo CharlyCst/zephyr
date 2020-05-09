@@ -188,7 +188,8 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         continue;
                     };
                     let (expr, t_id) = self.resolve_expression(&mut expr, state);
-                    state.new_constraint(TypeConstraint::Equality(var_t_id, t_id));
+                    let loc = var.loc.merge(expr.get_loc());
+                    state.new_constraint(TypeConstraint::Equality(var_t_id, t_id, loc));
                     Statement::AssignStmt {
                         var: Box::new(var),
                         expr: Box::new(expr),
@@ -199,7 +200,9 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         Ok((n_id, var_t_id)) => {
                             locals.push(n_id);
                             let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
-                            state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id));
+                            let loc = var.loc.merge(expr.get_loc());
+                            state
+                                .new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
                             Statement::LetStmt {
                                 var: Box::new(Variable {
                                     ident: var.ident,
@@ -220,7 +223,11 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
                 ast::Statement::IfStmt { mut expr, block } => {
                     let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
-                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    state.new_constraint(TypeConstraint::Equality(
+                        expr_t_id,
+                        T_ID_BOOL,
+                        expr.get_loc(),
+                    ));
                     let block = self.resolve_block(block, state, locals, fun_t_id);
                     Statement::IfStmt {
                         expr: Box::new(expr),
@@ -229,7 +236,11 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
                     let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
-                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    state.new_constraint(TypeConstraint::Equality(
+                        expr_t_id,
+                        T_ID_BOOL,
+                        expr.get_loc(),
+                    ));
                     let block = self.resolve_block(block, state, locals, fun_t_id);
                     Statement::WhileStmt {
                         expr: Box::new(expr),
@@ -239,14 +250,22 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 ast::Statement::ReturnStmt { expr, loc } => {
                     if let Some(mut ret_expr) = expr {
                         let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state);
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                        state.new_constraint(TypeConstraint::Return(
+                            fun_t_id,
+                            ret_t_id,
+                            expr.get_loc(),
+                        ));
                         Statement::ReturnStmt {
                             expr: Some(expr),
                             loc: loc,
                         }
                     } else {
                         let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                        state.new_constraint(TypeConstraint::Return(
+                            fun_t_id,
+                            ret_t_id,
+                            Location::dummy(), // TODO: how to deal with empty expressions?
+                        ));
                         Statement::ReturnStmt {
                             expr: None,
                             loc: loc,
@@ -277,19 +296,23 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 let (expr, t_id) = self.resolve_expression(expr, state);
                 match unop {
                     ast::UnaryOperator::Minus => {
-                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_NUMERIC));
+                        let loc = expr.get_loc();
+                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_NUMERIC, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
+                            loc: loc,
                             t_id: t_id,
                         };
                         (expr, t_id)
                     }
                     ast::UnaryOperator::Not => {
-                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_BOOL));
+                        let loc = expr.get_loc();
+                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_BOOL, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
+                            loc: loc,
                             t_id: t_id,
                         };
                         (expr, t_id)
@@ -305,12 +328,18 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 let (right_expr, right_t_id) = self.resolve_expression(expr_right, state);
                 match binop {
                     ast::BinaryOperator::Remainder => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_INTEGER));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_INTEGER,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
@@ -320,12 +349,18 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     | ast::BinaryOperator::Multiply
                     | ast::BinaryOperator::Minus
                     | ast::BinaryOperator::Divide => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_NUMERIC,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
@@ -335,24 +370,36 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     | ast::BinaryOperator::GreaterEqual
                     | ast::BinaryOperator::Less
                     | ast::BinaryOperator::LessEqual => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_NUMERIC,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
                         (expr, T_ID_BOOL)
                     }
                     ast::BinaryOperator::Equal => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_BASIC));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_BASIC,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };

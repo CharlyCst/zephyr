@@ -75,7 +75,6 @@ impl<'a> ErrorHandler<'a> {
 
         // Print all errors without location
         while err.loc.is_none() {
-            println!("{:?}", err.loc.is_none());
             self.print(err);
 
             if err_idx + 1 >= self.errors.len() {

@@ -238,6 +238,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 expr_right,
                 t_id,
                 op_t_id,
+                ..
             } => {
                 let t = get_type(*op_t_id, s)?;
                 let from_binop = get_binop(*binop, t)?;
@@ -248,7 +249,9 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                     FromBinop::Relop(relop) => stmts.push(Statement::Relop { relop: relop }),
                 }
             }
-            Expr::Unary { unop, expr, t_id } => {
+            Expr::Unary {
+                unop, expr, t_id, ..
+            } => {
                 let t = get_type(*t_id, s)?;
                 let mut unop_stmts = get_unop(*unop, t);
                 self.reduce_expr(expr, stmts, s)?;
