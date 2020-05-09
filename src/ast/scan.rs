@@ -4,19 +4,18 @@ use std::collections::HashMap;
 
 const RADIX: u32 = 10;
 
-pub struct Scanner {
-    error_handler: ErrorHandler,
+pub struct Scanner<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
     code: Vec<char>,
     start: usize,
     current: usize,
-    line: usize,
     keywords: HashMap<String, TokenType>,
     stmt_ender: bool,
     parenthesis_count: i32,
 }
 
-impl Scanner {
-    pub fn new(code: String) -> Scanner {
+impl<'a, 'b> Scanner<'a, 'b> {
+    pub fn new(code: &str, error_handler: &'b mut ErrorHandler<'a>) -> Scanner<'a, 'b> {
         let keywords: HashMap<String, TokenType> = [
             (String::from("let"), TokenType::Let),
             (String::from("var"), TokenType::Var),
@@ -34,11 +33,10 @@ impl Scanner {
         .collect();
 
         Scanner {
-            error_handler: ErrorHandler::new(),
-            code: code.chars().collect(),
+            err: error_handler,
+            code: code.chars().collect(), // TODO: remove this copy
             start: 0,
             current: 0,
-            line: 1,
             keywords: keywords,
             stmt_ender: false,
             parenthesis_count: 0,
@@ -124,7 +122,6 @@ impl Scanner {
                 }
             }
             '\n' => {
-                self.line += 1;
                 if self.stmt_ender {
                     self.add_token(tokens, TokenType::SemiColon)
                 }
@@ -136,8 +133,8 @@ impl Scanner {
                 } else if c.is_alphabetic() {
                     self.identifier(tokens)
                 } else {
-                    self.error_handler
-                        .report(self.get_loc(), &format!("Unexpected character {}", c))
+                    self.err
+                        .report(self.get_loc(), format!("Unexpected character \"{}\"", c))
                 }
             }
         }
@@ -178,7 +175,6 @@ impl Scanner {
         let token = Token {
             t: t,
             loc: Location {
-                line: self.line as u32,
                 pos: self.start as u32,
                 len: (self.current - self.start) as u32,
             },
@@ -189,7 +185,6 @@ impl Scanner {
 
     fn get_loc(&self) -> Location {
         Location {
-            line: self.line as u32,
             pos: self.start as u32,
             len: (self.current - self.start) as u32,
         }
@@ -219,9 +214,9 @@ impl Scanner {
             .collect::<String>();
         match str_val.parse::<u64>() {
             Ok(n) => self.add_token(tokens, TokenType::NumberLit(n)),
-            Err(_) => self.error_handler.report(
+            Err(_) => self.err.report(
                 self.get_loc(),
-                &format!("Could not parse {} as a number", str_val),
+                format!("Could not parse {} as a number", str_val),
             ),
         }
     }

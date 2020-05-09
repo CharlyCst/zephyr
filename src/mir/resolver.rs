@@ -73,15 +73,13 @@ impl State {
     }
 }
 
-pub struct NameResolver {
-    error_handler: ErrorHandler,
+pub struct NameResolver<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
 }
 
-impl NameResolver {
-    pub fn new() -> NameResolver {
-        NameResolver {
-            error_handler: ErrorHandler::new(),
-        }
+impl<'a, 'b> NameResolver<'a, 'b> {
+    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> NameResolver<'a, 'b> {
+        NameResolver { err: error_handler }
     }
 
     pub fn resolve(&mut self, funs: Vec<ast::Function>) -> ResolvedProgram {
@@ -113,8 +111,8 @@ impl NameResolver {
         let fun_name = if let Some(name) = state.find_in_context(&fun.ident) {
             name
         } else {
-            self.error_handler
-                .report_internal_loc(fun.loc, "Function name is not yet in context");
+            self.err
+                .report_internal(fun.loc, String::from("Function name is not yet in context"));
             state.exit_scope();
             return None;
         };
@@ -125,8 +123,8 @@ impl NameResolver {
             let t = match get_var_type(&param) {
                 Some(t) => t,
                 None => {
-                    self.error_handler
-                        .report(param.loc, "Missing or unrecognized type");
+                    self.err
+                        .report(param.loc, String::from("Missing or unrecognized type"));
                     continue;
                 }
             };
@@ -138,11 +136,9 @@ impl NameResolver {
                     n_id: n_id,
                 }),
                 Err(decl_loc) => {
-                    let error = format!(
-                        "Name {} already defined in current context at line {}",
-                        fun.ident, decl_loc.line
-                    );
-                    self.error_handler.report(fun.loc, &error);
+                    // TODO: find a way to indicate line of definition
+                    let error = format!("Name {} already defined in current context", fun.ident);
+                    self.err.report(fun.loc, error);
                 }
             }
         }
@@ -182,9 +178,9 @@ impl NameResolver {
                         };
                         (var, name.t_id)
                     } else {
-                        self.error_handler.report(
+                        self.err.report(
                             var.loc,
-                            &format!(
+                            format!(
                                 "Variable name {} is not defined in current scope",
                                 var.ident
                             ),
@@ -192,7 +188,8 @@ impl NameResolver {
                         continue;
                     };
                     let (expr, t_id) = self.resolve_expression(&mut expr, state);
-                    state.new_constraint(TypeConstraint::Equality(var_t_id, t_id));
+                    let loc = var.loc.merge(expr.get_loc());
+                    state.new_constraint(TypeConstraint::Equality(var_t_id, t_id, loc));
                     Statement::AssignStmt {
                         var: Box::new(var),
                         expr: Box::new(expr),
@@ -203,7 +200,9 @@ impl NameResolver {
                         Ok((n_id, var_t_id)) => {
                             locals.push(n_id);
                             let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
-                            state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id));
+                            let loc = var.loc.merge(expr.get_loc());
+                            state
+                                .new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
                             Statement::LetStmt {
                                 var: Box::new(Variable {
                                     ident: var.ident,
@@ -214,18 +213,21 @@ impl NameResolver {
                             }
                         }
                         Err(decl_loc) => {
-                            let error = format!(
-                                "Name {} already defined in current context at line {}",
-                                var.ident, decl_loc.line
-                            );
-                            self.error_handler.report(var.loc, &error);
+                            // TODO: find a way to indicate line of duplicate
+                            let error =
+                                format!("Name {} already defined in current context", var.ident,);
+                            self.err.report(var.loc, error);
                             continue;
                         }
                     }
                 }
                 ast::Statement::IfStmt { mut expr, block } => {
                     let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
-                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    state.new_constraint(TypeConstraint::Equality(
+                        expr_t_id,
+                        T_ID_BOOL,
+                        expr.get_loc(),
+                    ));
                     let block = self.resolve_block(block, state, locals, fun_t_id);
                     Statement::IfStmt {
                         expr: Box::new(expr),
@@ -234,7 +236,11 @@ impl NameResolver {
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
                     let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
-                    state.new_constraint(TypeConstraint::Equality(expr_t_id, T_ID_BOOL));
+                    state.new_constraint(TypeConstraint::Equality(
+                        expr_t_id,
+                        T_ID_BOOL,
+                        expr.get_loc(),
+                    ));
                     let block = self.resolve_block(block, state, locals, fun_t_id);
                     Statement::WhileStmt {
                         expr: Box::new(expr),
@@ -244,14 +250,22 @@ impl NameResolver {
                 ast::Statement::ReturnStmt { expr, loc } => {
                     if let Some(mut ret_expr) = expr {
                         let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state);
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                        state.new_constraint(TypeConstraint::Return(
+                            fun_t_id,
+                            ret_t_id,
+                            expr.get_loc(),
+                        ));
                         Statement::ReturnStmt {
                             expr: Some(expr),
                             loc: loc,
                         }
                     } else {
                         let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id));
+                        state.new_constraint(TypeConstraint::Return(
+                            fun_t_id,
+                            ret_t_id,
+                            Location::dummy(), // TODO: how to deal with empty expressions?
+                        ));
                         Statement::ReturnStmt {
                             expr: None,
                             loc: loc,
@@ -282,19 +296,23 @@ impl NameResolver {
                 let (expr, t_id) = self.resolve_expression(expr, state);
                 match unop {
                     ast::UnaryOperator::Minus => {
-                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_NUMERIC));
+                        let loc = expr.get_loc();
+                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_NUMERIC, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
+                            loc: loc,
                             t_id: t_id,
                         };
                         (expr, t_id)
                     }
                     ast::UnaryOperator::Not => {
-                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_BOOL));
+                        let loc = expr.get_loc();
+                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_BOOL, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
+                            loc: loc,
                             t_id: t_id,
                         };
                         (expr, t_id)
@@ -310,12 +328,18 @@ impl NameResolver {
                 let (right_expr, right_t_id) = self.resolve_expression(expr_right, state);
                 match binop {
                     ast::BinaryOperator::Remainder => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_INTEGER));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_INTEGER,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
@@ -325,12 +349,18 @@ impl NameResolver {
                     | ast::BinaryOperator::Multiply
                     | ast::BinaryOperator::Minus
                     | ast::BinaryOperator::Divide => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_NUMERIC,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
@@ -340,24 +370,36 @@ impl NameResolver {
                     | ast::BinaryOperator::GreaterEqual
                     | ast::BinaryOperator::Less
                     | ast::BinaryOperator::LessEqual => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_NUMERIC));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_NUMERIC,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
                         (expr, T_ID_BOOL)
                     }
                     ast::BinaryOperator::Equal => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id));
-                        state.new_constraint(TypeConstraint::Included(left_t_id, T_ID_BASIC));
+                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Included(
+                            left_t_id,
+                            T_ID_BASIC,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
+                            loc: loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
@@ -400,9 +442,9 @@ impl NameResolver {
                     };
                     (expr, name.t_id)
                 } else {
-                    self.error_handler.report(
+                    self.err.report(
                         var.loc,
-                        &format!("Variable {} used but not declared", var.ident),
+                        format!("Variable {} used but not declared", var.ident),
                     );
                     let dummy_expr = Expression::Literal {
                         value: Value::Boolean {
@@ -427,12 +469,14 @@ impl NameResolver {
                     if let Some(known_t) = check_built_in_type(&t) {
                         params.push(known_t);
                     } else {
-                        self.error_handler
-                            .report(param.loc, "Unknown parameter type");
+                        self.err
+                            .report(param.loc, format!("Unknown parameter type: {}", t));
                     }
                 } else {
-                    self.error_handler
-                        .report_internal_loc(param.loc, "No type associated to function parameter");
+                    self.err.report_internal(
+                        param.loc,
+                        String::from("No type associated to function parameter"),
+                    );
                 }
             }
 
@@ -441,18 +485,15 @@ impl NameResolver {
                 if let Some(known_t) = check_built_in_type(&t) {
                     results.push(known_t);
                 } else {
-                    self.error_handler.report(*loc, "Unknown result type");
+                    self.err.report(*loc, format!("Unknown result type: {}", t));
                 }
             }
 
             if let Err(decl_loc) =
                 state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc)
             {
-                let error = format!(
-                    "Function {} already declared line {}",
-                    fun.ident, decl_loc.line
-                );
-                self.error_handler.report(fun.loc, &error);
+                let error = format!("Function {} declared multiple times", fun.ident);
+                self.err.report(fun.loc, error);
             }
         }
     }

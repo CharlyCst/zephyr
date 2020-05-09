@@ -78,12 +78,14 @@ pub enum Expression {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
         expr_right: Box<Expression>,
+        loc: Location,
         t_id: TypeId,    // Result type
         op_t_id: TypeId, // Operands types
     },
     Unary {
         unop: UnaryOperator,
         expr: Box<Expression>,
+        loc: Location,
         t_id: TypeId,
     },
     // Call {
@@ -91,6 +93,20 @@ pub enum Expression {
     //     args: Vec<Expression>,
     //     t_id: TypeId,
     // },
+}
+
+impl Expression {
+    pub fn get_loc(&self) -> Location {
+        match self {
+            Expression::Variable { var } => var.loc,
+            Expression::Literal { value } => match value {
+                Value::Boolean { loc, .. } => *loc,
+                Value::Integer { loc, .. } => *loc,
+            },
+            Expression::Unary { loc, .. } => *loc,
+            Expression::Binary { loc, .. } => *loc,
+        }
+    }
 }
 
 // Stuff relative to names

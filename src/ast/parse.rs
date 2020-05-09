@@ -2,23 +2,19 @@ use super::ast::*;
 use super::tokens::{Token, TokenType};
 use crate::error::{ErrorHandler, Location};
 
-pub struct Parser {
-    error_handler: ErrorHandler,
+pub struct Parser<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
     tokens: Vec<Token>,
     current: usize,
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Parser {
+impl<'a, 'b> Parser<'a, 'b> {
+    pub fn new(tokens: Vec<Token>, error_handler: &'b mut ErrorHandler<'a>) -> Parser<'a, 'b> {
         Parser {
-            error_handler: ErrorHandler::new(),
+            err: error_handler,
             tokens: tokens,
             current: 0,
         }
-    }
-
-    pub fn success(&self) -> bool {
-        self.error_handler.success()
     }
 
     pub fn parse(&mut self) -> Program {
@@ -27,7 +23,7 @@ impl Parser {
         while !self.is_at_end() {
             match self.function() {
                 Ok(expr) => funs.push(expr),
-                Err(()) => self.error_handler.silent_report(),
+                Err(()) => self.err.silent_report(),
             }
         }
 
@@ -95,7 +91,7 @@ impl Parser {
             true
         } else {
             let loc = self.peek().loc;
-            self.error_handler.report(loc, err);
+            self.err.report(loc, String::from(err));
             false
         }
     }
@@ -118,8 +114,10 @@ impl Parser {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
             let loc = semi_colon.loc;
-            self.error_handler
-                .report(loc, "Expect statement ender, try to add a line break");
+            self.err.report(
+                loc,
+                String::from("Expect statement ender, try to add a line break"),
+            );
             self.synchronize();
         }
     }
@@ -137,8 +135,8 @@ impl Parser {
                 ..
             } => x.clone(),
             _ => {
-                self.error_handler
-                    .report(loc, "Top level declaration must be functions");
+                self.err
+                    .report(loc, String::from("Top level declaration must be functions"));
                 self.synchronize_fun();
                 return Err(());
             }
@@ -187,7 +185,8 @@ impl Parser {
                     ..
                 } => Some(x.clone()),
                 _ => {
-                    self.error_handler.report(loc, "Expected parameter type");
+                    self.err
+                        .report(loc, String::from("Expected parameter type"));
                     self.back();
                     None
                 }
@@ -260,9 +259,9 @@ impl Parser {
             } => (x.clone(), loc),
             Token { loc, .. } => {
                 let loc = *loc;
-                self.error_handler.report_internal_loc(
+                self.err.report_internal(
                     loc,
-                    "Assignment statement does not start with an identifier",
+                    String::from("Assignment statement does not start with an identifier"),
                 );
                 return Err(());
             }
@@ -297,9 +296,9 @@ impl Parser {
             } => (x.clone(), *loc),
             Token { loc, .. } => {
                 let loc = *loc;
-                self.error_handler.report(
+                self.err.report(
                     loc,
-                    "Let statement requires an identifier after the \"let\" keyword",
+                    String::from("Let statement requires an identifier after the \"let\" keyword"),
                 );
                 return Err(());
             }

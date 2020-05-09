@@ -28,9 +28,9 @@ pub enum Type {
 }
 
 pub enum TypeConstraint {
-    Equality(TypeId, TypeId),
-    Included(TypeId, TypeId), // Included(t_1, t_2) <=> t_1 ⊂ y_2
-    Return(TypeId, TypeId),   // Return(fun_type, returned_type)
+    Equality(TypeId, TypeId, Location),
+    Included(TypeId, TypeId, Location), // Included(t_1, t_2) <=> t_1 ⊂ y_2
+    Return(TypeId, TypeId, Location),   // Return(fun_type, returned_type)
 }
 
 pub struct ConstraintStore {
@@ -218,13 +218,13 @@ impl fmt::Display for ConstraintStore {
         store.push_str("  t_id ~ t_id\n\n");
         for constr in &self.constraints {
             match constr {
-                TypeConstraint::Equality(t_1, t_2) => {
+                TypeConstraint::Equality(t_1, t_2, _) => {
                     store.push_str(&format!("  {:>4} = {:>4}\n", t_1, t_2))
                 }
-                TypeConstraint::Included(t_1, t_2) => {
+                TypeConstraint::Included(t_1, t_2, _) => {
                     store.push_str(&format!("  {:>4} ⊂ {:>4}\n", t_1, t_2))
                 }
-                TypeConstraint::Return(fun_t, ret_t) => {
+                TypeConstraint::Return(fun_t, ret_t, _) => {
                     store.push_str(&format!("  {:>4} -> {:>3}\n", fun_t, ret_t))
                 }
             };

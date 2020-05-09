@@ -1,19 +1,17 @@
 use super::types::id::T_ID_INTEGER;
 use super::types::{Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
-use crate::error::ErrorHandler;
+use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
 
-pub struct TypeChecker {
-    error_handler: ErrorHandler,
+pub struct TypeChecker<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
 }
 
-impl TypeChecker {
-    pub fn new() -> TypeChecker {
-        TypeChecker {
-            error_handler: ErrorHandler::new(),
-        }
+impl<'a, 'b> TypeChecker<'a, 'b> {
+    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> TypeChecker<'a, 'b> {
+        TypeChecker { err: error_handler }
     }
 
     pub fn check(&mut self, prog: ResolvedProgram) -> TypedProgram {
@@ -54,16 +52,18 @@ impl TypeChecker {
             if var.types.len() == 1 {
                 store.put(var.types[0].clone())
             } else if var.types.len() == 0 {
-                // TODO: improve error handling...
-                self.error_handler
-                    .report_line(0, "Could not find a type satisfying constraint")
+                // TODO: add location
+                self.err.report(
+                    var.loc,
+                    String::from("Variable type does not satisfy constraints"),
+                )
             } else {
                 // Choose arbitrary type if applicable
                 if var.types == integers.types {
                     store.put(Type::I64);
                 } else {
                     // TODO: improve error handling...
-                    self.error_handler.report_line(0, "Could not infer type")
+                    self.err.report_no_loc(String::from("Could not infer type"))
                 }
             }
         }
@@ -71,25 +71,29 @@ impl TypeChecker {
         store
     }
 
-    // fn try_reduce(types: Vec<Type>) -> Result<Type, String>{
-    //     if types.len() == 1 {}
-    // }
-
     // Apply a constraint, return true if the constraint helped removing type candidates,
     // i.e. we are making progress
     fn apply_constr(&mut self, constr: &TypeConstraint, store: &mut TypeVarStore) -> bool {
-        match constr {
-            TypeConstraint::Equality(t_id_1, t_id_2) => {
-                self.constr_equality(*t_id_1, *t_id_2, store)
+        match *constr {
+            TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
+                self.constr_equality(t_id_1, t_id_2, loc, store)
             }
-            TypeConstraint::Included(t_id_1, t_id_2) => {
-                self.constr_included(*t_id_1, *t_id_2, store)
+            TypeConstraint::Included(t_id_1, t_id_2, loc) => {
+                self.constr_included(t_id_1, t_id_2, loc, store)
             }
-            TypeConstraint::Return(t_id_fun, t_id) => self.constr_return(*t_id_fun, *t_id, store),
+            TypeConstraint::Return(t_id_fun, t_id, loc) => {
+                self.constr_return(t_id_fun, t_id, loc, store)
+            }
         }
     }
 
-    fn constr_equality(&mut self, t_id_1: usize, t_id_2: usize, store: &mut TypeVarStore) -> bool {
+    fn constr_equality(
+        &mut self,
+        t_id_1: usize,
+        t_id_2: usize,
+        loc: Location,
+        store: &mut TypeVarStore,
+    ) -> bool {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
 
@@ -109,9 +113,10 @@ impl TypeChecker {
 
         // Can not infer types
         if t_1.len() == 0 || t_2.len() == 0 {
-            let loc = store.get(t_id_1).loc;
-            self.error_handler
-                .report(loc, "Could not infer a type satisfying constraints");
+            self.err.report(
+                loc,
+                String::from("Could not infer a type satisfying constraints"),
+            );
             return false;
         }
 
@@ -142,7 +147,13 @@ impl TypeChecker {
         progress
     }
 
-    fn constr_included(&mut self, t_id_1: usize, t_id_2: usize, store: &mut TypeVarStore) -> bool {
+    fn constr_included(
+        &mut self,
+        t_id_1: usize,
+        t_id_2: usize,
+        loc: Location,
+        store: &mut TypeVarStore,
+    ) -> bool {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
 
@@ -177,35 +188,50 @@ impl TypeChecker {
             }
         }
 
+        if t.len() == 0 {
+            self.err.report(
+                loc,
+                String::from("Could not infer a type satisfying constraints"),
+            );
+        }
+
         store.replace(t_id_1, t);
         progress
     }
 
-    fn constr_return(&mut self, t_id_fun: usize, t_id: usize, store: &mut TypeVarStore) -> bool {
+    fn constr_return(
+        &mut self,
+        t_id_fun: usize,
+        t_id: usize,
+        _loc: Location,
+        store: &mut TypeVarStore,
+    ) -> bool {
         let t_fun = store.get(t_id_fun);
         let ts = store.get(t_id);
 
         if t_fun.types.len() != 1 {
-            self.error_handler
-                .report_internal_loc(t_fun.loc, "Return type constraint with ambiguous fun type");
+            self.err.report_internal(
+                t_fun.loc,
+                String::from("Return type constraint with ambiguous fun type"),
+            );
             return false;
         }
 
         let ret_t = match &t_fun.types[0] {
             Type::Fun(_, ret_t) => ret_t,
             _ => {
-                self.error_handler.report_internal_loc(
+                self.err.report_internal(
                     t_fun.loc,
-                    "Return type constraint used on a non function type",
+                    String::from("Return type constraint used on a non function type"),
                 );
                 return false;
             }
         };
 
         if ret_t.len() != 1 {
-            self.error_handler.report_internal_loc(
+            self.err.report_internal(
                 t_fun.loc,
-                "Function returning multiple values are not yet supported",
+                String::from("Function returning multiple values are not yet supported"),
             );
             return false;
         }
@@ -220,8 +246,8 @@ impl TypeChecker {
             }
         }
 
-        self.error_handler
-            .report(ts.loc, "Return value has wrong type");
+        self.err
+            .report(ts.loc, String::from("Return value has wrong type"));
         return false;
     }
 }

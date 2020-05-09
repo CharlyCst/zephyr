@@ -37,15 +37,13 @@ impl State {
     }
 }
 
-pub struct MIRProducer {
-    error_handler: ErrorHandler,
+pub struct MIRProducer<'a, 'b> {
+    err: &'b mut ErrorHandler<'a>,
 }
 
-impl MIRProducer {
-    pub fn new() -> MIRProducer {
-        MIRProducer {
-            error_handler: ErrorHandler::new(),
-        }
+impl<'a, 'b> MIRProducer<'a, 'b> {
+    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> MIRProducer<'a, 'b> {
+        MIRProducer { err: error_handler }
     }
 
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
@@ -55,7 +53,7 @@ impl MIRProducer {
         for fun in prog.funs.into_iter() {
             match self.reduce_fun(fun, &mut state) {
                 Ok(fun) => funs.push(fun),
-                Err(err) => self.error_handler.report_internal(&err),
+                Err(err) => self.err.report_internal_no_loc(err),
             }
         }
 
@@ -71,8 +69,10 @@ impl MIRProducer {
                 ret_t.into_iter().map(|t| convert_type(t)).collect();
             (param_t?, ret_t?)
         } else {
-            self.error_handler
-                .report_internal_loc(fun.loc, "Function does not have function type");
+            self.err.report_internal(
+                fun.loc,
+                String::from("Function does not have function type"),
+            );
             (vec![], vec![])
         };
 
@@ -238,6 +238,7 @@ impl MIRProducer {
                 expr_right,
                 t_id,
                 op_t_id,
+                ..
             } => {
                 let t = get_type(*op_t_id, s)?;
                 let from_binop = get_binop(*binop, t)?;
@@ -248,15 +249,17 @@ impl MIRProducer {
                     FromBinop::Relop(relop) => stmts.push(Statement::Relop { relop: relop }),
                 }
             }
-            Expr::Unary { unop, expr, t_id } => {
+            Expr::Unary {
+                unop, expr, t_id, ..
+            } => {
                 let t = get_type(*t_id, s)?;
                 let mut unop_stmts = get_unop(*unop, t);
                 self.reduce_expr(expr, stmts, s)?;
                 stmts.append(&mut unop_stmts);
             }
             _ => self
-                .error_handler
-                .report_internal("Expression not yet handled in MIR: {"),
+                .err
+                .report_internal_no_loc(String::from("Expression not yet handled in MIR: {")),
         }
         Ok(())
     }
