@@ -187,15 +187,23 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                         block: Box::new(block_block),
                     });
                 }
-                S::IfStmt { expr, block } => {
+                S::IfStmt {
+                    expr,
+                    block,
+                    else_block,
+                } => {
                     self.reduce_expr(&expr, stmts, s)?;
                     let if_id = s.fresh_bb_id();
                     let mut then_stmts = Vec::new();
                     self.reduce_block_rec(block, &mut then_stmts, s)?;
+                    let mut else_stmts = Vec::new();
+                    if let Some(else_block) = else_block {
+                        self.reduce_block_rec(else_block, &mut else_stmts, s)?;
+                    }
                     let if_block = Block::If {
                         id: if_id,
                         then_stmts: then_stmts,
-                        else_stmts: vec![],
+                        else_stmts: else_stmts,
                     };
                     stmts.push(Statement::Block {
                         block: Box::new(if_block),
@@ -236,7 +244,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 expr_left,
                 binop,
                 expr_right,
-                t_id,
+                t_id: _,
                 op_t_id,
                 ..
             } => {
@@ -257,9 +265,6 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 self.reduce_expr(expr, stmts, s)?;
                 stmts.append(&mut unop_stmts);
             }
-            _ => self
-                .err
-                .report_internal_no_loc(String::from("Expression not yet handled in MIR: {")),
         }
         Ok(())
     }

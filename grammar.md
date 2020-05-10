@@ -14,8 +14,8 @@ statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
 expr_stmt      -> expression ";"
 assign_stmt    -> IDENTIFIER = expression ";"
 let_stmt       -> "let" IDENTIFIER = expression ";"
-if_stmt        -> "if" expression block_stmt ";"
-while_stmt     -> "while" expression block_stmt ";"
+if_stmt        -> "if" expression block ("else" block) ";"
+while_stmt     -> "while" expression block ";"
 return_stmt    -> "return" expression? ";"
 
 block          -> "{" statement* "}"

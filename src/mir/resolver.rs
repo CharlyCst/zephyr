@@ -135,7 +135,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     loc: param.loc,
                     n_id: n_id,
                 }),
-                Err(decl_loc) => {
+                Err(_decl_loc) => {
                     // TODO: find a way to indicate line of definition
                     let error = format!("Name {} already defined in current context", fun.ident);
                     self.err.report(fun.loc, error);
@@ -212,7 +212,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                                 expr: Box::new(expr),
                             }
                         }
-                        Err(decl_loc) => {
+                        Err(_decl_loc) => {
                             // TODO: find a way to indicate line of duplicate
                             let error =
                                 format!("Name {} already defined in current context", var.ident,);
@@ -221,7 +221,11 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         }
                     }
                 }
-                ast::Statement::IfStmt { mut expr, block } => {
+                ast::Statement::IfStmt {
+                    mut expr,
+                    block,
+                    else_block,
+                } => {
                     let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
                     state.new_constraint(TypeConstraint::Equality(
                         expr_t_id,
@@ -229,9 +233,16 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         expr.get_loc(),
                     ));
                     let block = self.resolve_block(block, state, locals, fun_t_id);
+                    let else_block = if let Some(else_block) = else_block {
+                        let else_block = self.resolve_block(else_block, state, locals, fun_t_id);
+                        Some(else_block)
+                    } else {
+                        None
+                    };
                     Statement::IfStmt {
                         expr: Box::new(expr),
                         block: block,
+                        else_block: else_block,
                     }
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
@@ -489,7 +500,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
             }
 
-            if let Err(decl_loc) =
+            if let Err(_decl_loc) =
                 state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc)
             {
                 let error = format!("Function {} declared multiple times", fun.ident);

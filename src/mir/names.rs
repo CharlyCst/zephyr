@@ -37,6 +37,7 @@ pub enum Statement {
     IfStmt {
         expr: Box<Expression>,
         block: Block,
+        else_block: Option<Block>,
     },
     WhileStmt {
         expr: Box<Expression>,
