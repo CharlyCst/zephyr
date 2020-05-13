@@ -246,12 +246,14 @@ fn get_binop(binop: mir::Binop) -> Instr {
 fn get_relop(relop: mir::Relop) -> Instr {
     match relop {
         mir::Relop::I32Eq => INSTR_I32_EQ,
+        mir::Relop::I32Ne => INSTR_I32_NE,
         mir::Relop::I32Lt => INSTR_I32_LT_S,
         mir::Relop::I32Gt => INSTR_I32_GT_S,
         mir::Relop::I32Le => INSTR_I32_LE_S,
         mir::Relop::I32Ge => INSTR_I32_GE_S,
 
         mir::Relop::I64Eq => INSTR_I64_EQ,
+        mir::Relop::I64Ne => INSTR_I64_NE,
         mir::Relop::I64Lt => INSTR_I64_LT_S,
         mir::Relop::I64Gt => INSTR_I64_GT_S,
         mir::Relop::I64Le => INSTR_I64_LE_S,

@@ -398,7 +398,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         };
                         (expr, T_ID_BOOL)
                     }
-                    ast::BinaryOperator::Equal => {
+                    ast::BinaryOperator::Equal | ast::BinaryOperator::NotEqual => {
                         let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
