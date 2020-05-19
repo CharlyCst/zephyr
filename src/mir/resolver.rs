@@ -467,7 +467,29 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     return (dummy_expr, T_ID_BOOL);
                 }
             }
-            _ => panic!("Expression not implemented"), // TODO
+            ast::Expression::Call { fun, args } => {
+                let (fun, fun_t) = self.resolve_expression(fun, state);
+                let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                let mut resolved_args = Vec::with_capacity(args.len());
+                let mut args_t = Vec::with_capacity(args.len());
+                let mut args_loc = Vec::with_capacity(args.len());
+                for arg in args {
+                    let (arg, arg_t) = self.resolve_expression(arg, state);
+                    args_loc.push(arg.get_loc());
+                    resolved_args.push(arg);
+                    args_t.push(arg_t);
+                }
+                state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
+                state.new_constraint(TypeConstraint::Return(fun_t, return_t, fun.get_loc()));
+
+                let expr = Expression::Call {
+                    loc: fun.get_loc(),
+                    fun: Box::new(fun),
+                    args: resolved_args,
+                    t_id: return_t,
+                };
+                (expr, return_t)
+            }
         }
     }
 

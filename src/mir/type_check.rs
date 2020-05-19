@@ -1,9 +1,15 @@
 use super::types::id::T_ID_INTEGER;
-use super::types::{Type, TypeConstraint, TypeStore, TypeVarStore};
+use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
+
+enum Progress {
+    Some,
+    None,
+    Error,
+}
 
 pub struct TypeChecker<'a, 'b> {
     err: &'b mut ErrorHandler<'a>,
@@ -16,25 +22,20 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
 
     pub fn check(&mut self, prog: ResolvedProgram) -> TypedProgram {
         let mut type_vars = prog.types;
-        let constraints = prog.constraints;
+        let mut constraints = prog.constraints;
+        let mut progress = true;
 
-        let mut making_progress = true;
-        while making_progress {
-            making_progress = false;
+        while constraints.len() > 0 && progress {
+            let mut new_constraints = ConstraintStore::new();
+            progress = false;
             for constr in &constraints {
-                let progress = self.apply_constr(constr, &mut type_vars);
-                making_progress = progress || making_progress;
-
-                // if progress { // May be useful for debugging, so I let that here for now ¯\_(ツ)_/¯
-                //     match constr {
-                //         TypeConstraint::Equality(t_1, t_2) => println!("{:>4} = {:>4}", t_1, t_2),
-                //         TypeConstraint::Included(t_1, t_2) => print!("{:>4} ⊂ {:>4}", t_1, t_2),
-                //         TypeConstraint::Return(fun_t, ret_t) => {
-                //             print!("{:>4} -> {:>3}", fun_t, ret_t)
-                //         }
-                //     };
-                // }
+                match self.apply_constr(constr, &mut type_vars, &mut new_constraints) {
+                    Progress::Some => progress = true,
+                    Progress::None => (),
+                    Progress::Error => (),
+                }
             }
+            constraints = new_constraints;
         }
 
         let store = self.build_store(&type_vars);
@@ -73,16 +74,24 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
 
     // Apply a constraint, return true if the constraint helped removing type candidates,
     // i.e. we are making progress
-    fn apply_constr(&mut self, constr: &TypeConstraint, store: &mut TypeVarStore) -> bool {
+    fn apply_constr(
+        &mut self,
+        constr: &TypeConstraint,
+        store: &mut TypeVarStore,
+        constraints: &mut ConstraintStore,
+    ) -> Progress {
         match *constr {
             TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
-                self.constr_equality(t_id_1, t_id_2, loc, store)
+                self.constr_equality(t_id_1, t_id_2, loc, store, constraints)
             }
             TypeConstraint::Included(t_id_1, t_id_2, loc) => {
-                self.constr_included(t_id_1, t_id_2, loc, store)
+                self.constr_included(t_id_1, t_id_2, loc, store, constraints)
             }
             TypeConstraint::Return(t_id_fun, t_id, loc) => {
-                self.constr_return(t_id_fun, t_id, loc, store)
+                self.constr_return(t_id_fun, t_id, loc, store, constraints)
+            }
+            TypeConstraint::Arguments(ref args_t_id, fun_t_id, ref locs) => {
+                self.constr_arguments(&args_t_id, fun_t_id, &locs, store, constraints)
             }
         }
     }
@@ -93,22 +102,27 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         t_id_2: usize,
         loc: Location,
         store: &mut TypeVarStore,
-    ) -> bool {
+        constraints: &mut ConstraintStore,
+    ) -> Progress {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
+        let c = TypeConstraint::Equality(t_id_1, t_id_2, loc);
 
         // Special cases
         if t_1.len() > 0 && t_1[0] == Type::Any {
             if t_2.len() > 0 && t_2[0] == Type::Any {
-                return false;
+                constraints.add(c);
+                return Progress::None;
             }
             let t = t_2.clone();
             store.replace(t_id_1, t);
-            return true;
+            constraints.add(c);
+            return Progress::Some;
         } else if t_2.len() > 0 && t_2[0] == Type::Any {
             let t = t_1.clone();
             store.replace(t_id_2, t);
-            return true;
+            constraints.add(c);
+            return Progress::Some;
         }
 
         // Can not infer types
@@ -117,7 +131,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                 loc,
                 String::from("Could not infer a type satisfying constraints"),
             );
-            return false;
+            return Progress::Error;
         }
 
         let mut t = Vec::new();
@@ -142,9 +156,16 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             }
         }
 
+        if t.len() != 1 {
+            constraints.add(c);
+        }
         store.replace(t_id_1, t.clone());
         store.replace(t_id_2, t);
-        progress
+        if progress {
+            Progress::Some
+        } else {
+            Progress::None
+        }
     }
 
     fn constr_included(
@@ -153,18 +174,21 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         t_id_2: usize,
         loc: Location,
         store: &mut TypeVarStore,
-    ) -> bool {
+        constraints: &mut ConstraintStore,
+    ) -> Progress {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
+        let c = TypeConstraint::Included(t_id_1, t_id_2, loc);
 
         // Special case
         if t_1.len() > 0 && t_1[0] == Type::Any {
             if t_2.len() > 0 && t_2[0] == Type::Any {
-                return false;
+                constraints.add(c);
+                return Progress::None;
             }
             let t = t_2.clone();
             store.replace(t_id_1, t);
-            return true;
+            return Progress::Some;
         }
 
         let mut t = Vec::new();
@@ -196,7 +220,11 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         }
 
         store.replace(t_id_1, t);
-        progress
+        if progress {
+            Progress::Some
+        } else {
+            Progress::None
+        }
     }
 
     fn constr_return(
@@ -205,7 +233,8 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         t_id: usize,
         _loc: Location,
         store: &mut TypeVarStore,
-    ) -> bool {
+        _constraints: &mut ConstraintStore,
+    ) -> Progress {
         let t_fun = store.get(t_id_fun);
         let ts = store.get(t_id);
 
@@ -214,7 +243,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                 t_fun.loc,
                 String::from("Return type constraint with ambiguous fun type"),
             );
-            return false;
+            return Progress::Error;
         }
 
         let ret_t = match &t_fun.types[0] {
@@ -224,7 +253,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     t_fun.loc,
                     String::from("Return type constraint used on a non function type"),
                 );
-                return false;
+                return Progress::Error;
             }
         };
 
@@ -233,21 +262,69 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                 t_fun.loc,
                 String::from("Function returning multiple values are not yet supported"),
             );
-            return false;
+            return Progress::Error;
         }
 
         let ret_t = &ret_t[0];
         for t in &ts.types {
-            if t == ret_t {
-                let progress = ts.types.len() > 1;
-                let typ = vec![t.clone()];
+            if t == ret_t || *t == Type::Any {
+                let typ = vec![ret_t.clone()];
                 store.replace(t_id, typ);
-                return progress;
+                return Progress::Some;
             }
         }
 
         self.err
             .report(ts.loc, String::from("Return value has wrong type"));
-        return false;
+        return Progress::Error;
+    }
+
+    // TODO
+    fn constr_arguments(
+        &mut self,
+        args_t_id: &Vec<usize>,
+        fun_t_id: usize,
+        locs: &Vec<Location>,
+        store: &mut TypeVarStore,
+        constraints: &mut ConstraintStore,
+    ) -> Progress {
+        let t_fun = store.get(fun_t_id);
+        let fun_loc = t_fun.loc;
+
+        if t_fun.types.len() != 1 {
+            self.err
+                .report(fun_loc, String::from("Call a non-function"));
+            return Progress::Error;
+        }
+
+        if let Type::Fun(ref f_args, _) = t_fun.types[0].clone() {
+            if f_args.len() != args_t_id.len() {
+                self.err.report(
+                    fun_loc,
+                    format!(
+                        "Expected {} arguments, got {}",
+                        f_args.len(),
+                        args_t_id.len()
+                    ),
+                );
+                return Progress::Error;
+            }
+            if f_args.len() != locs.len() {
+                self.err.report_internal(
+                    fun_loc,
+                    format!("Expected {} locations but got {}", f_args.len(), locs.len()),
+                )
+            }
+            for ((f_arg, t_arg), loc) in f_args.iter().zip(args_t_id.iter()).zip(locs.iter()) {
+                let candidate = vec![f_arg.clone()];
+                let fresh_t_id = store.fresh(*loc, candidate);
+                constraints.add(TypeConstraint::Equality(*t_arg, fresh_t_id, *loc));
+            }
+            Progress::Some
+        } else {
+            self.err
+                .report(fun_loc, String::from("Call a non-function"));
+            Progress::Error
+        }
     }
 }

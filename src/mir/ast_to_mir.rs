@@ -265,6 +265,9 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 self.reduce_expr(expr, stmts, s)?;
                 stmts.append(&mut unop_stmts);
             }
+            Expr::Call {
+                fun, args, t_id, ..
+            } => unimplemented!(),
         }
         Ok(())
     }

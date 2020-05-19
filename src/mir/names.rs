@@ -89,11 +89,12 @@ pub enum Expression {
         loc: Location,
         t_id: TypeId,
     },
-    // Call {
-    //     fun: Box<Expression>,
-    //     args: Vec<Expression>,
-    //     t_id: TypeId,
-    // },
+    Call {
+        fun: Box<Expression>,
+        args: Vec<Expression>,
+        loc: Location,
+        t_id: TypeId,
+    },
 }
 
 impl Expression {
@@ -106,6 +107,7 @@ impl Expression {
             },
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
+            Expression::Call { loc, .. } => *loc,
         }
     }
 }
