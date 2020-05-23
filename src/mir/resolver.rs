@@ -470,9 +470,10 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
             }
             ast::Expression::Call { fun, args } => {
-                let mut resolved_args = Vec::with_capacity(args.len());
-                let mut args_t = Vec::with_capacity(args.len());
-                let mut args_loc = Vec::with_capacity(args.len());
+                let n = args.len();
+                let mut resolved_args = Vec::with_capacity(n);
+                let mut args_t = Vec::with_capacity(n);
+                let mut args_loc = Vec::with_capacity(n);
                 for arg in args {
                     let (arg, arg_t) = self.resolve_expression(arg, state);
                     args_loc.push(arg.get_loc());
@@ -487,31 +488,41 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         let fun_id = *fun_id;
                         let fun_t = state.names.get(fun_id).t_id;
                         let return_t = state.types.fresh(var.loc, vec![Type::Any]);
-                        state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
-                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, var.loc));
+                        let loc = if n > 0 {
+                            var.loc.merge(resolved_args[n - 1].get_loc())
+                        } else {
+                            var.loc
+                        };
+                        state.new_constraint(TypeConstraint::Arguments(
+                            args_t, fun_t, args_loc, loc,
+                        ));
+                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
                         (
                             Expression::CallDirect {
                                 fun_id: fun_id,
-                                loc: var.loc,
+                                loc: loc,
                                 args: resolved_args,
                                 t_id: return_t,
                             },
                             return_t,
                         )
                     } else {
-                        // Duplicate code! Waiting for chaining if let proposal
+                        // Duplicate code (see below)! Waiting for chaining if let proposal
                         // https://github.com/rust-lang/rust/issues/53667
                         let (fun, fun_t) = self.resolve_expression(fun, state);
                         let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                        state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
-                        state.new_constraint(TypeConstraint::Return(
-                            fun_t,
-                            return_t,
-                            fun.get_loc(),
+                        let loc = if n > 0 {
+                            fun.get_loc().merge(resolved_args[n - 1].get_loc())
+                        } else {
+                            fun.get_loc()
+                        };
+                        state.new_constraint(TypeConstraint::Arguments(
+                            args_t, fun_t, args_loc, loc,
                         ));
+                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
 
                         let expr = Expression::CallIndirect {
-                            loc: fun.get_loc(),
+                            loc: loc,
                             fun: Box::new(fun),
                             args: resolved_args,
                             t_id: return_t,
@@ -522,11 +533,16 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     // Duplicate code! Edit both !!!
                     let (fun, fun_t) = self.resolve_expression(fun, state);
                     let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                    state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
-                    state.new_constraint(TypeConstraint::Return(fun_t, return_t, fun.get_loc()));
+                    let loc = if n > 0 {
+                        fun.get_loc().merge(resolved_args[n - 1].get_loc())
+                    } else {
+                        fun.get_loc()
+                    };
+                    state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc, loc));
+                    state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
 
                     let expr = Expression::CallIndirect {
-                        loc: fun.get_loc(),
+                        loc: loc,
                         fun: Box::new(fun),
                         args: resolved_args,
                         t_id: return_t,

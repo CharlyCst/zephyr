@@ -28,7 +28,7 @@ pub enum Type {
 }
 
 pub enum TypeConstraint {
-    Arguments(Vec<TypeId>, TypeId, Vec<Location>), // Arguments(args_types, fun_type)
+    Arguments(Vec<TypeId>, TypeId, Vec<Location>, Location), // Arguments(args_types, fun_type, args_loc, call_loc)
     Equality(TypeId, TypeId, Location),
     Included(TypeId, TypeId, Location), // Included(t_1, t_2) <=> t_1 ⊂ y_2
     Return(TypeId, TypeId, Location),   // Return(fun_type, returned_type)
@@ -232,7 +232,7 @@ impl fmt::Display for ConstraintStore {
                 TypeConstraint::Return(fun_t, ret_t, _) => {
                     store.push_str(&format!("  {:>4} -> {:>3}\n", fun_t, ret_t))
                 }
-                TypeConstraint::Arguments(args_t, fun_t, _) => {
+                TypeConstraint::Arguments(args_t, fun_t, _, _) => {
                     let args = args_t
                         .iter()
                         .map(|a| format!("{}", a))

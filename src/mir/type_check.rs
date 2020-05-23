@@ -90,8 +90,8 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             TypeConstraint::Return(t_id_fun, t_id, loc) => {
                 self.constr_return(t_id_fun, t_id, loc, store, constraints)
             }
-            TypeConstraint::Arguments(ref args_t_id, fun_t_id, ref locs) => {
-                self.constr_arguments(&args_t_id, fun_t_id, &locs, store, constraints)
+            TypeConstraint::Arguments(ref args_t_id, fun_t_id, ref locs, loc) => {
+                self.constr_arguments(&args_t_id, fun_t_id, &locs, loc, store, constraints)
             }
         }
     }
@@ -284,23 +284,22 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         &mut self,
         args_t_id: &Vec<usize>,
         fun_t_id: usize,
-        locs: &Vec<Location>,
+        locs: &Vec<Location>, // Arguments location
+        loc: Location,        // Function location
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
     ) -> Progress {
         let t_fun = store.get(fun_t_id);
-        let fun_loc = t_fun.loc;
 
         if t_fun.types.len() != 1 {
-            self.err
-                .report(fun_loc, String::from("Call a non-function"));
+            self.err.report(loc, String::from("Call a non-function"));
             return Progress::Error;
         }
 
         if let Type::Fun(ref f_args, _) = t_fun.types[0].clone() {
             if f_args.len() != args_t_id.len() {
                 self.err.report(
-                    fun_loc,
+                    loc,
                     format!(
                         "Expected {} arguments, got {}",
                         f_args.len(),
@@ -311,7 +310,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             }
             if f_args.len() != locs.len() {
                 self.err.report_internal(
-                    fun_loc,
+                    loc,
                     format!("Expected {} locations but got {}", f_args.len(), locs.len()),
                 )
             }
@@ -322,8 +321,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             }
             Progress::Some
         } else {
-            self.err
-                .report(fun_loc, String::from("Call a non-function"));
+            self.err.report(loc, String::from("Call a non-function"));
             Progress::Error
         }
     }
