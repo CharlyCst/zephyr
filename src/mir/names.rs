@@ -89,7 +89,13 @@ pub enum Expression {
         loc: Location,
         t_id: TypeId,
     },
-    Call {
+    CallDirect {
+        fun_id: NameId,
+        args: Vec<Expression>,
+        loc: Location,
+        t_id: TypeId,
+    },
+    CallIndirect {
         fun: Box<Expression>,
         args: Vec<Expression>,
         loc: Location,
@@ -107,7 +113,8 @@ impl Expression {
             },
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
-            Expression::Call { loc, .. } => *loc,
+            Expression::CallDirect { loc, .. } => *loc,
+            Expression::CallIndirect { loc, .. } => *loc,
         }
     }
 }

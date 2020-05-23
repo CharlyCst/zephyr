@@ -8,18 +8,35 @@ use std::collections::HashMap;
 
 type LocalsMap = HashMap<mir::LocalId, usize>;
 type BlocksMap = HashMap<mir::BasicBlockId, usize>;
+type FunctionsMap = HashMap<mir::FunctionId, usize>;
 
-struct CompilerState {
+struct GlobalState {
+    funs: FunctionsMap,
+}
+
+impl GlobalState {
+    pub fn new(funs: &Vec<mir::Function>) -> GlobalState {
+        let mut fun_map = HashMap::new();
+        for (idx, fun) in funs.iter().enumerate() {
+            fun_map.insert(fun.fun_id, idx);
+        }
+        GlobalState { funs: fun_map }
+    }
+}
+
+struct LocalState<'a> {
     locals: LocalsMap,
     blocks: BlocksMap,
     depth: usize,
+    global_state: &'a GlobalState,
 }
 
-impl CompilerState {
-    pub fn new() -> CompilerState {
-        CompilerState {
+impl<'a> LocalState<'a> {
+    pub fn new(global_state: &'a GlobalState) -> LocalState<'a> {
+        LocalState {
             locals: HashMap::new(),
             blocks: HashMap::new(),
+            global_state: global_state,
             depth: 0,
         }
     }
@@ -35,6 +52,10 @@ impl CompilerState {
     pub fn get_label(&self, label: mir::BasicBlockId) -> usize {
         self.depth - self.blocks[&label] - 1
     }
+
+    pub fn get_fun(&self, fun_id: mir::FunctionId) -> usize {
+        self.global_state.funs[&fun_id]
+    }
 }
 
 pub struct Compiler<'a, 'b> {
@@ -47,19 +68,20 @@ impl<'a, 'b> Compiler<'a, 'b> {
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
+        let mut global_state = GlobalState::new(&mir.funs);
         let mut funs = Vec::new();
         for fun in mir.funs {
-            funs.push(self.function(fun));
+            funs.push(self.function(fun, &global_state));
         }
 
         let module = sections::Module::new(funs);
         module.encode()
     }
 
-    fn function(&mut self, fun: mir::Function) -> wasm::Function {
+    fn function(&mut self, fun: mir::Function, gs: &GlobalState) -> wasm::Function {
         let mut params = Vec::new();
         let mut results = Vec::new();
-        let mut state = CompilerState::new();
+        let mut state = LocalState::new(gs);
 
         for param in fun.param_types.iter() {
             let t = mir_t_to_wasm(*param);
@@ -118,7 +140,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
         code.extend(local_decl);
     }
 
-    fn body(&mut self, block: mir::Block, s: &mut CompilerState, code: &mut Vec<Instr>) {
+    fn body(&mut self, block: mir::Block, s: &mut LocalState, code: &mut Vec<Instr>) {
         match block {
             mir::Block::Block { stmts, id } => {
                 s.block_start(id);
@@ -131,7 +153,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
         }
     }
 
-    fn block(&mut self, block: mir::Block, s: &mut CompilerState, code: &mut Vec<Instr>) {
+    fn block(&mut self, block: mir::Block, s: &mut LocalState, code: &mut Vec<Instr>) {
         match block {
             mir::Block::Block { stmts, id } => {
                 s.block_start(id);
@@ -171,7 +193,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
     fn statements(
         &mut self,
         stmts: Vec<mir::Statement>,
-        s: &mut CompilerState,
+        s: &mut LocalState,
         code: &mut Vec<Instr>,
     ) {
         for stmt in stmts {
@@ -216,6 +238,15 @@ impl<'a, 'b> Compiler<'a, 'b> {
                 mir::Statement::Block { block } => self.block(*block, s, code),
                 mir::Statement::Binop { binop } => code.push(get_binop(binop)),
                 mir::Statement::Relop { relop } => code.push(get_relop(relop)),
+                mir::Statement::Call { call } => match call {
+                    mir::Call::Direct(fun_id) => {
+                        code.push(INSTR_CALL);
+                        code.extend(to_leb(s.get_fun(fun_id)));
+                    }
+                    mir::Call::Indirect() => self
+                        .err
+                        .report_internal_no_loc(String::from("Indirect call not yet implemented")),
+                },
                 _ => self
                     .err
                     .report_internal_no_loc(String::from("Statement not yet implemented")),

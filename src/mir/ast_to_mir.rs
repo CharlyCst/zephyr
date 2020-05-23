@@ -88,6 +88,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
             locals: locals,
             body: block,
             exported: fun.exported,
+            fun_id: fun.n_id,
         })
     }
 
@@ -265,9 +266,17 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 self.reduce_expr(expr, stmts, s)?;
                 stmts.append(&mut unop_stmts);
             }
-            Expr::Call {
-                fun, args, t_id, ..
-            } => unimplemented!(),
+            Expr::CallDirect { fun_id, args, .. } => {
+                for arg in args {
+                    self.reduce_expr(arg, stmts, s);
+                }
+                stmts.push(Statement::Call {
+                    call: Call::Direct(*fun_id),
+                })
+            }
+            Expr::CallIndirect { loc, .. } => self
+                .err
+                .report(*loc, String::from("Indirect call are not yet supported")),
         }
         Ok(())
     }

@@ -12,6 +12,7 @@ struct State {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
+    functions: HashMap<String, NameId>,
     constraints: ConstraintStore,
 }
 
@@ -22,6 +23,7 @@ impl State {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts: contexts,
+            functions: HashMap::new(),
             constraints: ConstraintStore::new(),
         }
     }
@@ -468,8 +470,6 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
             }
             ast::Expression::Call { fun, args } => {
-                let (fun, fun_t) = self.resolve_expression(fun, state);
-                let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                 let mut resolved_args = Vec::with_capacity(args.len());
                 let mut args_t = Vec::with_capacity(args.len());
                 let mut args_loc = Vec::with_capacity(args.len());
@@ -479,16 +479,60 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     resolved_args.push(arg);
                     args_t.push(arg_t);
                 }
-                state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
-                state.new_constraint(TypeConstraint::Return(fun_t, return_t, fun.get_loc()));
 
-                let expr = Expression::Call {
-                    loc: fun.get_loc(),
-                    fun: Box::new(fun),
-                    args: resolved_args,
-                    t_id: return_t,
-                };
-                (expr, return_t)
+                // Check if variable is a known function
+                if let ast::Expression::Variable { ref var } = **fun {
+                    if let Some(fun_id) = state.functions.get(&var.ident) {
+                        // Known function => direct call
+                        let fun_id = *fun_id;
+                        let fun_t = state.names.get(fun_id).t_id;
+                        let return_t = state.types.fresh(var.loc, vec![Type::Any]);
+                        state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
+                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, var.loc));
+                        (
+                            Expression::CallDirect {
+                                fun_id: fun_id,
+                                loc: var.loc,
+                                args: resolved_args,
+                                t_id: return_t,
+                            },
+                            return_t,
+                        )
+                    } else {
+                        // Duplicate code! Waiting for chaining if let proposal
+                        // https://github.com/rust-lang/rust/issues/53667
+                        let (fun, fun_t) = self.resolve_expression(fun, state);
+                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                        state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
+                        state.new_constraint(TypeConstraint::Return(
+                            fun_t,
+                            return_t,
+                            fun.get_loc(),
+                        ));
+
+                        let expr = Expression::CallIndirect {
+                            loc: fun.get_loc(),
+                            fun: Box::new(fun),
+                            args: resolved_args,
+                            t_id: return_t,
+                        };
+                        (expr, return_t)
+                    }
+                } else {
+                    // Duplicate code! Edit both !!!
+                    let (fun, fun_t) = self.resolve_expression(fun, state);
+                    let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                    state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc));
+                    state.new_constraint(TypeConstraint::Return(fun_t, return_t, fun.get_loc()));
+
+                    let expr = Expression::CallIndirect {
+                        loc: fun.get_loc(),
+                        fun: Box::new(fun),
+                        args: resolved_args,
+                        t_id: return_t,
+                    };
+                    (expr, return_t)
+                }
             }
         }
     }
@@ -522,11 +566,13 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
             }
 
-            if let Err(_decl_loc) =
-                state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc)
-            {
+            let declaration =
+                state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc);
+            if let Err(_decl_loc) = declaration {
                 let error = format!("Function {} declared multiple times", fun.ident);
                 self.err.report(fun.loc, error);
+            } else if let Ok((n_id, _)) = declaration {
+                state.functions.insert(fun.ident.clone(), n_id);
             }
         }
     }
