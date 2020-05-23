@@ -37,6 +37,7 @@ pub enum Statement {
     IfStmt {
         expr: Box<Expression>,
         block: Block,
+        else_block: Option<Block>,
     },
     WhileStmt {
         expr: Box<Expression>,
@@ -88,11 +89,18 @@ pub enum Expression {
         loc: Location,
         t_id: TypeId,
     },
-    // Call {
-    //     fun: Box<Expression>,
-    //     args: Vec<Expression>,
-    //     t_id: TypeId,
-    // },
+    CallDirect {
+        fun_id: NameId,
+        args: Vec<Expression>,
+        loc: Location,
+        t_id: TypeId,
+    },
+    CallIndirect {
+        fun: Box<Expression>,
+        args: Vec<Expression>,
+        loc: Location,
+        t_id: TypeId,
+    },
 }
 
 impl Expression {
@@ -105,6 +113,8 @@ impl Expression {
             },
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
+            Expression::CallDirect { loc, .. } => *loc,
+            Expression::CallIndirect { loc, .. } => *loc,
         }
     }
 }

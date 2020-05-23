@@ -91,6 +91,7 @@ impl SectionFunction {
         let mut types = Vec::new();
         let mut size = 0;
 
+        // The function index corresponds to its index in funs
         for fun in funs {
             let idx = to_leb(fun.type_idx);
             size += idx.len();

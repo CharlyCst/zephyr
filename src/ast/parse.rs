@@ -158,6 +158,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
         let result = self.result();
         let block = self.block()?;
+        self.consume_semi_colon();
         Ok(Function {
             ident: ident,
             params: params,
@@ -332,10 +333,31 @@ impl<'a, 'b> Parser<'a, 'b> {
             return Err(());
         };
         let block = self.block()?;
-        Ok(Statement::IfStmt {
-            expr: Box::new(expr),
-            block: block,
-        })
+
+        // Check for else clause
+        if self.peek().t == TokenType::Else {
+            self.advance();
+            if !self.next_match_report(
+                TokenType::LeftBrace,
+                "If statement requires an \"{\" after else clause",
+            ) {
+                return Err(());
+            };
+            let else_block = self.block()?;
+            self.consume_semi_colon();
+            Ok(Statement::IfStmt {
+                expr: Box::new(expr),
+                block: block,
+                else_block: Some(else_block),
+            })
+        } else {
+            self.consume_semi_colon();
+            Ok(Statement::IfStmt {
+                expr: Box::new(expr),
+                block: block,
+                else_block: None,
+            })
+        }
     }
 
     // The `while` token must have been consumed
@@ -348,6 +370,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             return Err(());
         };
         let block = self.block()?;
+        self.consume_semi_colon();
         Ok(Statement::WhileStmt {
             expr: Box::new(expr),
             block: block,
@@ -387,7 +410,6 @@ impl<'a, 'b> Parser<'a, 'b> {
                 Err(()) => (),
             }
         }
-        self.consume_semi_colon();
         Ok(Block { stmts: stmts })
     }
 

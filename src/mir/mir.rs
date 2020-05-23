@@ -12,9 +12,11 @@ pub struct Function {
     pub locals: Vec<Local>,
     pub body: Block,
     pub exported: bool,
+    pub fun_id: FunctionId,
 }
 
 pub type LocalId = usize; // For now NameId are used as LocalId
+pub type FunctionId = usize;
 
 pub struct Local {
     pub id: LocalId,
@@ -48,7 +50,13 @@ pub enum Statement {
     Binop { binop: Binop },
     Relop { relop: Relop },
     Control { cntrl: Control },
+    Call { call: Call },
     Parametric { param: Parametric },
+}
+
+pub enum Call {
+    Direct(FunctionId),
+    Indirect(),
 }
 
 pub enum Control {
@@ -242,6 +250,7 @@ impl fmt::Display for Statement {
             Statement::Parametric { param } => write!(f, "{}", param),
             Statement::Block { block } => write!(f, "{}", block),
             Statement::Control { cntrl } => write!(f, "{}", cntrl),
+            Statement::Call { call } => write!(f, "{}", call),
             Statement::Const { val } => match val {
                 Value::I32(x) => write!(f, "i32 {}", x),
                 Value::I64(x) => write!(f, "i64 {}", x),
@@ -340,6 +349,15 @@ impl fmt::Display for Control {
             Control::Return => write!(f, "return"),
             Control::Br(bb_id) => write!(f, "br {}", bb_id),
             Control::BrIf(bb_id) => write!(f, "br_if {}", bb_id),
+        }
+    }
+}
+
+impl fmt::Display for Call {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Call::Direct(id) => write!(f, "call {}", id),
+            Call::Indirect() => write!(f, "call_indirect"),
         }
     }
 }

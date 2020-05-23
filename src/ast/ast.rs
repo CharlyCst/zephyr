@@ -74,6 +74,7 @@ pub enum Statement {
     IfStmt {
         expr: Box<Expression>,
         block: Block,
+        else_block: Option<Block>,
     },
     WhileStmt {
         expr: Box<Expression>,
@@ -220,7 +221,17 @@ impl fmt::Display for Statement {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
             Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
-            Statement::IfStmt { expr, block } => write!(f, "if {} {};", expr, block),
+            Statement::IfStmt {
+                expr,
+                block,
+                else_block,
+            } => {
+                if let Some(else_block) = else_block {
+                    write!(f, "if {} {} else {};", expr, block, else_block)
+                } else {
+                    write!(f, "if {} {};", expr, block)
+                }
+            }
             Statement::WhileStmt { expr, block } => write!(f, "while {} {};", expr, block),
             Statement::ReturnStmt { expr, .. } => match expr {
                 Some(e) => write!(f, "return {};", e),

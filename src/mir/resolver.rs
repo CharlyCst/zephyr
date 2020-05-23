@@ -12,6 +12,7 @@ struct State {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
+    functions: HashMap<String, NameId>,
     constraints: ConstraintStore,
 }
 
@@ -22,6 +23,7 @@ impl State {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts: contexts,
+            functions: HashMap::new(),
             constraints: ConstraintStore::new(),
         }
     }
@@ -135,7 +137,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     loc: param.loc,
                     n_id: n_id,
                 }),
-                Err(decl_loc) => {
+                Err(_decl_loc) => {
                     // TODO: find a way to indicate line of definition
                     let error = format!("Name {} already defined in current context", fun.ident);
                     self.err.report(fun.loc, error);
@@ -212,7 +214,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                                 expr: Box::new(expr),
                             }
                         }
-                        Err(decl_loc) => {
+                        Err(_decl_loc) => {
                             // TODO: find a way to indicate line of duplicate
                             let error =
                                 format!("Name {} already defined in current context", var.ident,);
@@ -221,7 +223,11 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         }
                     }
                 }
-                ast::Statement::IfStmt { mut expr, block } => {
+                ast::Statement::IfStmt {
+                    mut expr,
+                    block,
+                    else_block,
+                } => {
                     let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
                     state.new_constraint(TypeConstraint::Equality(
                         expr_t_id,
@@ -229,9 +235,16 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         expr.get_loc(),
                     ));
                     let block = self.resolve_block(block, state, locals, fun_t_id);
+                    let else_block = if let Some(else_block) = else_block {
+                        let else_block = self.resolve_block(else_block, state, locals, fun_t_id);
+                        Some(else_block)
+                    } else {
+                        None
+                    };
                     Statement::IfStmt {
                         expr: Box::new(expr),
                         block: block,
+                        else_block: else_block,
                     }
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
@@ -387,7 +400,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         };
                         (expr, T_ID_BOOL)
                     }
-                    ast::BinaryOperator::Equal => {
+                    ast::BinaryOperator::Equal | ast::BinaryOperator::NotEqual => {
                         let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
@@ -456,7 +469,87 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     return (dummy_expr, T_ID_BOOL);
                 }
             }
-            _ => panic!("Expression not implemented"), // TODO
+            ast::Expression::Call { fun, args } => {
+                let n = args.len();
+                let mut resolved_args = Vec::with_capacity(n);
+                let mut args_t = Vec::with_capacity(n);
+                let mut args_loc = Vec::with_capacity(n);
+                for arg in args {
+                    let (arg, arg_t) = self.resolve_expression(arg, state);
+                    args_loc.push(arg.get_loc());
+                    resolved_args.push(arg);
+                    args_t.push(arg_t);
+                }
+
+                // Check if variable is a known function
+                if let ast::Expression::Variable { ref var } = **fun {
+                    if let Some(fun_id) = state.functions.get(&var.ident) {
+                        // Known function => direct call
+                        let fun_id = *fun_id;
+                        let fun_t = state.names.get(fun_id).t_id;
+                        let return_t = state.types.fresh(var.loc, vec![Type::Any]);
+                        let loc = if n > 0 {
+                            var.loc.merge(resolved_args[n - 1].get_loc())
+                        } else {
+                            var.loc
+                        };
+                        state.new_constraint(TypeConstraint::Arguments(
+                            args_t, fun_t, args_loc, loc,
+                        ));
+                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
+                        (
+                            Expression::CallDirect {
+                                fun_id: fun_id,
+                                loc: loc,
+                                args: resolved_args,
+                                t_id: return_t,
+                            },
+                            return_t,
+                        )
+                    } else {
+                        // Duplicate code (see below)! Waiting for chaining if let proposal
+                        // https://github.com/rust-lang/rust/issues/53667
+                        let (fun, fun_t) = self.resolve_expression(fun, state);
+                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                        let loc = if n > 0 {
+                            fun.get_loc().merge(resolved_args[n - 1].get_loc())
+                        } else {
+                            fun.get_loc()
+                        };
+                        state.new_constraint(TypeConstraint::Arguments(
+                            args_t, fun_t, args_loc, loc,
+                        ));
+                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
+
+                        let expr = Expression::CallIndirect {
+                            loc: loc,
+                            fun: Box::new(fun),
+                            args: resolved_args,
+                            t_id: return_t,
+                        };
+                        (expr, return_t)
+                    }
+                } else {
+                    // Duplicate code! Edit both !!!
+                    let (fun, fun_t) = self.resolve_expression(fun, state);
+                    let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                    let loc = if n > 0 {
+                        fun.get_loc().merge(resolved_args[n - 1].get_loc())
+                    } else {
+                        fun.get_loc()
+                    };
+                    state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc, loc));
+                    state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
+
+                    let expr = Expression::CallIndirect {
+                        loc: loc,
+                        fun: Box::new(fun),
+                        args: resolved_args,
+                        t_id: return_t,
+                    };
+                    (expr, return_t)
+                }
+            }
         }
     }
 
@@ -489,11 +582,13 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
             }
 
-            if let Err(decl_loc) =
-                state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc)
-            {
+            let declaration =
+                state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc);
+            if let Err(_decl_loc) = declaration {
                 let error = format!("Function {} declared multiple times", fun.ident);
                 self.err.report(fun.loc, error);
+            } else if let Ok((n_id, _)) = declaration {
+                state.functions.insert(fun.ident.clone(), n_id);
             }
         }
     }
