@@ -1,0 +1,6 @@
+[book]
+authors = ["CharlyCst", "Slyces"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Compiler Book"
