@@ -57,3 +57,4 @@ And run it with your favorite WASM runtime, for instance [Wastime](https://githu
 wasmtime pow.wasm 5 3
 125
 ```
+
