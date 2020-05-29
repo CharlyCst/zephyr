@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
+
 use std::fmt;
 
 pub struct Program {

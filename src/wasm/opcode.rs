@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::wasm;
 
 pub const MAGIC_NUMBER: u32 = 0x6d736100;

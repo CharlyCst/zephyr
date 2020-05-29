@@ -68,7 +68,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
-        let mut global_state = GlobalState::new(&mir.funs);
+        let global_state = GlobalState::new(&mir.funs);
         let mut funs = Vec::new();
         for fun in mir.funs {
             funs.push(self.function(fun, &global_state));

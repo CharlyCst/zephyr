@@ -268,7 +268,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
             }
             Expr::CallDirect { fun_id, args, .. } => {
                 for arg in args {
-                    self.reduce_expr(arg, stmts, s);
+                    self.reduce_expr(arg, stmts, s)?;
                 }
                 stmts.push(Statement::Call {
                     call: Call::Direct(*fun_id),
