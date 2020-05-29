@@ -17,8 +17,8 @@ test: build
 
 .PHONY: book
 book: book/book.toml
-	mdbook build book --dest-dir ../doc
+	mdbook build book --dest-dir ../docs
 
 .PHONY: serve
 serve:
-	mdbook serve book --dest-dir ../doc
+	mdbook serve book --dest-dir ../docs
