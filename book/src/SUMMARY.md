@@ -8,3 +8,5 @@
 - [AST](./ast/ast.md)
 - [MIR](./mir/mir.md)
 - [Wasm](./wasm/wasm.md)
+- [Contributing](./contributing/contributing.md)
+  - [Documentation](./contributing/documentation.md)
