@@ -6,15 +6,29 @@ TEST_PATH="test"
 TEST_OUTPUT_PATH="test_out"
 
 # Colors
+BOLD='\033[1m'
+BLACK='\033[30m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN="\033[0;36m"
 NC='\033[0m'
 
-echo ""
-echo -e "${CYAN}/// Fork integration tests ///${NC}"
-echo ""
-echo "Using $RUNTIME as runtime"
+# Reading arguments
+verbose=false
+while getopts ":hv" opt; do
+  case ${opt} in
+    h ) # help
+      printf "Usage: tests.sh [-h] [-v]\n"
+      ;;
+    v ) # verbose
+      verbose=true
+      ;;
+  esac
+done
+
+# Header
+printf "${CYAN}/// Fork integration tests ///${NC}\n"
+printf "Using $RUNTIME as runtime\n\n"
 
 if ! [ -x "$(command -v $RUNTIME)" ]; then
   echo -e "${RED}Error: $RUNTIME is not installed${NC}" >&2
@@ -27,25 +41,52 @@ if [ ! -f "$FORK" ]; then
 fi
 
 # Compile tests
-echo "Compiling..."
+printf "${BOLD}Compiling tests ...${NC}\n"
 for source in "$TEST_PATH"/*.frk; do
     output="$TEST_OUTPUT_PATH/$(basename $source .frk).wasm"
-    $FORK $source $output > /dev/null
-    if ! [ "$?" == "0" ]; then
-        echo -e "${RED}Failed to compile $(echo $source)={NC}"
-        exit 1;
+
+    printf "> $source"
+    trace=$($FORK $source $output)
+    if ! [ "$?" = "0" ]; then
+        printf " ${RED}✗${NC}\n"
+        printf "${RED}Failed to compile $(echo $source)${NC}\n\n"
+        if [ "$verbose" = true ]; then
+            printf "${CYAN}%s${NC}\n" "-------------------------------------- trace --------------------------------------"
+            printf "%s\n" "$trace"
+            printf "${CYAN}%s${NC}\n" "-----------------------------------------------------------------------------------"
+        else
+            printf "→ use -v (verbose) to see the trace\n"
+        fi
+        exit 1
     fi
+    printf " ${GREEN}✓${NC}\n"
 done
+printf "\n"
 
 # Run in $RUNTIME
-echo "Running tests..."
+printf "${BOLD}Running tests ...${NC}\n"
 for source in "$TEST_OUTPUT_PATH"/*.wasm; do
-    if ! $RUNTIME $source 2> /dev/null | grep -q 42 ; then 
-        echo -e "${RED}Failed test $(echo $source)${NC}"
+    printf "> $source"
+    if ! $RUNTIME $source 2> /dev/null | grep -q 42 ; then
+        printf " ${RED}✗${NC}\n"
+        printf "${RED}Failed test $(echo $source)${NC}\n"
+        if [ "$verbose" = true ]; then
+            # Temporary work-around: run the command several times
+            # @TODO: run the command once, split stdout/stderr, cache them
+            printf "\n"
+            printf "${CYAN}%s${NC}\n" "------------------------------------- stderr --------------------------------------"
+            printf "%s" "$($RUNTIME $source 1> /dev/null)"
+            printf "${CYAN}%s${NC}\n" "-----------------------------------------------------------------------------------"
+            printf "\n"
+            printf "${CYAN}%s${NC}\n" "------------------------------------- stdout --------------------------------------"
+            printf "%s\n" "$($RUNTIME $source 2> /dev/null)"
+            printf "${CYAN}%s${NC}\n" "-----------------------------------------------------------------------------------"
+        else
+            printf "→ use -v (verbose) to see the stderr and stdout\n\n"
+        fi
         exit 1;
     fi
+    printf " ${GREEN}✓${NC}\n"
 done
 
-echo ""
-echo -e "${GREEN}Success${NC}"
-echo ""
+printf "\n${GREEN}Success${NC}\n"
