@@ -1,16 +1,18 @@
 # Roadmap
 
-## Memory allocation
+## Version 0.1.0
+
+### Memory allocation
 
 - Find where to put the source code in the project's structure
 - Alloc
 - Free
 
-## Support multiple source files
+### Support multiple source files
 
 - import system
 
-## Extend language
+### Extend language
 
 - add new keywords
 - parse new keywords (grammar)
@@ -20,14 +22,14 @@
 - operators
   - unary negation (`-1` vs. `0 - 1`)
 
-## Documentation
+### Documentation
 
-### Code the language
+#### Code the language
 
 This section aims to provide insights on this repo: how the code is structured, how to contribute to the compiler and help build the Fork language.
 - ...
 
-### Code using the language
+#### Code using the language
 
 This section aims to provide insights on the Fork language: how to use it to write code
 - ...

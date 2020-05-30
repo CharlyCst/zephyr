@@ -10,3 +10,4 @@
 - [Wasm](./wasm/wasm.md)
 - [Contributing](./contributing/contributing.md)
   - [Documentation](./contributing/documentation.md)
+  - [Roadmap](./contributing/roadmap.md)

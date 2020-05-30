@@ -16,7 +16,7 @@ Compiling a fork (`.frk`) file to wasm is not harder, use `cargo run` and pass t
 cargo run -- test.frk test.wasm
 ```
 
-To easy development the main `make` command compiles `fork/hello.frk` and output the result to `out/hello.wasm`. When working on the compiler, one usually just runs:
+To ease development, the main `make` command compiles `fork/hello.frk` and output the result to `out/hello.wasm`. When working on the compiler, one usually just runs:
 
 ```bash
 make
