@@ -3,7 +3,7 @@ use crate::error::Location;
 use std::fmt;
 
 pub mod id {
-    pub const T_ID_BUG: usize = 0;
+    pub const _T_ID_BUG: usize = 0;
     pub const T_ID_BOOL: usize = 1;
     pub const T_ID_INTEGER: usize = 2;
     pub const T_ID_NUMERIC: usize = 3;
@@ -256,7 +256,7 @@ mod tests {
     fn built_in_types_id() {
         // Check that Type IDs correspond to the expected type candidates
         let store = TypeVarStore::new();
-        assert_eq!(vec![Type::Bug], store.get(id::T_ID_BUG).types);
+        assert_eq!(vec![Type::Bug], store.get(id::_T_ID_BUG).types);
 
         assert_eq!(vec![Type::Bool], store.get(id::T_ID_BOOL).types);
 

@@ -216,7 +216,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
         Ok(())
     }
 
-    // Push new statements that execute the given expression
+    /// Push new statements that execute the given expression
     fn reduce_expr(
         &mut self,
         expression: &Expr,
@@ -259,16 +259,59 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 }
             }
             Expr::Unary {
-                unop, expr, t_id, ..
+                unop, expr, t_id, loc
             } => {
                 let t = get_type(*t_id, s)?;
-                let mut unop_stmts = get_unop(*unop, t);
+
+                // corner cases:
+                //  > (integer, minus): push zero first, then binary operator
+                //  > (bool, not):      push one first, then binary operator
+                match unop {
+                    ASTUnop::Minus => {
+                        match t {
+                            Type::I32 => {
+                                stmts.push(Statement::Const { val: Value::I32(0) });
+                            },
+                            Type::I64 => {
+                                stmts.push(Statement::Const { val: Value::I64(0) });
+                            },
+                            _ => {},
+                        }
+                    }
+                    ASTUnop::Not => {
+                        match t {
+                            // we should only have I32 for booleans if the typing phase is correct
+                            Type::I32 => {
+                                stmts.push(Statement::Const { val: Value::I32(1) });
+                            },
+                            _ => {
+                                self.err.report_internal(*loc, String::from("Not applied to something else than a boolean (I32) → error in type phase"));
+                            },
+                        }
+                    }
+                }
+                // generic case: push evaluated value
                 self.reduce_expr(expr, stmts, s)?;
-                stmts.append(&mut unop_stmts);
+
+                // generic case: push operator (might be unary or binary)
+                let stmt = match unop {
+                    ASTUnop::Minus => {
+                        match t {
+                            Type::I32 => Statement::Binop { binop: Binop::I32Sub },
+                            Type::I64 => Statement::Binop { binop: Binop::I64Sub },
+                            Type::F32 => Statement::Unop { unop: Unop::F32Neg },
+                            Type::F64 => Statement::Unop { unop: Unop::F64Neg },
+                        }
+                    }
+                    ASTUnop::Not => {
+                        Statement::Binop { binop: Binop::I32Xor }
+                    },
+                };
+                stmts.push(stmt);
             }
             Expr::CallDirect { fun_id, args, .. } => {
                 for arg in args {
-                    self.reduce_expr(arg, stmts, s);
+                    self.reduce_expr(arg, stmts, s)?;
                 }
                 stmts.push(Statement::Call {
                     call: Call::Direct(*fun_id),
@@ -279,26 +322,6 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 .report(*loc, String::from("Indirect call are not yet supported")),
         }
         Ok(())
-    }
-}
-
-fn get_unop(unop: ASTUnop, t: Type) -> Vec<Statement> {
-    match unop {
-        ASTUnop::Minus => {
-            let neg = match t {
-                Type::I32 => Unop::I32Neg,
-                Type::I64 => Unop::I64Neg,
-                Type::F32 => Unop::F32Neg,
-                Type::F64 => Unop::F64Neg,
-            };
-            vec![Statement::Unop { unop: neg }]
-        }
-        ASTUnop::Not => vec![
-            Statement::Const { val: Value::I32(1) },
-            Statement::Binop {
-                binop: Binop::I32Xor,
-            },
-        ],
     }
 }
 

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::wasm;
 
 pub const MAGIC_NUMBER: u32 = 0x6d736100;
@@ -97,10 +99,14 @@ pub const INSTR_I64_REM_U: Instr = 0x82;
 pub const INSTR_I64_AND: Instr = 0x83;
 pub const INSTR_I64_OR: Instr = 0x84;
 pub const INSTR_I64_XOR: Instr = 0x85;
+// Floating point
+pub const INSTR_F32_NEG: Instr = 0x8c;
+pub const INSTR_F64_NEG: Instr = 0x9a;
 
 const LEB_MASK: usize = 0x0000007f;
 
 pub fn to_leb<'a>(val: usize) -> Vec<u8> {
+    // https://en.wikipedia.org/wiki/LEB128
     let mut remainder = val;
     let mut leb = Vec::new();
     let mut done = false;

@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
+
 use std::fmt;
 
 pub struct Program {
@@ -73,8 +75,6 @@ pub enum Value {
 }
 
 pub enum Unop {
-    I32Neg,
-    I64Neg,
     F32Neg,
     F64Neg,
 }
@@ -264,8 +264,6 @@ impl fmt::Display for Statement {
 impl fmt::Display for Unop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Unop::I32Neg => write!(f, "i32.ne"),
-            Unop::I64Neg => write!(f, "i64.ne"),
             Unop::F32Neg => write!(f, "f32.ne"),
             Unop::F64Neg => write!(f, "f64.ne"),
         }

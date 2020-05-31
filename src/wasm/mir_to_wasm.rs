@@ -68,7 +68,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
-        let mut global_state = GlobalState::new(&mir.funs);
+        let global_state = GlobalState::new(&mir.funs);
         let mut funs = Vec::new();
         for fun in mir.funs {
             funs.push(self.function(fun, &global_state));
@@ -237,6 +237,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
                 },
                 mir::Statement::Block { block } => self.block(*block, s, code),
                 mir::Statement::Binop { binop } => code.push(get_binop(binop)),
+                mir::Statement::Unop { unop } => code.push(get_unop(unop)),
                 mir::Statement::Relop { relop } => code.push(get_relop(relop)),
                 mir::Statement::Call { call } => match call {
                     mir::Call::Direct(fun_id) => {
@@ -271,6 +272,21 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::I64Rem => INSTR_I64_REM_U,
 
         _ => unimplemented!(),
+    }
+}
+
+fn get_unop(unop: mir::Unop) -> Instr {
+    match unop {
+        // These instructions do not exist for I32 and I64, as:
+        //
+        //   > There is no distinction between signed and unsigned
+        //   > integer types. Instead, integers are interpreted by
+        //   > respective operations as either unsigned or signed
+        //   > in two’s complement representation.
+        //
+        // https://www.w3.org/TR/wasm-core-1/#concepts%E2%91%A0
+        mir::Unop::F32Neg => INSTR_F32_NEG,
+        mir::Unop::F64Neg => INSTR_F64_NEG,
     }
 }
 
