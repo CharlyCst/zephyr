@@ -1,0 +1,33 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master, dev ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Build
+      run:
+        cargo build --verbose
+
+    - name: Setup
+      run: make setup
+
+    - name: Run rust tests
+      run: cargo test --verbose
+
+    - name: Run fork test-suite
+      shell: bash
+      run: |
+          export PATH="$HOME/.wasmtime/bin:$PATH"
+          sh test.sh -v

@@ -2,6 +2,11 @@
 main: src/main.rs
 	cargo run -- fork/hello.frk out/hello.wasm
 
+.PHONY: setup
+setup:
+	printf "\x1b[35m%s\x1b[0m" "Installing runtimes"
+	curl https://wasmtime.dev/install.sh -sSf | bash
+
 .PHONY: build
 build: src/main.rs
 	cargo build
@@ -21,4 +26,3 @@ book: book/book.toml
 
 .PHONY: serve
 serve:
-	mdbook serve book --dest-dir ../docs

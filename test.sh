@@ -16,14 +16,14 @@ NC='\033[0m'
 # Reading arguments
 verbose=false
 while getopts ":hv" opt; do
-  case ${opt} in
-    h ) # help
-      printf "Usage: tests.sh [-h] [-v]\n"
-      ;;
-    v ) # verbose
-      verbose=true
-      ;;
-  esac
+    case ${opt} in
+        h ) # help
+            printf "Usage: tests.sh [-h] [-v]\n"
+            ;;
+        v ) # verbose
+            verbose=true
+            ;;
+    esac
 done
 
 # Header
@@ -31,12 +31,12 @@ printf "${CYAN}/// Fork integration tests ///${NC}\n"
 printf "Using $RUNTIME as runtime\n\n"
 
 if ! [ -x "$(command -v $RUNTIME)" ]; then
-  echo -e "${RED}Error: $RUNTIME is not installed${NC}" >&2
-  exit 1
+    printf "${RED}Error: $RUNTIME is not installed${NC}\n" >&2
+    exit 1
 fi
 
 if [ ! -f "$FORK" ]; then
-    echo "Could not find fork"
+    printf "Could not find fork"
     exit 1
 fi
 
