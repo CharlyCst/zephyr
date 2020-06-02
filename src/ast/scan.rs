@@ -6,6 +6,7 @@ const RADIX: u32 = 10;
 
 pub struct Scanner<'a, 'b> {
     err: &'b mut ErrorHandler<'a>,
+    f_id: u16,
     code: Vec<char>,
     start: usize,
     current: usize,
@@ -15,7 +16,7 @@ pub struct Scanner<'a, 'b> {
 }
 
 impl<'a, 'b> Scanner<'a, 'b> {
-    pub fn new(code: &str, error_handler: &'b mut ErrorHandler<'a>) -> Scanner<'a, 'b> {
+    pub fn new(code: &str, f_id: u16, error_handler: &'b mut ErrorHandler<'a>) -> Scanner<'a, 'b> {
         let keywords: HashMap<String, TokenType> = [
             (String::from("let"), TokenType::Let),
             (String::from("var"), TokenType::Var),
@@ -34,6 +35,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
 
         Scanner {
             err: error_handler,
+            f_id: f_id,
             code: code.chars().collect(), // TODO: remove this copy
             start: 0,
             current: 0,
@@ -177,6 +179,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
             loc: Location {
                 pos: self.start as u32,
                 len: (self.current - self.start) as u32,
+                f_id: self.f_id,
             },
         };
         self.check_stmt_ender(&token);
@@ -187,6 +190,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         Location {
             pos: self.start as u32,
             len: (self.current - self.start) as u32,
+            f_id: self.f_id,
         }
     }
 

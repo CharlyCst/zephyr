@@ -11,7 +11,7 @@ pub use tokens::*;
 pub fn get_ast<'a, 'b>(code: &str, error_handler: &'b mut ErrorHandler<'a>) -> ast::Program {
     println!("\n/// Scanning ///\n");
 
-    let mut scanner = scan::Scanner::new(code, error_handler);
+    let mut scanner = scan::Scanner::new(code, 0, error_handler);
     let tokens = scanner.scan();
 
     for token in tokens.iter() {
