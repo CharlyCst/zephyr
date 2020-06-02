@@ -20,7 +20,7 @@ fn main() {
 }
 
 fn compile(code: String, output_path: &str) {
-    let mut error_handler = error::ErrorHandler::new(&code);
+    let mut error_handler = error::ErrorHandler::new(&code, 0);
     let ast_program = ast::get_ast(&code, &mut error_handler);
     let mir_program = mir::to_mir(ast_program, &mut error_handler);
     let binary = wasm::to_wasm(mir_program, &mut error_handler);
