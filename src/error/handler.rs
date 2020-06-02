@@ -12,6 +12,9 @@ pub struct ErrorHandler<'a> {
     codes: HashMap<u16, &'a str>,
 }
 
+/// Store errors encountered during compilation and generate a report on demand.
+/// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
+/// merged as needed when proceeding through the pipeline.
 impl<'a> ErrorHandler<'a> {
     pub fn new(code: &str, f_id: u16) -> ErrorHandler {
         let mut codes = HashMap::new();
@@ -66,6 +69,23 @@ impl<'a> ErrorHandler<'a> {
     /// The compilation will fail silently. Prefer reporting an error if possible.
     pub fn silent_report(&mut self) {
         self.has_error = true;
+    }
+
+    /// Merge another ErrorHandler into self, taking ownership of its errors.
+    pub fn _merge(&mut self, other: ErrorHandler<'a>) {
+        self.has_error = self.has_error || other.has_error;
+        self.errors.extend(other.errors);
+
+        for (f_id, code) in other.codes.into_iter() {
+            if self.codes.contains_key(&f_id) {
+                self.report_internal_no_loc(format!(
+                    "Merging two ErrorHandlers collecting errors for the same file with id {}.",
+                    f_id
+                ));
+            } else {
+                self.codes.insert(f_id, code);
+            }
+        }
     }
 
     /// If at least one error has been reported, print the errors and exit.
