@@ -1,4 +1,5 @@
 use super::errors::{Error, ErrorType, Location};
+use std::collections::HashMap;
 
 const RED: &'static str = "\x1B[31m";
 const MAGENTA: &'static str = "\x1B[35m";
@@ -8,18 +9,21 @@ const END: &'static str = "\x1B[0m";
 pub struct ErrorHandler<'a> {
     has_error: bool,
     errors: Vec<Error>,
-    code: &'a str,
+    codes: HashMap<u16, &'a str>,
 }
 
 impl<'a> ErrorHandler<'a> {
-    pub fn new(code: &str) -> ErrorHandler {
+    pub fn new(code: &str, f_id: u16) -> ErrorHandler {
+        let mut codes = HashMap::new();
+        codes.insert(f_id, code);
         ErrorHandler {
             has_error: false,
             errors: Vec::new(),
-            code: code,
+            codes: codes,
         }
     }
 
+    /// Report an error without location.
     pub fn report_no_loc(&mut self, message: String) {
         self.has_error = true;
         self.errors.push(Error {
@@ -29,6 +33,7 @@ impl<'a> ErrorHandler<'a> {
         })
     }
 
+    /// Report an error.
     pub fn report(&mut self, loc: Location, message: String) {
         self.has_error = true;
         self.errors.push(Error {
@@ -38,6 +43,7 @@ impl<'a> ErrorHandler<'a> {
         })
     }
 
+    /// Report an internal error, this is reserved for errors due to the compiler itself.
     pub fn report_internal(&mut self, loc: Location, message: String) {
         self.has_error = true;
         self.errors.push(Error {
@@ -47,6 +53,7 @@ impl<'a> ErrorHandler<'a> {
         })
     }
 
+    /// Report an internal error without location, this is reserved for errors due to the compiler itself.
     pub fn report_internal_no_loc(&mut self, message: String) {
         self.has_error = true;
         self.errors.push(Error {
@@ -56,11 +63,13 @@ impl<'a> ErrorHandler<'a> {
         })
     }
 
+    /// The compilation will fail silently. Prefer reporting an error if possible.
     pub fn silent_report(&mut self) {
         self.has_error = true;
     }
 
-    // If at least one error has been reported, print the errors and exit
+    /// If at least one error has been reported, print the errors and exit.
+    /// Return immediately without exiting otherwise.
     pub fn print_and_exit(&mut self) {
         if !self.has_error {
             return;
@@ -68,65 +77,93 @@ impl<'a> ErrorHandler<'a> {
             exit();
         }
 
-        self.errors.sort_unstable();
-
-        let mut err = &self.errors[0];
-        let mut err_idx = 0;
-
-        // Print all errors without location
-        while err.loc.is_none() {
-            self.print(err);
-
-            if err_idx + 1 >= self.errors.len() {
-                exit();
+        // Sort errors on file ID.
+        let mut errors_no_loc = Vec::new();
+        let mut errors_by_files: HashMap<u16, Vec<&Error>> = HashMap::new();
+        for err in self.errors.iter() {
+            if let Some(loc) = err.loc {
+                if let Some(errors) = errors_by_files.get_mut(&loc.f_id) {
+                    errors.push(err);
+                } else {
+                    errors_by_files.insert(loc.f_id, vec![err]);
+                }
             } else {
-                err_idx += 1;
-                err = &self.errors[err_idx];
+                errors_no_loc.push(err);
             }
         }
 
-        // Print all errors with location
-        let mut line = 1;
-        let mut lines_pos = 0;
-        let mut pos = 0;
-        let mut loc = err.loc.unwrap();
+        // Print all errors without location.
+        for err in errors_no_loc {
+            self.print(&err);
+        }
 
-        let mut iter = self.code.chars();
-        let mut line_iter = iter.clone();
-        loop {
-            if let Some(c) = iter.next() {
-                if c == '\n' {
-                    line += 1;
-                    lines_pos = pos;
-                    line_iter = iter.clone();
-                }
-                if pos == loc.pos {
-                    let new_loc = Location {
-                        pos: pos - lines_pos,
-                        len: loc.len,
-                    };
-                    let min_size = new_loc.pos + loc.len;
-                    let erroneous_code = self.get_substr(line_iter.clone(), min_size);
-                    self.print_line(err, erroneous_code, new_loc, line);
-
-                    if err_idx + 1 >= self.errors.len() {
-                        break;
-                    } else {
-                        err_idx += 1;
-                        err = &self.errors[err_idx];
-                        loc = err.loc.unwrap();
-                    }
-                }
-                pos += 1;
+        // Print all errors with location.
+        for (f_id, errors) in errors_by_files.into_iter() {
+            if let Some(code) = self.codes.get(&f_id) {
+                self.print_errors_with_loc(code, errors);
             } else {
-                break;
+                let err = Error {
+                    loc: None,
+                    t: ErrorType::Internal,
+                    message: String::from("Found errors with unknown file ID."),
+                };
+                self.print(&err);
             }
         }
 
         exit();
     }
 
-    fn print_line(&self, e: &Error, code: String, loc: Location, line: usize) {
+    /// Pretty print errors with code context.
+    /// All errors **must** have a location corresponding to `code`.
+    fn print_errors_with_loc(&self, code: &'a str, mut errors: Vec<&Error>) {
+        // Sort errors by locations.
+        errors.sort_unstable();
+
+        let mut error_iterator = errors.iter();
+        let mut err = if let Some(err) = error_iterator.next() {
+            err
+        } else {
+            return;
+        };
+
+        // Maintain position information
+        let mut line = 1;
+        let mut lines_pos = 0;
+        let mut pos = 0;
+        let mut loc = err.loc.unwrap();
+
+        // Iterate the code, keep an extra iterator pointing to the beginning of the current line.
+        let mut iter = code.chars();
+        let mut line_iter = iter.clone();
+        while let Some(c) = iter.next() {
+            if c == '\n' {
+                // Next line
+                line += 1;
+                lines_pos = pos;
+                line_iter = iter.clone();
+            }
+            if pos == loc.pos {
+                // Found the location of an error
+                let error_pos = pos - lines_pos;
+                let min_size = error_pos + loc.len;
+                let erroneous_code = self.get_substr(line_iter.clone(), min_size);
+                self.print_line(err, erroneous_code, error_pos, loc.len, line);
+
+                // Continue while at least one error remains.
+                err = if let Some(err) = error_iterator.next() {
+                    err
+                } else {
+                    return;
+                };
+                loc = err.loc.unwrap();
+            }
+            pos += 1;
+        }
+    }
+
+    /// Pretty print an error with position information.
+    fn print_line(&self, e: &Error, code: String, pos: u32, len: u32, line: usize) {
         let color = get_color(e.t);
         let err_name = get_err_name(e.t);
 
@@ -137,8 +174,8 @@ impl<'a> ErrorHandler<'a> {
             color,
             "^",
             END,
-            blank = loc.pos as usize,
-            underline = loc.len as usize
+            blank = pos as usize,
+            underline = len as usize
         );
         println!(
             "{}{}{}:{}{} {}{}\n",
@@ -146,6 +183,7 @@ impl<'a> ErrorHandler<'a> {
         );
     }
 
+    /// Pretty print an error without position information.
     fn print(&self, e: &Error) {
         let color = get_color(e.t);
         let err_name = get_err_name(e.t);
@@ -156,6 +194,9 @@ impl<'a> ErrorHandler<'a> {
         );
     }
 
+    /// Returns a copy of the smallest number of full lines starting at `iter`
+    /// and spanning at least `min_size` characters.
+    /// Used to extract lines containing an error.
     fn get_substr(&self, iter: std::str::Chars<'_>, min_size: u32) -> String {
         let mut idx = 0;
         iter.take_while(|c| {
