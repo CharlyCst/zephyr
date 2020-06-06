@@ -34,7 +34,7 @@ pub enum TokenType {
     Identifier(String),
     NumberLit(u64),
     BooleanLit(bool),
-    // StringLit(String),
+    StringLit(String),
 
     // Keywords
     As,

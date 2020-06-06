@@ -139,11 +139,14 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 }
             }
             ' ' | '\t' | '\r' => (),
+            // Advanced logic for multi-character tokens
             c => {
                 if c.is_digit(RADIX) {
                     self.number(tokens)
                 } else if c.is_alphabetic() || c == '_' {
                     self.identifier(tokens)
+                } else if c == '"' {
+                    self.string(tokens);
                 } else {
                     self.err
                         .report(self.get_loc(), format!("Unexpected character \"{}\"", c))
@@ -246,6 +249,24 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
+    /// Consumes any (non carriage-return) characters between double quotes
+    fn string(&mut self, tokens: &mut Vec<Token>) {
+        // Consume until the next char is a double quote
+        while !self.is_at_end() && self.peek() != '"' {
+            let c = self.advance();
+            // Exit if the double quote is not found on this line
+            if c == '\n' {
+                self.err.report(self.get_loc(), String::from("string literal should start and end on the same line"));
+            }
+        }
+        // Advance to consume the ending double quote
+        self.advance();
+        let str_val = self.code[self.start+1..self.current-1]
+            .iter()
+            .cloned()
+            .collect::<String>();
+        self.add_token(tokens, TokenType::StringLit(str_val));
+    }
 
 
     /// Converts a sequence of chars to a keyword, an itendifier or a boolean
