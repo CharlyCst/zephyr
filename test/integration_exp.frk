@@ -1,4 +1,4 @@
-export fun Main() i32 {
+pub fun Main() i32 {
     // Parameters
     let a = 3
     let b = 9
