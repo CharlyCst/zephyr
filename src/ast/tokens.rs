@@ -37,16 +37,20 @@ pub enum TokenType {
     // StringLit(String),
 
     // Keywords
-    Let,
-    Var,
+    As,
+    Else,
+    Expose,
+    False,
     Fun,
     If,
-    Else,
-    While,
+    Let,
+    Package,
+    Pub,
     Return,
     True,
-    False,
-    Export,
+    Use,
+    Var,
+    While,
 
     // Other
     SemiColon,

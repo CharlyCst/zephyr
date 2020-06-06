@@ -1,6 +1,6 @@
 // Test else primitive
 
-export fun Main() i32 {
+pub fun Main() i32 {
 	if  1 == 2 {
 		return 1
 	} else {

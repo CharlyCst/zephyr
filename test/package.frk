@@ -1,6 +1,7 @@
 // Test let statement
-
 pub fun Main() i32 {
+    package "std"
+
     let x = 42
     return x
 }

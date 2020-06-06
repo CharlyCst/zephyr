@@ -123,7 +123,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn function(&mut self) -> Result<Function, ()> {
-        let exported = self.next_match(TokenType::Export);
+        let exported = self.next_match(TokenType::Pub);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
             return Err(());

@@ -1,6 +1,6 @@
 // Test while loop
 
-export fun Main() i32 {
+pub fun Main() i32 {
     let x = 0
 	while x < 42 {
         x = x + 1

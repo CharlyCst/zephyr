@@ -1,6 +1,6 @@
 // Test if primitive
 
-export fun Main() i32 {
+pub fun Main() i32 {
     let x = 42
 	if x == 42 {
 		return x

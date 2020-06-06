@@ -1,4 +1,4 @@
-export fun Main() i32 {
+pub fun Main() i32 {
     if fact(1, 6) == 720 {
         return 42
     }
