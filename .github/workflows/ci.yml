@@ -16,12 +16,30 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Cache Runtimes
+      uses: actions/cache@v2
+      with:
+        path: .runtimes
+        key: standard-key
+   
+    - name: Cache Fork
+      uses: actions/cache@v2
+      with:
+        path: target
+        key: standard-key
+
+    - name: Runtime Installs
+      shell: bash
+      run: |
+          [[ -d .runtimes ]] || mkdir .runtimes
+          if [[ ! -f .runtimes/wasmtime ]]; then
+            curl https://wasmtime.dev/install.sh -sSf | bash
+            mv $HOME/.wasmtime/bin/wasmtime .runtimes/wasmtime
+          fi
+
     - name: Build
       run:
         cargo build --verbose
-
-    - name: Setup
-      run: make setup
 
     - name: Run rust tests
       run: cargo test --verbose
@@ -29,5 +47,5 @@ jobs:
     - name: Run fork test-suite
       shell: bash
       run: |
-          export PATH="$HOME/.wasmtime/bin:$PATH"
+          export PATH=".runtimes:$PATH"
           sh test.sh -v
