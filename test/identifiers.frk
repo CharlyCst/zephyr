@@ -1,0 +1,7 @@
+// Test '_' in identifiers
+
+export fun Main() i32 {
+    let _x_ = 42
+    let hello_world = true
+	return _x_
+}
