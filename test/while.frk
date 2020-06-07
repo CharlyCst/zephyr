@@ -1,3 +1,4 @@
+package "test"
 // Test while loop
 
 pub fun Main() i32 {

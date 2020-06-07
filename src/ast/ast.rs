@@ -93,10 +93,17 @@ pub enum Declaration {
 }
 
 pub struct Program {
+    pub package: Package,
     pub funs: Vec<Function>,
     pub exposed: Vec<Expose>,
     pub used: Vec<Use>,
 }
+
+pub struct Package {
+    pub path: String,
+    pub loc: Location,
+}
+
 
 pub struct Function {
     pub ident: String,
