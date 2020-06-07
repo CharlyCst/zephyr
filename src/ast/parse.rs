@@ -8,6 +8,8 @@ pub struct Parser<'a, 'b> {
     current: usize,
 }
 
+/// Works on a list of tokens and converts it into an Abstract Syntax Tree,
+/// following the grammar of the language (defined in 'grammar.md')
 impl<'a, 'b> Parser<'a, 'b> {
     pub fn new(tokens: Vec<Token>, error_handler: &'b mut ErrorHandler<'a>) -> Parser<'a, 'b> {
         Parser {
@@ -17,19 +19,32 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Main function converting a list of token in vectors of declarations
+    /// (functions, use, expose)
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
+        let mut exposed = Vec::new();
+        let mut used = Vec::new();
 
         while !self.is_at_end() {
-            match self.function() {
-                Ok(expr) => funs.push(expr),
+            match self.declaration() {
+                Ok(decl) => match decl {
+                    Declaration::Function(fun) => funs.push(fun),
+                    Declaration::Use(uses) => used.push(uses),
+                    Declaration::Expose(expose) => exposed.push(expose),
+                },
                 Err(()) => self.err.silent_report(),
             }
         }
 
-        Program { funs: funs }
+        Program {
+            funs: funs,
+            exposed: exposed,
+            used: used,
+        }
     }
 
+    /// Is the last token of the file?
     fn is_at_end(&self) -> bool {
         match self.peek().t {
             TokenType::EOF => true,
@@ -37,20 +52,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Shows the current token without consuming it
     fn peek(&self) -> &Token {
         let cur = self.current;
         &self.tokens[cur]
     }
 
-    fn previous(&self) -> &Token {
-        let prev = self.current - 1;
-        if prev > 0 {
-            &self.tokens[prev]
-        } else {
-            &self.tokens[0]
-        }
-    }
-
+    // @TODO: test
+    // In theory if the tokens list is valid, only EOF is at the last position
+    // of the tokens list, so peekpeek <=> peek only for EOF (is_at_end == true)
+    /// Shows the next token (after the current) if it exists, else shows the
+    /// current token
     fn peekpeek(&self) -> &Token {
         let next = self.current + 1;
         if next >= self.tokens.len() {
@@ -60,6 +72,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Shows the previous token (already consumed)
+    fn previous(&self) -> &Token {
+        let prev = self.current - 1;
+        if prev > 0 {
+            &self.tokens[prev]
+        } else {
+            &self.tokens[0]
+        }
+    }
+
+    /// Consumes and returns the current token by moving current to the right
     fn advance(&mut self) -> &Token {
         let token = &self.tokens[self.current];
         if !self.is_at_end() {
@@ -68,13 +91,16 @@ impl<'a, 'b> Parser<'a, 'b> {
         token
     }
 
+    /// Moves the cursor one position to the left (marking already consumed
+    /// tokens as not consumed)
     fn back(&mut self) {
         if self.current > 0 {
             self.current -= 1;
         }
     }
 
-    // If the next token has type t, consume it and return true, return false otherwise
+    /// If the next token has type t, consume it and return true, return false
+    /// otherwise
     fn next_match(&mut self, t: TokenType) -> bool {
         if self.peek().t == t {
             self.advance();
@@ -84,7 +110,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    // Same as `next_match` but report an error if the token doesn't match
+    /// Same as `next_match` but report an error if the token doesn't match
     fn next_match_report(&mut self, t: TokenType, err: &str) -> bool {
         if self.peek().t == t {
             self.advance();
@@ -96,6 +122,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Consumes token until a semi-colon, used in the context of invalid lines
     fn synchronize(&mut self) {
         let mut token = self.advance();
         while token.t != TokenType::SemiColon && !self.is_at_end() {
@@ -103,6 +130,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Consumes until the next top level declaration
     fn synchronize_fun(&mut self) {
         let mut token = self.advance();
         while token.t != TokenType::Fun && !self.is_at_end() {
@@ -110,6 +138,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Expects the current token to be a semicolon and consumes it, throws an
+    /// error if it's not
     fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
@@ -122,6 +152,89 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /* All the following functions try to parse a grammar element, and
+    recursively parse all sub-elements as defined in the gammar of the
+    language */
+
+    /// Parses a 'declaration' that can be either a 'use', 'expose' or 'fun'
+    fn declaration(&mut self) -> Result<Declaration, ()> {
+        match self.peek().t {
+            TokenType::Fun | TokenType::Pub => Ok(Declaration::Function(self.function()?)),
+            TokenType::Use => Ok(Declaration::Use(self._use()?)),
+            TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
+            _ => {
+                self.err.report(self.peek().loc, String::from( "Top level declaration must be one of 'function', 'use', 'expose'"));
+                self.synchronize();
+                Err(())
+            }
+        }
+    }
+
+    /// Parses the 'use' grammar element
+    fn _use(&mut self) -> Result<Use, ()> {
+        let start = self.peek().loc;
+        if ! self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword") {
+            return Err(())
+        }
+
+        let token = self.advance();
+        if let TokenType::StringLit(ref string) = token.t {
+            let string = string.clone();
+            let alias = if self.next_match(TokenType::As) {
+                let token = self.advance();
+                if let TokenType::Identifier(ref ident) = token.t {
+                    Some(ident.clone())
+                } else {
+                    let loc = token.loc;
+                    self.err.report(loc, String::from("'as' should be followed by an identifier"));
+                    return Err(())
+                }
+            } else {
+                None
+            };
+            let end = self.peek().loc;
+            self.consume_semi_colon();
+            Ok(Use{ loc: start.merge(end), path: string, alias: alias })
+        } else {
+            let loc = token.loc;
+            self.err.report(loc, String::from("'use' keyword should be followed by a double quoted path"));
+            Err(())
+        }
+    }
+
+    /// Parses the 'expose' grammar element
+    fn expose(&mut self) -> Result<Expose, ()> {
+        let start = self.peek().loc;
+        if ! self.next_match_report(TokenType::Expose, "Expose statement must start by 'expose' keyword") {
+            return Err(())
+        }
+
+        let token = self.advance();
+        if let TokenType::Identifier(ref ident) = token.t {
+            let ident = ident.clone();
+            let alias = if self.next_match(TokenType::As) {
+                let token = self.advance();
+                if let TokenType::Identifier(ref alias_ident) = token.t {
+                    Some(alias_ident.clone())
+                } else {
+                    let loc = token.loc;
+                    self.err.report(loc, String::from("'as' should be followed by an identifier"));
+                    return Err(())
+                }
+            } else {
+                None
+            };
+            let end = self.peek().loc;
+            self.consume_semi_colon();
+            Ok(Expose{ loc: start.merge(end), ident: ident, alias: alias })
+        } else {
+            let loc = token.loc;
+            self.err.report(loc, String::from("'expose' keyword should be followed by an identifier"));
+            Err(())
+        }
+    }
+
+    /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
         let exported = self.next_match(TokenType::Pub);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
@@ -169,6 +282,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
+    /// Parses the 'parameters' grammar element
     fn parameters(&mut self) -> Vec<Variable> {
         let mut params = Vec::new();
         while let Token {
@@ -206,6 +320,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         params
     }
 
+    /// Parses the 'result' grammar element
     fn result(&mut self) -> Option<(String, Location)> {
         if let TokenType::Identifier(ref t) = self.peek().t {
             let result = Some((t.clone(), self.peek().loc));
@@ -216,6 +331,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Parses the 'statement' grammar element
     fn statement(&mut self) -> Result<Statement, ()> {
         match self.peek().t {
             TokenType::Let => {
@@ -242,6 +358,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Parses the 'expr_stmt' grammar element
     fn expr_stmt(&mut self) -> Result<Statement, ()> {
         let expr = self.expression()?;
         if !self.next_match_report(TokenType::SemiColon, "This statement is not complete") {
@@ -252,6 +369,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
+    /// Parses the 'assign_stmt' grammar element
     fn assign_stmt(&mut self) -> Result<Statement, ()> {
         let (ident, loc) = match self.advance() {
             Token {
@@ -287,8 +405,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    // The `let` token must have been consumed
+    /// Parses the 'let_stmt' grammar element (assuming the `let` token has
+    /// been consumed )
     fn let_stmt(&mut self) -> Result<Statement, ()> {
+        // The `let` token must have been consumed
         let next = self.advance();
         let (ident, loc) = match next {
             Token {
@@ -323,8 +443,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    // The `if` token must have been consumed
+    /// Parses the 'if_stmt' grammar element (assuming the `if` token has
+    /// been consumed )
     fn if_stmt(&mut self) -> Result<Statement, ()> {
+        // The `if` token must have been consumed
         let expr = self.expression()?;
         if !self.next_match_report(
             TokenType::LeftBrace,
@@ -360,8 +482,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    // The `while` token must have been consumed
+    /// Parses the 'while_stmt' grammar element (assuming the `while` token has
+    /// been consumed )
     fn while_stmt(&mut self) -> Result<Statement, ()> {
+        // The `while` token must have been consumed
         let expr = self.expression()?;
         if !self.next_match_report(
             TokenType::LeftBrace,
@@ -377,8 +501,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    // The `return` token must have been consumed
+    /// Parses the 'return_stmt' grammar element (assuming the `return` token has
+    /// been consumed )
     fn return_stmt(&mut self) -> Result<Statement, ()> {
+        // The `return` token must have been consumed
         let loc = self.previous().loc;
         let expr = self.expression();
         match expr {
@@ -400,8 +526,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    // The `{` token must have been consumed
+    /// Parses the '{' grammar element (assuming the `{` token has been
+    /// consumed )
     fn block(&mut self) -> Result<Block, ()> {
+        // The `{` token must have been consumed
         let mut stmts = Vec::new();
         while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
             let next_expr = self.statement();
@@ -413,6 +541,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(Block { stmts: stmts })
     }
 
+    /// Parses the 'expression' grammar element. As the grammar is unambiguous,
+    /// precedence are directly baked into the grammar: the lowest priority
+    /// elements are processed first, and will recursively call elements of
+    /// higher priority
     fn expression(&mut self) -> Result<Expression, ()> {
         self.logical_or()
     }
