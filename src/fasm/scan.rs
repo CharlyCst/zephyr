@@ -12,7 +12,7 @@ pub struct Scanner<'a, 'b> {
     start: usize,
     current: usize,
     keywords: HashMap<String, TokenType>,
-    new_line: bool,
+    stmt_ender: bool,
 }
 
 impl<'a, 'b> Scanner<'a, 'b> {
@@ -26,7 +26,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
             start: 0,
             current: 0,
             keywords: keywords,
-            new_line: true,
+            stmt_ender: false,
         }
     }
 
@@ -61,9 +61,10 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 }
             }
             '\n' => {
-                if !self.new_line {
+                if self.stmt_ender {
                     self.add_token(tokens, TokenType::SemiColon)
                 }
+                self.stmt_ender = false;
             }
             ' ' | '\t' | '\r' => (),
             c => {
@@ -124,8 +125,9 @@ impl<'a, 'b> Scanner<'a, 'b> {
     /// Add a fresh token of type `t`.
     fn add_token(&mut self, tokens: &mut Vec<Token>, t: TokenType) {
         match t {
-            TokenType::SemiColon => self.new_line = true,
-            _ => self.new_line = false,
+            TokenType::SemiColon => self.stmt_ender = false,
+            TokenType::LeftBrace => self.stmt_ender = false,
+            _ => self.stmt_ender = true,
         }
         let token = Token {
             t: t,
