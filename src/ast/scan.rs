@@ -132,7 +132,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
             c => {
                 if c.is_digit(RADIX) {
                     self.number(tokens)
-                } else if c.is_alphabetic() {
+                } else if c.is_alphabetic() || c == '_' {
                     self.identifier(tokens)
                 } else {
                     self.err
@@ -226,7 +226,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
     }
 
     fn identifier(&mut self, tokens: &mut Vec<Token>) {
-        while !self.is_at_end() && self.peek().is_alphanumeric() {
+        while !self.is_at_end() && self.peek().is_alphanumeric() || self.peek() == '_' {
             self.advance();
         }
         let ident = self.code[self.start..self.current]
