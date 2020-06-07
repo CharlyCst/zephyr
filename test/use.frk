@@ -1,3 +1,4 @@
+package "test"
 // Test the use keyword
 use "std/awesome"
 use "std/math" as math

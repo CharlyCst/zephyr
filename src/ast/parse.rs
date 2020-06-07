@@ -26,6 +26,14 @@ impl<'a, 'b> Parser<'a, 'b> {
         let mut exposed = Vec::new();
         let mut used = Vec::new();
 
+        let package = match self.package() {
+            Ok(pack) => pack,
+            Err(()) => {
+                self.err.silent_report();
+                Package{ path: String::from(""), loc: Location { pos: 0, len: 0, f_id: 0 }}
+            },
+        };
+
         while !self.is_at_end() {
             match self.declaration() {
                 Ok(decl) => match decl {
@@ -38,6 +46,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
 
         Program {
+            package: package,
             funs: funs,
             exposed: exposed,
             used: used,
@@ -156,6 +165,28 @@ impl<'a, 'b> Parser<'a, 'b> {
     recursively parse all sub-elements as defined in the gammar of the
     language */
 
+    /// Parses the 'package' grammar element
+    fn package(&mut self) -> Result<Package, ()> {
+        let start = self.peek().loc;
+        if ! self.next_match_report(TokenType::Package, "Programs must start with a 'package' keyword") {
+            return Err(())
+        }
+
+        let token = self.advance();
+        if let TokenType::StringLit(ref string) = token.t {
+            let string = string.clone();
+            let end = self.peek().loc;
+            self.consume_semi_colon();
+            Ok(Package{ loc: start.merge(end), path: string })
+        } else {
+            let loc = token.loc;
+            self.synchronize();
+            self.err.report(loc, String::from("'package' keyword should be followed by a double quoted path"));
+            Err(())
+        }
+    }
+
+
     /// Parses a 'declaration' that can be either a 'use', 'expose' or 'fun'
     fn declaration(&mut self) -> Result<Declaration, ()> {
         match self.peek().t {
@@ -163,7 +194,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             TokenType::Use => Ok(Declaration::Use(self._use()?)),
             TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
             _ => {
-                self.err.report(self.peek().loc, String::from( "Top level declaration must be one of 'function', 'use', 'expose'"));
+                self.err.report(self.peek().loc, String::from("Top level declaration must be one of 'function', 'use', 'expose'"));
                 self.synchronize();
                 Err(())
             }

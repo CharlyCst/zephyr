@@ -1,3 +1,4 @@
+package "test"
 // Test unary negation operator
 
 pub fun Main() i32 {

@@ -1,3 +1,4 @@
+package "test"
 // Test let statement
 
 pub fun Main() i32 {

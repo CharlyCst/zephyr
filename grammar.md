@@ -5,12 +5,13 @@ The grammar is defined as follow, and parsed using recursive descent.
 ```
 program        -> package declaration* EOF
 
-declaration    -> use | expose | function
+package        -> "package" STRING ";"
 
+declaration    -> use | expose | function
 use            -> "use" STRING ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
-
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+
 parameters     -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)* ","?
 result         -> IDENTIFIER?
 
