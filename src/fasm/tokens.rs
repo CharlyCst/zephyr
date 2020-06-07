@@ -10,16 +10,11 @@ pub enum TokenType {
     LeftBrace,
     RightBrace,
     Comma,
-
-    // Opcodes
-    Return,
-    I32Const,
-    I64Const,
-
     // Literals
     Identifier(String),
     StringLit(String),
     NumberLit(u64),
+    Opcode(Opcode),
 
     // Keywords
     Expose,
@@ -31,6 +26,13 @@ pub enum TokenType {
     // Other
     SemiColon,
     EOF,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Opcode {
+    Return,
+    I32Const,
+    I64Const,
 }
 
 pub struct Token {
@@ -48,13 +50,17 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         (String::from("pub"), TokenType::Pub),
         (String::from("package"), TokenType::Package),
         // Opcodes
-        (String::from("return"), TokenType::Return),
-        (String::from("i32.const"), TokenType::I32Const),
-        (String::from("i64.const"), TokenType::I64Const),
+        (String::from("return"), to_token(Opcode::Return)),
+        (String::from("i32.const"), to_token(Opcode::I32Const)),
+        (String::from("i64.const"), to_token(Opcode::I64Const)),
     ]
     .iter()
     .cloned()
     .collect()
+}
+
+fn to_token(op: Opcode) -> TokenType {
+    TokenType::Opcode(op)
 }
 
 impl fmt::Display for Token {
@@ -79,9 +85,17 @@ impl fmt::Display for Token {
             TokenType::StringLit(ref s) => write!(f, "\"{}\"", s),
             TokenType::NumberLit(ref n) => write!(f, "{}", n),
             // Opcodes
-            TokenType::Return => write!(f, "return"),
-            TokenType::I32Const => write!(f, "i32.const"),
-            TokenType::I64Const => write!(f, "i64.const"),
+            TokenType::Opcode(opcode) => write!(f, "{}", opcode),
+        }
+    }
+}
+
+impl fmt::Display for Opcode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Opcode::Return => write!(f, "return"),
+            Opcode::I32Const => write!(f, "i32.const"),
+            Opcode::I64Const => write!(f, "i64.const"),
         }
     }
 }
