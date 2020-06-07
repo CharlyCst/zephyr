@@ -163,6 +163,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         let candidate = match token.t {
             TokenType::NumberLit(_) => true,
             TokenType::BooleanLit(_) => true,
+            TokenType::StringLit(_) => true,
             TokenType::Identifier(_) => true,
             TokenType::Return => true,
             TokenType::RightBrace => true,

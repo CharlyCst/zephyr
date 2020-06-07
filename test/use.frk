@@ -1,0 +1,7 @@
+// Test the use keyword
+use "std/awesome"
+use "std/math" as math
+
+pub fun Main() i32 {
+    return 42
+}
