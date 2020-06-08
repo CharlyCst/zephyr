@@ -1,7 +1,8 @@
 package "test"
-// Test let statement
 
+// Test let statement
 pub fun Main() i32 {
+
     let x = 42
     return x
 }

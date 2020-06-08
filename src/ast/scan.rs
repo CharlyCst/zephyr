@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 const RADIX: u32 = 10;
 
+/// Stores source code as a vector of chars and provides functions to convert
+/// the source code to a list of tokens.
 pub struct Scanner<'a, 'b> {
     err: &'b mut ErrorHandler<'a>,
     f_id: u16,
@@ -18,16 +20,20 @@ pub struct Scanner<'a, 'b> {
 impl<'a, 'b> Scanner<'a, 'b> {
     pub fn new(code: &str, f_id: u16, error_handler: &'b mut ErrorHandler<'a>) -> Scanner<'a, 'b> {
         let keywords: HashMap<String, TokenType> = [
-            (String::from("let"), TokenType::Let),
-            (String::from("var"), TokenType::Var),
+            (String::from("as"), TokenType::As),
+            (String::from("else"), TokenType::Else),
+            (String::from("expose"), TokenType::Expose),
+            (String::from("false"), TokenType::False),
             (String::from("fun"), TokenType::Fun),
             (String::from("if"), TokenType::If),
-            (String::from("else"), TokenType::Else),
-            (String::from("while"), TokenType::While),
+            (String::from("let"), TokenType::Let),
+            (String::from("package"), TokenType::Package),
+            (String::from("pub"), TokenType::Pub),
             (String::from("return"), TokenType::Return),
             (String::from("true"), TokenType::True),
-            (String::from("false"), TokenType::False),
-            (String::from("export"), TokenType::Export),
+            (String::from("use"), TokenType::Use),
+            (String::from("var"), TokenType::Var),
+            (String::from("while"), TokenType::While),
         ]
         .iter()
         .cloned()
@@ -45,6 +51,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
+    /// Main function starting the conversion to tokens
     pub fn scan(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
         while !self.is_at_end() {
@@ -59,6 +66,8 @@ impl<'a, 'b> Scanner<'a, 'b> {
         tokens
     }
 
+    /// Consumes all characters giving enough context to convert a section of
+    /// code to tokens
     fn scan_token(&mut self, tokens: &mut Vec<Token>) {
         match self.advance() {
             '(' => self.add_token(tokens, TokenType::LeftPar),
@@ -129,11 +138,14 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 }
             }
             ' ' | '\t' | '\r' => (),
+            // Advanced logic for multi-character tokens
             c => {
                 if c.is_digit(RADIX) {
                     self.number(tokens)
                 } else if c.is_alphabetic() || c == '_' {
                     self.identifier(tokens)
+                } else if c == '"' {
+                    self.string(tokens);
                 } else {
                     self.err
                         .report(self.get_loc(), format!("Unexpected character \"{}\"", c))
@@ -142,10 +154,13 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
+    /// Checks if a statement ender (;) should be added in the next carriage
+    /// return
     fn check_stmt_ender(&mut self, token: &Token) {
         let candidate = match token.t {
             TokenType::NumberLit(_) => true,
             TokenType::BooleanLit(_) => true,
+            TokenType::StringLit(_) => true,
             TokenType::Identifier(_) => true,
             TokenType::Return => true,
             TokenType::RightBrace => true,
@@ -162,6 +177,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
         self.stmt_ender = candidate && self.parenthesis_count <= 0
     }
 
+    /// Checks if the next character is a given char and consumes it if true.
     fn next_match(&mut self, c: char) -> bool {
         if self.is_at_end() {
             false
@@ -173,6 +189,8 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
+    /// Wrapper to initialize a token while keeping track of its location, and
+    /// sets the statement ender flag
     fn add_token(&mut self, tokens: &mut Vec<Token>, t: TokenType) {
         let token = Token {
             t: t,
@@ -194,20 +212,24 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
+    /// Is the last character of the file?
     fn is_at_end(&self) -> bool {
         self.current >= self.code.len()
     }
 
+    /// Move the cursor one position to the right and return the character
     fn advance(&mut self) -> char {
         let c = self.peek();
         self.current += 1;
         c
     }
 
+    /// Returns the current character
     fn peek(&self) -> char {
         self.code[self.current]
     }
 
+    /// Consumes consecutive digit characters and push a number token
     fn number(&mut self, tokens: &mut Vec<Token>) {
         while !self.is_at_end() && self.peek().is_digit(RADIX) {
             self.advance();
@@ -225,16 +247,46 @@ impl<'a, 'b> Scanner<'a, 'b> {
         }
     }
 
+    /// Consumes any (non carriage-return) characters between double quotes
+    fn string(&mut self, tokens: &mut Vec<Token>) {
+        // Consume until the next char is a double quote
+        while !self.is_at_end() && self.peek() != '"' {
+            let c = self.advance();
+            // Exit if the double quote is not found on this line
+            if c == '\n' {
+                self.err.report(
+                    self.get_loc(),
+                    String::from("string literal should start and end on the same line"),
+                );
+            }
+        }
+        // Advance to consume the ending double quote
+        self.advance();
+        let str_val = self.code[self.start + 1..self.current - 1]
+            .iter()
+            .cloned()
+            .collect::<String>();
+        self.add_token(tokens, TokenType::StringLit(str_val));
+    }
+
+    /// Converts a sequence of chars to a keyword, an itendifier or a boolean
+    /// litteral
     fn identifier(&mut self, tokens: &mut Vec<Token>) {
+        // Move until the end of the current identifier [a-zA-Z0-9_]
+        // Note: we don't disambiguate with numbers here, the caller should do it
         while !self.is_at_end() && self.peek().is_alphanumeric() || self.peek() == '_' {
             self.advance();
         }
+        // Convert that sequence of chars to a string
         let ident = self.code[self.start..self.current]
             .iter()
             .cloned()
             .collect::<String>();
         match self.keywords.get(&ident) {
+            // Check if the string is a keyword
             Some(t) => match t {
+                // Booleans are literals but included in the keywords hashmap
+                // for convenience
                 TokenType::True => self.add_token(tokens, TokenType::BooleanLit(true)),
                 TokenType::False => self.add_token(tokens, TokenType::BooleanLit(false)),
                 token_type => {
@@ -242,6 +294,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                     self.add_token(tokens, t)
                 }
             },
+            // If it's not a keyword, it's an identifier
             None => self.add_token(tokens, TokenType::Identifier(ident)),
         }
     }

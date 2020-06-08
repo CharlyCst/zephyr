@@ -1,6 +1,7 @@
+package "test"
 // Check that return statement end function and return a value
 
-export fun Main() i32 {
+pub fun Main() i32 {
     return 42
     return 1
 }

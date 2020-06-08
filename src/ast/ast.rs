@@ -86,6 +86,24 @@ pub enum Statement {
     },
 }
 
+pub enum Declaration {
+    Function(Function),
+    Use(Use),
+    Expose(Expose),
+}
+
+pub struct Program {
+    pub package: Package,
+    pub funs: Vec<Function>,
+    pub exposed: Vec<Expose>,
+    pub used: Vec<Use>,
+}
+
+pub struct Package {
+    pub path: String,
+    pub loc: Location,
+}
+
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
@@ -95,12 +113,20 @@ pub struct Function {
     pub loc: Location,
 }
 
-pub struct Block {
-    pub stmts: Vec<Statement>,
+pub struct Expose {
+    pub ident: String,
+    pub alias: Option<String>,
+    pub loc: Location,
 }
 
-pub struct Program {
-    pub funs: Vec<Function>,
+pub struct Use {
+    pub path: String,
+    pub alias: Option<String>,
+    pub loc: Location,
+}
+
+pub struct Block {
+    pub stmts: Vec<Statement>,
 }
 
 impl fmt::Display for Program {
