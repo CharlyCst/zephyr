@@ -70,13 +70,16 @@ impl fmt::Display for Function {
         } else {
             String::from("")
         };
+        let stmts = self
+            .stmts
+            .iter()
+            .map(|s| format!("    {}", s))
+            .collect::<Vec<String>>()
+            .join("\n");
         write!(
             f,
-            "{}{}({}) {}{{\n}};",
-            prefix,
-            self.ident,
-            params,
-            result_type //, self.block
+            "{}{}({}) {}{{\n{}\n}};",
+            prefix, self.ident, params, result_type, stmts,
         )
     }
 }

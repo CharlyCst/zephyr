@@ -1,6 +1,7 @@
 use super::fasm::*;
+use super::opcode_to_mir::{opcode_to_mir, Argument};
 use super::tokens::{Token, TokenType};
-use crate::error::{ErrorHandler, Location};
+use crate::error::ErrorHandler;
 use crate::mir;
 
 enum Declaration {
@@ -60,24 +61,6 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn peek(&self) -> &Token {
         let cur = self.current;
         &self.tokens[cur]
-    }
-
-    fn peekpeek(&self) -> &Token {
-        let next = self.current + 1;
-        if next >= self.tokens.len() {
-            &self.tokens[next - 1]
-        } else {
-            &self.tokens[next]
-        }
-    }
-
-    fn previous(&self) -> &Token {
-        let prev = self.current - 1;
-        if prev > 0 {
-            &self.tokens[prev]
-        } else {
-            &self.tokens[0]
-        }
     }
 
     fn advance(&mut self) -> &Token {
@@ -335,6 +318,31 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn statement(&mut self) -> Result<mir::Statement, ()> {
-        Err(())
+        let token = self.peek();
+        let mut loc = token.loc;
+        if let TokenType::Opcode(opcode) = token.t {
+            self.advance();
+            let token = self.peek();
+            let arg_loc = token.loc;
+            let arg = match token.t {
+                TokenType::NumberLit(n) => {
+                    loc = loc.merge(arg_loc);
+                    self.advance();
+                    Some(Argument::Integer(n))
+                }
+                _ => None,
+            };
+            self.consume_semi_colon();
+            match opcode_to_mir(opcode, arg) {
+                Ok(stmt) => Ok(stmt),
+                Err(err) => {
+                    self.err.report(loc, err);
+                    Err(())
+                }
+            }
+        } else {
+            self.err.report(loc, String::from("Expected a statement."));
+            Err(())
+        }
     }
 }

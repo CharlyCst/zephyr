@@ -1,6 +1,7 @@
 use crate::error::ErrorHandler;
 
 mod fasm;
+mod opcode_to_mir;
 mod parse;
 mod scan;
 mod tokens;
