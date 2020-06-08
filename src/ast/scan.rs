@@ -66,7 +66,6 @@ impl<'a, 'b> Scanner<'a, 'b> {
         tokens
     }
 
-
     /// Consumes all characters giving enough context to convert a section of
     /// code to tokens
     fn scan_token(&mut self, tokens: &mut Vec<Token>) {
@@ -154,8 +153,6 @@ impl<'a, 'b> Scanner<'a, 'b> {
             }
         }
     }
-
-
 
     /// Checks if a statement ender (;) should be added in the next carriage
     /// return
@@ -257,24 +254,26 @@ impl<'a, 'b> Scanner<'a, 'b> {
             let c = self.advance();
             // Exit if the double quote is not found on this line
             if c == '\n' {
-                self.err.report(self.get_loc(), String::from("string literal should start and end on the same line"));
+                self.err.report(
+                    self.get_loc(),
+                    String::from("string literal should start and end on the same line"),
+                );
             }
         }
         // Advance to consume the ending double quote
         self.advance();
-        let str_val = self.code[self.start+1..self.current-1]
+        let str_val = self.code[self.start + 1..self.current - 1]
             .iter()
             .cloned()
             .collect::<String>();
         self.add_token(tokens, TokenType::StringLit(str_val));
     }
 
-
     /// Converts a sequence of chars to a keyword, an itendifier or a boolean
     /// litteral
     fn identifier(&mut self, tokens: &mut Vec<Token>) {
         // Move until the end of the current identifier [a-zA-Z0-9_]
-        // Note: we don't disembiguate with numbers here, the caller should do it
+        // Note: we don't disambiguate with numbers here, the caller should do it
         while !self.is_at_end() && self.peek().is_alphanumeric() || self.peek() == '_' {
             self.advance();
         }

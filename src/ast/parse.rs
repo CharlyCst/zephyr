@@ -30,8 +30,17 @@ impl<'a, 'b> Parser<'a, 'b> {
             Ok(pack) => pack,
             Err(()) => {
                 self.err.silent_report();
-                Package{ path: String::from(""), loc: Location { pos: 0, len: 0, f_id: 0 }}
-            },
+                // @TODO: In the future we may wan to parse the code anyway in order to provide feedback
+                // even though the `package` declaration is missing.
+                Package {
+                    path: String::from(""),
+                    loc: Location {
+                        pos: 0,
+                        len: 0,
+                        f_id: 0,
+                    },
+                }
+            }
         };
 
         while !self.is_at_end() {
@@ -168,8 +177,11 @@ impl<'a, 'b> Parser<'a, 'b> {
     /// Parses the 'package' grammar element
     fn package(&mut self) -> Result<Package, ()> {
         let start = self.peek().loc;
-        if ! self.next_match_report(TokenType::Package, "Programs must start with a 'package' keyword") {
-            return Err(())
+        if !self.next_match_report(
+            TokenType::Package,
+            "Programs must start with a 'package' keyword",
+        ) {
+            return Err(());
         }
 
         let token = self.advance();
@@ -177,15 +189,20 @@ impl<'a, 'b> Parser<'a, 'b> {
             let string = string.clone();
             let end = self.peek().loc;
             self.consume_semi_colon();
-            Ok(Package{ loc: start.merge(end), path: string })
+            Ok(Package {
+                loc: start.merge(end),
+                path: string,
+            })
         } else {
             let loc = token.loc;
             self.synchronize();
-            self.err.report(loc, String::from("'package' keyword should be followed by a double quoted path"));
+            self.err.report(
+                loc,
+                String::from("'package' keyword should be followed by a double quoted path"),
+            );
             Err(())
         }
     }
-
 
     /// Parses a 'declaration' that can be either a 'use', 'expose' or 'fun'
     fn declaration(&mut self) -> Result<Declaration, ()> {
@@ -194,7 +211,12 @@ impl<'a, 'b> Parser<'a, 'b> {
             TokenType::Use => Ok(Declaration::Use(self._use()?)),
             TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
             _ => {
-                self.err.report(self.peek().loc, String::from("Top level declaration must be one of 'function', 'use', 'expose'"));
+                self.err.report(
+                    self.peek().loc,
+                    String::from(
+                        "Top level declaration must be one of 'function', 'use', 'expose'",
+                    ),
+                );
                 self.synchronize();
                 Err(())
             }
@@ -204,8 +226,8 @@ impl<'a, 'b> Parser<'a, 'b> {
     /// Parses the 'use' grammar element
     fn _use(&mut self) -> Result<Use, ()> {
         let start = self.peek().loc;
-        if ! self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword") {
-            return Err(())
+        if !self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword") {
+            return Err(());
         }
 
         let token = self.advance();
@@ -217,18 +239,28 @@ impl<'a, 'b> Parser<'a, 'b> {
                     Some(ident.clone())
                 } else {
                     let loc = token.loc;
-                    self.err.report(loc, String::from("'as' should be followed by an identifier"));
-                    return Err(())
+                    self.err.report(
+                        loc,
+                        String::from("'as' should be followed by an identifier"),
+                    );
+                    return Err(());
                 }
             } else {
                 None
             };
             let end = self.peek().loc;
             self.consume_semi_colon();
-            Ok(Use{ loc: start.merge(end), path: string, alias: alias })
+            Ok(Use {
+                loc: start.merge(end),
+                path: string,
+                alias: alias,
+            })
         } else {
             let loc = token.loc;
-            self.err.report(loc, String::from("'use' keyword should be followed by a double quoted path"));
+            self.err.report(
+                loc,
+                String::from("'use' keyword should be followed by a double quoted path"),
+            );
             Err(())
         }
     }
@@ -236,8 +268,11 @@ impl<'a, 'b> Parser<'a, 'b> {
     /// Parses the 'expose' grammar element
     fn expose(&mut self) -> Result<Expose, ()> {
         let start = self.peek().loc;
-        if ! self.next_match_report(TokenType::Expose, "Expose statement must start by 'expose' keyword") {
-            return Err(())
+        if !self.next_match_report(
+            TokenType::Expose,
+            "Expose statement must start by 'expose' keyword",
+        ) {
+            return Err(());
         }
 
         let token = self.advance();
@@ -249,18 +284,28 @@ impl<'a, 'b> Parser<'a, 'b> {
                     Some(alias_ident.clone())
                 } else {
                     let loc = token.loc;
-                    self.err.report(loc, String::from("'as' should be followed by an identifier"));
-                    return Err(())
+                    self.err.report(
+                        loc,
+                        String::from("'as' should be followed by an identifier"),
+                    );
+                    return Err(());
                 }
             } else {
                 None
             };
             let end = self.peek().loc;
             self.consume_semi_colon();
-            Ok(Expose{ loc: start.merge(end), ident: ident, alias: alias })
+            Ok(Expose {
+                loc: start.merge(end),
+                ident: ident,
+                alias: alias,
+            })
         } else {
             let loc = token.loc;
-            self.err.report(loc, String::from("'expose' keyword should be followed by an identifier"));
+            self.err.report(
+                loc,
+                String::from("'expose' keyword should be followed by an identifier"),
+            );
             Err(())
         }
     }
