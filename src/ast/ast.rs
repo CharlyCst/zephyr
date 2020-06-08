@@ -104,7 +104,6 @@ pub struct Package {
     pub loc: Location,
 }
 
-
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
