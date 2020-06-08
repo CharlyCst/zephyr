@@ -1,5 +1,7 @@
 # Grammar specification
 
+## Main grammar
+
 The grammar is defined as follow, and parsed using recursive descent.
 
 ```
@@ -45,6 +47,7 @@ arguments      -> expression ( "," expression )* ","?
 It is worth noting that there is no semi-colon `;` in Fork, but some are inserted by the scanner following Go-like rules.
 
 **Priority tree:**
+
 ```
                          [||]
                           ↓
@@ -67,4 +70,25 @@ It is worth noting that there is no semi-colon `;` in Fork, but some are inserte
                         [call]
                           ↓
 [0-9] [true,false] [ident] ['(' expression ')']
+```
+
+## Fasm grammar
+
+This grammar is used by the fasm front end, it is much simpler and closer to wasm. Its main purpose is to ease the use of low level wasm instructions needed for the runtime and standard library.
+
+```
+program -> package declaration\* EOF
+
+package -> "package" STRING ";"
+declaration -> expose | function
+expose -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
+function -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+parameters -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)\* ","?
+result -> IDENTIFIER?
+
+block -> "{" statement\* "}"
+statement -> opcode primary? ";"
+primary -> NUMBER | IDENTIFIER
+
+opcode -> WASM_OPCODE
 ```

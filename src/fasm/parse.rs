@@ -9,7 +9,7 @@ enum Declaration {
     Fun(Function),
 }
 
-/// Fork assembly parser, it produces MIR.
+/// Fork assembly parser, it consumes tokens to produces MIR.
 pub struct Parser<'a, 'b> {
     err: &'b mut ErrorHandler<'a>,
     tokens: Vec<Token>,
@@ -25,6 +25,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Convert the list of tokens into MIR
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
@@ -51,6 +52,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Is the last token of the file?
     fn is_at_end(&self) -> bool {
         match self.peek().t {
             TokenType::EOF => true,
@@ -58,11 +60,13 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Shows the current token without consuming it
     fn peek(&self) -> &Token {
         let cur = self.current;
         &self.tokens[cur]
     }
 
+    /// Consumes and returns the current token by moving current to the right
     fn advance(&mut self) -> &Token {
         let token = &self.tokens[self.current];
         if !self.is_at_end() {
@@ -77,7 +81,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    /// If the next token has type t, consume it and return true, return false otherwise
+    /// If the next token has type t, consume it and return true, return false
+    /// otherwise
     fn next_match(&mut self, t: TokenType) -> bool {
         if self.peek().t == t {
             self.advance();
@@ -99,6 +104,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Expects the current token to be a semicolon and consumes it, throws an
+    /// error if it's not
     fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
@@ -111,6 +118,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Consumes token until a semi-colon, used in the context of invalid lines
     fn synchronize(&mut self) {
         let mut token = self.advance();
         while token.t != TokenType::SemiColon && !self.is_at_end() {
@@ -118,6 +126,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Parses the 'package' grammar element
     fn package(&mut self) -> Result<String, ()> {
         if !self.next_match_report(
             TokenType::Package,
@@ -141,6 +150,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(s)
     }
 
+    /// Parse a `declaration`.
     /// Declaration consumes the first token of the declaration,
     /// this is done to centralize error handling.
     fn declaration(&mut self) -> Result<Declaration, ()> {
@@ -165,6 +175,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Err(())
     }
 
+    /// Parses the 'expose' grammar element
     /// The `Expose` token must have been consumed.
     fn expose(&mut self) -> Result<Exposed, ()> {
         let token = self.peek();
@@ -201,6 +212,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Err(())
     }
 
+    /// Parses the 'function' grammar element
     /// The `Pub` (if any) and `Fun` tokens must have been consumed.
     fn function(&mut self) -> Result<Function, ()> {
         let loc = self.peek().loc;
@@ -253,6 +265,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
+    /// Parses the 'parameters' grammar element
     fn parameters(&mut self) -> Result<Vec<Variable>, ()> {
         let mut params = Vec::new();
         while let Token {
@@ -288,6 +301,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(params)
     }
 
+    /// Parses the 'block' grammar element
     fn block(&mut self) -> Result<Vec<mir::Statement>, ()> {
         let mut stmts = Vec::new();
 
@@ -317,6 +331,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(stmts)
     }
 
+    /// Parses the 'statement' grammar element
     fn statement(&mut self) -> Result<mir::Statement, ()> {
         let token = self.peek();
         let mut loc = token.loc;
