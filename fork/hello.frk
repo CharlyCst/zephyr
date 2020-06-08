@@ -1,6 +1,8 @@
 // This code is written in fork
 
-export fun Main(a i32, b i32) i32 {
+package "hello"
+
+pub fun Main(a i32, b i32) i32 {
     if b == 0 {
         return 1
     }
