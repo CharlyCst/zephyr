@@ -3,7 +3,7 @@ package "test"
 expose main as _start
 
 // Check that return statement end function and return a value
-pub fun main() i32 {
+fun main() i32 {
     return 42
     return 1
 }

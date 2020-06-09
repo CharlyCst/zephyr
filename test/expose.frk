@@ -4,7 +4,7 @@ package "test"
 expose main as _start
 expose add
 
-pub fun main() i32 {
+fun main() i32 {
     return add(40, 2)
 }
 

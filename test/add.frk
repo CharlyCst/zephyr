@@ -3,6 +3,6 @@ package "test"
 expose main as _start
 
 // Test add operator
-pub fun main() i32 {
+fun main() i32 {
     return 38 + 4
 }
