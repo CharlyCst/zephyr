@@ -1,7 +1,9 @@
 package "test"
-// Test direct calls
 
-pub fun Main() i32 {
+expose main as _start
+
+// Test direct calls
+pub fun main() i32 {
     return add(40, 2)
 }
 

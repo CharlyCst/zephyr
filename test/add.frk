@@ -1,6 +1,8 @@
 package "test"
-// Test add operator
 
-pub fun Main() i32 {
+expose main as _start
+
+// Test add operator
+pub fun main() i32 {
     return 38 + 4
 }
