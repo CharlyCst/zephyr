@@ -3,7 +3,7 @@ package "test"
 expose main as _start
 
 // Test while loop
-pub fun main() i32 {
+fun main() i32 {
     let x = 0
 	while x < 42 {
         x = x + 1

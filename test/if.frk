@@ -3,7 +3,7 @@ package "test"
 expose main as _start
 
 // Test if primitive
-pub fun main() i32 {
+fun main() i32 {
     let x = 42
 	if x == 42 {
 		return x

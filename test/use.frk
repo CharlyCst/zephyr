@@ -6,6 +6,6 @@ use "std/math" as math
 
 expose main as _start
 
-pub fun main() i32 {
+fun main() i32 {
     return 42
 }

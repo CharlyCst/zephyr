@@ -3,7 +3,7 @@ package "test"
 expose main as _start
 
 // Test '_' in identifiers
-pub fun main() i32 {
+fun main() i32 {
     let _x_ = 42
     let hello_world = true
 	return _x_
