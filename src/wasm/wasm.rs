@@ -4,8 +4,8 @@ pub struct Function {
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
     pub type_idx: usize, // Used by encode
+    pub exposed: Option<String>,
     pub body: Vec<opcode::Instr>,
-    pub export_name: Option<String>,
 }
 
 #[derive(Copy, Clone)]

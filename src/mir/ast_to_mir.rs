@@ -87,7 +87,8 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
             ret_types: ret_t,
             locals: locals,
             body: block,
-            exported: fun.exported,
+            is_pub: fun.is_pub,
+            exposed: fun.exposed,
             fun_id: fun.n_id,
         })
     }

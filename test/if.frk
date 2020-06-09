@@ -1,7 +1,9 @@
 package "test"
-// Test if primitive
 
-pub fun Main() i32 {
+expose main as _start
+
+// Test if primitive
+fun main() i32 {
     let x = 42
 	if x == 42 {
 		return x

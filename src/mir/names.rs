@@ -1,19 +1,24 @@
-use super::types::TypeId;
+use super::types::{ConstraintStore, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
 
 pub type NameId = usize;
 
-// Defining named and typed AST nodes.
-// In the future we may want to consider moving this
-// into a new HIR phase.
+pub struct ResolvedProgram {
+    pub funs: Vec<Function>,
+    pub names: NameStore,
+    pub types: TypeVarStore,
+    pub constraints: ConstraintStore,
+}
+
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub locals: Vec<NameId>,
     pub block: Block,
-    pub exported: bool,
+    pub is_pub: bool,
+    pub exposed: Option<String>,
     pub loc: Location,
     pub n_id: NameId,
 }

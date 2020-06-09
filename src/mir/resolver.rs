@@ -4,8 +4,6 @@ use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
 use crate::error::{ErrorHandler, Location};
 
-use super::ResolvedProgram;
-
 use std::collections::HashMap;
 
 struct State {
@@ -84,14 +82,35 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         NameResolver { err: error_handler }
     }
 
-    pub fn resolve(&mut self, funs: Vec<ast::Function>) -> ResolvedProgram {
+    pub fn resolve(&mut self, ast_program: ast::Program) -> ResolvedProgram {
+        let funs = ast_program.funs;
         let mut state = State::new();
         let mut named_funs = Vec::with_capacity(funs.len());
+        let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
+        // Register functions names and signatures
         self.register_functions(&funs, &mut state);
 
+        // Resolve exposed funs
+        for exposed in &ast_program.exposed {
+            if let Some(f_id) = state.functions.get(&exposed.ident) {
+                let exposed_name = if let Some(alias) = &exposed.alias {
+                    alias.clone()
+                } else {
+                    exposed.ident.clone()
+                };
+                exposed_funs.insert(*f_id, exposed_name);
+            } else {
+                self.err.report(
+                    exposed.loc,
+                    format!("Exposed function '{}' is not defined.", &exposed.ident),
+                )
+            }
+        }
+
+        // Resolve function bodies
         for fun in funs.into_iter() {
-            if let Some(named_fun) = self.resolve_function(fun, &mut state) {
+            if let Some(named_fun) = self.resolve_function(fun, &exposed_funs, &mut state) {
                 named_funs.push(named_fun);
             }
         }
@@ -104,7 +123,14 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         }
     }
 
-    fn resolve_function(&mut self, fun: ast::Function, state: &mut State) -> Option<Function> {
+    /// Check that each names used inside the function are correctly defined.
+    /// Also responsible for checking if the function is exposed.
+    fn resolve_function(
+        &mut self,
+        fun: ast::Function,
+        exposed_funs: &HashMap<usize, String>,
+        state: &mut State,
+    ) -> Option<Function> {
         state.new_scope();
         let mut locals = Vec::new();
         let mut fun_params = Vec::new();
@@ -148,12 +174,19 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         let block = self.resolve_block(fun.block, state, &mut locals, fun_t_id);
         state.exit_scope();
 
+        let exposed = if let Some(exposed_name) = exposed_funs.get(&fun_n_id) {
+            Some(exposed_name.clone())
+        } else {
+            None
+        };
+
         return Some(Function {
             ident: fun.ident,
             params: fun_params,
             locals: locals,
             block: block,
-            exported: fun.exported,
+            is_pub: fun.is_pub,
+            exposed: exposed,
             loc: fun.loc,
             n_id: fun_n_id,
         });

@@ -109,7 +109,7 @@ pub struct Function {
     pub params: Vec<Variable>,
     pub result: Option<(String, Location)>,
     pub block: Block,
-    pub exported: bool,
+    pub is_pub: bool,
     pub loc: Location,
 }
 
@@ -166,7 +166,7 @@ impl fmt::Display for Program {
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let prefix = if self.exported { "pub " } else { "" };
+        let prefix = if self.is_pub { "pub " } else { "" };
         let params = self
             .params
             .iter()
