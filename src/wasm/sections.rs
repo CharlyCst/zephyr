@@ -185,7 +185,7 @@ impl SectionExport {
         let mut size = 0;
 
         for (idx, fun) in funs.iter().enumerate() {
-            if let Some(name) = &fun.export_name {
+            if let Some(name) = &fun.exposed {
                 let mut data = Vec::new();
                 let encoded_name = name.as_bytes();
 

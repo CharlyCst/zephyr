@@ -93,21 +93,6 @@ impl<'a, 'b> Compiler<'a, 'b> {
             results.push(t);
         }
 
-        let export_name = if fun.exported {
-            if fun.ident == "Main" {
-                Some(String::from("_start")) // WASI main function
-            } else {
-                if fun.ident == "main" {
-                    self.err
-                        .report_no_loc(String::from("Main function must be capitalized"))
-                    // TODO report line
-                }
-                Some(fun.ident.clone())
-            }
-        } else {
-            None
-        };
-
         let mut code = Vec::new();
         self.locals(&fun, &mut state.locals, &mut code);
         self.body(fun.body, &mut state, &mut code);
@@ -117,8 +102,8 @@ impl<'a, 'b> Compiler<'a, 'b> {
             param_types: params,
             ret_types: results,
             type_idx: std::usize::MAX,
+            exposed: fun.exposed,
             body: code,
-            export_name: export_name,
         }
     }
 

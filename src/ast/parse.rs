@@ -312,7 +312,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
-        let exported = self.next_match(TokenType::Pub);
+        let is_pub = self.next_match(TokenType::Pub);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
             return Err(());
@@ -353,7 +353,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             params: params,
             result: result,
             block: block,
-            exported: exported,
+            is_pub: is_pub,
             loc: loc,
         })
     }
