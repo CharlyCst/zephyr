@@ -258,35 +258,26 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                     FromBinop::Relop(relop) => stmts.push(Statement::Relop { relop: relop }),
                 }
             }
-            Expr::Unary {
-                unop, expr, t_id, loc
-            } => {
+            Expr::Unary { unop, expr, t_id, loc, } => {
                 let t = get_type(*t_id, s)?;
 
                 // corner cases:
                 //  > (integer, minus): push zero first, then binary operator
                 //  > (bool, not):      push one first, then binary operator
                 match unop {
-                    ASTUnop::Minus => {
-                        match t {
-                            Type::I32 => {
-                                stmts.push(Statement::Const { val: Value::I32(0) });
-                            },
-                            Type::I64 => {
-                                stmts.push(Statement::Const { val: Value::I64(0) });
-                            },
-                            _ => {},
-                        }
-                    }
+                    ASTUnop::Minus => match t {
+                        Type::I32 => stmts.push(Statement::Const { val: Value::I32(0) }),
+                        Type::I64 => stmts.push(Statement::Const { val: Value::I64(0) }),
+                        _ => {}
+                    },
                     ASTUnop::Not => {
                         match t {
                             // we should only have I32 for booleans if the typing phase is correct
-                            Type::I32 => {
-                                stmts.push(Statement::Const { val: Value::I32(1) });
-                            },
-                            _ => {
-                                self.err.report_internal(*loc, String::from("Not applied to something else than a boolean (I32) → error in type phase"));
-                            },
+                            Type::I32 => stmts.push(Statement::Const { val: Value::I32(1) }),
+                            _ => self.err.report_internal(
+                                *loc, 
+                                String::from("Not applied to something else than a boolean (I32) → error in type phase")
+                            ),
                         }
                     }
                 }
@@ -295,17 +286,13 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
 
                 // generic case: push operator (might be unary or binary)
                 let stmt = match unop {
-                    ASTUnop::Minus => {
-                        match t {
-                            Type::I32 => Statement::Binop { binop: Binop::I32Sub },
-                            Type::I64 => Statement::Binop { binop: Binop::I64Sub },
-                            Type::F32 => Statement::Unop { unop: Unop::F32Neg },
-                            Type::F64 => Statement::Unop { unop: Unop::F64Neg },
-                        }
-                    }
-                    ASTUnop::Not => {
-                        Statement::Binop { binop: Binop::I32Xor }
+                    ASTUnop::Minus => match t {
+                        Type::I32 => Statement::Binop { binop: Binop::I32Sub },
+                        Type::I64 => Statement::Binop { binop: Binop::I64Sub },
+                        Type::F32 => Statement::Unop { unop: Unop::F32Neg },
+                        Type::F64 => Statement::Unop { unop: Unop::F64Neg },
                     },
+                    ASTUnop::Not => Statement::Binop { binop: Binop::I32Xor },
                 };
                 stmts.push(stmt);
             }
