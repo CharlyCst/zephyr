@@ -1,8 +1,8 @@
 use crate::ast;
 use crate::error::ErrorHandler;
 
-use self::names::NameStore;
-use self::types::{ConstraintStore, TypeStore, TypeVarStore};
+use self::names::{NameStore, ResolvedProgram};
+use self::types::TypeStore;
 
 pub use self::names::NameId;
 pub use self::types::TypeId;
@@ -14,13 +14,6 @@ mod names;
 mod resolver;
 mod type_check;
 mod types;
-
-pub struct ResolvedProgram {
-    pub funs: Vec<names::Function>,
-    pub names: NameStore,
-    pub types: TypeVarStore,
-    pub constraints: ConstraintStore,
-}
 
 pub struct TypedProgram {
     pub funs: Vec<names::Function>,
@@ -35,7 +28,7 @@ pub fn to_mir<'a, 'b>(
     error_handler: &'b mut ErrorHandler<'a>,
 ) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
-    let program = name_resolver.resolve(ast_program.funs);
+    let program = name_resolver.resolve(ast_program);
 
     println!("\n/// Name Resolution ///\n");
 

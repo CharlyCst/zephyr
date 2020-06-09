@@ -13,7 +13,8 @@ pub struct Function {
     pub ret_types: Vec<Type>,
     pub locals: Vec<Local>,
     pub body: Block,
-    pub exported: bool,
+    pub is_pub: bool,
+    pub exposed: Option<String>,
     pub fun_id: FunctionId,
 }
 
