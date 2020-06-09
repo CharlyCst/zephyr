@@ -132,6 +132,31 @@ pub struct Block {
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut program = String::from("");
+        // Package
+        program.push_str(&format!("packge \"{}\";\n\n", self.package.path));
+        // Use
+        for is_used in &self.used {
+            program.push_str(&format!("use \"{}\"", is_used.path));
+            if let Some(ref alias) = is_used.alias {
+                program.push_str(&format!(" as {}", alias));
+            }
+            program.push_str(";\n");
+        }
+        if self.used.len() > 0 {
+            program.push_str("\n");
+        }
+        // Expose
+        for expose in &self.exposed {
+            program.push_str(&format!("expose {}", expose.ident));
+            if let Some(ref alias) = expose.alias {
+                program.push_str(&format!(" as {}", alias));
+            }
+            program.push_str(";\n");
+        }
+        if self.exposed.len() > 0 {
+            program.push_str("\n");
+        }
+        // Fun
         for stmt in &self.funs {
             program.push_str(&format!("{}\n", stmt));
         }
@@ -141,7 +166,7 @@ impl fmt::Display for Program {
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let prefix = if self.exported { "export " } else { "" };
+        let prefix = if self.exported { "pub " } else { "" };
         let params = self
             .params
             .iter()
