@@ -1,7 +1,9 @@
 package "test"
-// Test else primitive
 
-pub fun Main() i32 {
+expose main as _start
+
+// Test else primitive
+pub fun main() i32 {
 	if  1 == 2 {
 		return 1
 	} else {

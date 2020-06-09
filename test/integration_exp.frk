@@ -1,5 +1,8 @@
 package "test"
-pub fun Main() i32 {
+
+expose main as _start
+
+pub fun main() i32 {
     // Parameters
     let a = 3
     let b = 9

@@ -1,5 +1,8 @@
 package "test"
-pub fun Main() i32 {
+
+expose main as _start
+
+pub fun main() i32 {
     if fact(1, 6) == 720 {
         return 42
     }

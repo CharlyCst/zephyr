@@ -1,7 +1,9 @@
 package "test"
-// Check that return statement end function and return a value
 
-pub fun Main() i32 {
+expose main as _start
+
+// Check that return statement end function and return a value
+pub fun main() i32 {
     return 42
     return 1
 }
