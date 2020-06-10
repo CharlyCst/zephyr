@@ -18,7 +18,8 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(code: &str, f_id: u16, error_handler: &'a mut ErrorHandler) -> Scanner<'a> {
+    // f_id MUST exist, no check performed.
+    pub fn new(f_id: u16, error_handler: &'a mut ErrorHandler) -> Scanner<'a> {
         let keywords: HashMap<String, TokenType> = [
             (String::from("as"), TokenType::As),
             (String::from("else"), TokenType::Else),
@@ -38,11 +39,14 @@ impl<'a> Scanner<'a> {
         .iter()
         .cloned()
         .collect();
+        
+        // f_id MUST exist
+        let code = error_handler.get_file(f_id).unwrap();
 
         Scanner {
+            code: code.chars().collect(), // TODO: remove this copy
             err: error_handler,
             f_id: f_id,
-            code: code.chars().collect(), // TODO: remove this copy
             start: 0,
             current: 0,
             keywords: keywords,
