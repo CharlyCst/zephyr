@@ -32,7 +32,7 @@ struct LocalState<'a> {
 }
 
 impl<'a> LocalState<'a> {
-    pub fn new(global_state: &'a GlobalState) -> LocalState<'a> {
+    pub fn new(global_state: &GlobalState) -> LocalState {
         LocalState {
             locals: HashMap::new(),
             blocks: HashMap::new(),
@@ -58,12 +58,12 @@ impl<'a> LocalState<'a> {
     }
 }
 
-pub struct Compiler<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct Compiler<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> Compiler<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> Compiler<'a, 'b> {
+impl<'a> Compiler<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> Compiler {
         Compiler { err: error_handler }
     }
 

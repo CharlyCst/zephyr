@@ -6,9 +6,9 @@ mod opcode;
 mod sections;
 mod wasm;
 
-pub fn to_wasm<'a, 'b>(
+pub fn to_wasm<'a>(
     mir_program: mir::Program,
-    error_handler: &'b mut ErrorHandler<'a>,
+    error_handler: &'a mut ErrorHandler,
 ) -> Vec<u8> {
     println!("\n/// Compiling ///\n");
 

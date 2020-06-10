@@ -23,9 +23,9 @@ pub struct TypedProgram {
 
 pub use mir::Program;
 
-pub fn to_mir<'a, 'b>(
+pub fn to_mir<'a>(
     ast_program: ast::Program,
-    error_handler: &'b mut ErrorHandler<'a>,
+    error_handler: &mut ErrorHandler,
 ) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
     let program = name_resolver.resolve(ast_program);
