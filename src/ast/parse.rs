@@ -2,16 +2,16 @@ use super::ast::*;
 use super::tokens::{Token, TokenType};
 use crate::error::{ErrorHandler, Location};
 
-pub struct Parser<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct Parser<'a> {
+    err: &'a mut ErrorHandler,
     tokens: Vec<Token>,
     current: usize,
 }
 
 /// Works on a list of tokens and converts it into an Abstract Syntax Tree,
 /// following the grammar of the language (defined in 'grammar.md')
-impl<'a, 'b> Parser<'a, 'b> {
-    pub fn new(tokens: Vec<Token>, error_handler: &'b mut ErrorHandler<'a>) -> Parser<'a, 'b> {
+impl<'a> Parser<'a> {
+    pub fn new(tokens: Vec<Token>, error_handler: &mut ErrorHandler) -> Parser {
         Parser {
             err: error_handler,
             tokens: tokens,

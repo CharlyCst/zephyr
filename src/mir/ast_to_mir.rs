@@ -37,12 +37,12 @@ impl State {
     }
 }
 
-pub struct MIRProducer<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct MIRProducer<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> MIRProducer<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> MIRProducer<'a, 'b> {
+impl<'a> MIRProducer<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> MIRProducer {
         MIRProducer { err: error_handler }
     }
 
