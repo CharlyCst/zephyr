@@ -5,6 +5,7 @@ mod ast;
 mod error;
 mod mir;
 mod wasm;
+mod driver;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -15,19 +16,11 @@ fn main() {
         println!("Usage: fork <file> [out]");
         std::process::exit(64);
     }
-    let code = fs::read_to_string(&args[1]).expect("File not found");
-    compile(code, output_path);
+    // let code = fs::read_to_string(&args[1]).expect("File not found");
+    compile(args[1].clone(), output_path.to_string());
 }
 
-fn compile(code: String, output_path: &str) {
-    let mut error_handler = error::ErrorHandler::new(&code, 0);
-    let ast_program = ast::get_ast(&code, &mut error_handler);
-    let mir_program = mir::to_mir(ast_program, &mut error_handler);
-    let binary = wasm::to_wasm(mir_program, &mut error_handler);
-
-    match fs::write(output_path, binary) {
-        Ok(_) => (),
-        Err(e) => println!("{}", e),
-    }
-    std::process::exit(0);
+fn compile(input_path: String, output_path: String) {
+    let mut driver = driver::Driver::new(input_path, output_path);
+    driver.compile();
 }

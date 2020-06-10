@@ -16,13 +16,22 @@ pub struct ErrorHandler {
 /// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
 /// merged as needed when proceeding through the pipeline.
 impl ErrorHandler {
-    pub fn new(code: String, f_id: u16) -> ErrorHandler {
+    pub fn new<'a>(code: String, f_id: u16) -> ErrorHandler {
         let mut codes = HashMap::new();
         codes.insert(f_id, code);
         ErrorHandler {
             has_error: false,
             errors: Vec::new(),
             codes: codes,
+        }
+    }
+
+    /// Returns a file owned by the ErrorHandler.
+    pub fn get_file(&self, f_id: u16) -> Option<&str> {
+        if let Some(s) = self.codes.get(&f_id) {
+            Some(&*s)
+        } else {
+            None
         }
     }
 
