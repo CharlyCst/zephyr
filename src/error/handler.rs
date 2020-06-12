@@ -81,7 +81,7 @@ impl ErrorHandler {
     }
 
     /// Merge another ErrorHandler into self, taking ownership of its errors.
-    pub fn _merge(&mut self, other: ErrorHandler) {
+    pub fn merge(&mut self, other: ErrorHandler) {
         self.has_error = self.has_error || other.has_error;
         self.errors.extend(other.errors);
 
