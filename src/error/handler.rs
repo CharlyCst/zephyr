@@ -6,23 +6,32 @@ const MAGENTA: &'static str = "\x1B[35m";
 const BOLD: &'static str = "\x1B[1m";
 const END: &'static str = "\x1B[0m";
 
-pub struct ErrorHandler<'a> {
+pub struct ErrorHandler {
     has_error: bool,
     errors: Vec<Error>,
-    codes: HashMap<u16, &'a str>,
+    codes: HashMap<u16, String>,
 }
 
 /// Store errors encountered during compilation and generate a report on demand.
 /// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
 /// merged as needed when proceeding through the pipeline.
-impl<'a> ErrorHandler<'a> {
-    pub fn new(code: &str, f_id: u16) -> ErrorHandler {
+impl ErrorHandler {
+    pub fn new<'a>(code: String, f_id: u16) -> ErrorHandler {
         let mut codes = HashMap::new();
         codes.insert(f_id, code);
         ErrorHandler {
             has_error: false,
             errors: Vec::new(),
             codes: codes,
+        }
+    }
+
+    /// Returns a file owned by the ErrorHandler.
+    pub fn get_file(&self, f_id: u16) -> Option<&str> {
+        if let Some(s) = self.codes.get(&f_id) {
+            Some(&*s)
+        } else {
+            None
         }
     }
 
@@ -72,7 +81,7 @@ impl<'a> ErrorHandler<'a> {
     }
 
     /// Merge another ErrorHandler into self, taking ownership of its errors.
-    pub fn _merge(&mut self, other: ErrorHandler<'a>) {
+    pub fn merge(&mut self, other: ErrorHandler) {
         self.has_error = self.has_error || other.has_error;
         self.errors.extend(other.errors);
 
@@ -136,7 +145,7 @@ impl<'a> ErrorHandler<'a> {
 
     /// Pretty print errors with code context.
     /// All errors **must** have a location corresponding to `code`.
-    fn print_errors_with_loc(&self, code: &'a str, mut errors: Vec<&Error>) {
+    fn print_errors_with_loc(&self, code: &str, mut errors: Vec<&Error>) {
         // Sort errors by locations.
         errors.sort_unstable();
 

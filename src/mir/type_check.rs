@@ -11,12 +11,12 @@ enum Progress {
     Error,
 }
 
-pub struct TypeChecker<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct TypeChecker<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> TypeChecker<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> TypeChecker<'a, 'b> {
+impl<'a> TypeChecker<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> TypeChecker {
         TypeChecker { err: error_handler }
     }
 

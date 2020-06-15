@@ -8,10 +8,10 @@ mod tokens;
 pub use ast::*;
 pub use tokens::*;
 
-pub fn get_ast<'a, 'b>(code: &str, error_handler: &'b mut ErrorHandler<'a>) -> ast::Program {
+pub fn get_ast(f_id: u16, error_handler: &mut ErrorHandler) -> ast::Program {
     println!("\n/// Scanning ///\n");
 
-    let mut scanner = scan::Scanner::new(code, 0, error_handler);
+    let mut scanner = scan::Scanner::new(f_id, error_handler);
     let tokens = scanner.scan();
 
     for token in tokens.iter() {
