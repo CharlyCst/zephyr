@@ -41,12 +41,14 @@ impl Driver {
         let mir_program = mir::to_mir(pkg_ast, &mut error_handler);
         let binary = wasm::to_wasm(mir_program, &mut error_handler);
 
+        // Write down compiled code
         match fs::write(&self.output, binary) {
-            Ok(_) => (),
-            Err(e) => println!("{}", e),
+            Ok(_) => std::process::exit(0),
+            Err(e) => {
+                println!("{}", e);
+                exit!();
+            }
         }
-
-        std::process::exit(0);
     }
 
     /// Return the AST of the package located at the given path.
@@ -251,6 +253,7 @@ fn get_extension(path: &str) -> Option<String> {
     }
 }
 
+/// Returns the path of the directory containing a given file. Path **MUST** point to a file.
 fn get_directory_path(path: &str) -> String {
     let path = path.split('/').map(|s| s.to_string()).collect::<Vec<String>>();
     if path.len() <= 1 {
