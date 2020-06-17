@@ -4,8 +4,10 @@ use crate::error::ErrorHandler;
 use self::names::{NameStore, ResolvedProgram};
 use self::types::TypeStore;
 
+use std::collections::HashMap;
+
 pub use self::names::NameId;
-pub use self::types::TypeId;
+pub use self::types::{TypeId, Type as ASTType};
 pub use mir::*;
 
 mod ast_to_mir;
@@ -19,6 +21,7 @@ pub struct TypedProgram {
     pub funs: Vec<names::Function>,
     pub names: NameStore,
     pub types: TypeStore,
+    pub pub_types: HashMap<String, ASTType>
 }
 
 pub use mir::Program;
