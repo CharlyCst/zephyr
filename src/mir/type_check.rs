@@ -1,9 +1,11 @@
+use super::names::{Function, NameStore};
 use super::types::id::T_ID_INTEGER;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 enum Progress {
     Some,
@@ -20,6 +22,7 @@ impl<'a> TypeChecker<'a> {
         TypeChecker { err: error_handler }
     }
 
+    /// Type check a ResolvedProgram.
     pub fn check(&mut self, prog: ResolvedProgram) -> TypedProgram {
         let mut type_vars = prog.types;
         let mut constraints = prog.constraints;
@@ -39,13 +42,18 @@ impl<'a> TypeChecker<'a> {
         }
 
         let store = self.build_store(&type_vars);
+        let pub_types = self.get_pub_types(&store, &prog.names, &prog.funs);
+
         TypedProgram {
             funs: prog.funs,
             names: prog.names,
             types: store,
+            pub_types: pub_types,
         }
     }
 
+    /// Build a `TypeStore` from a `TypeVarStore`, should be called once constraints have been
+    /// satisfyied.
     fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
         let integers = var_store.get(T_ID_INTEGER);
         let mut store = TypeStore::new();
@@ -72,8 +80,27 @@ impl<'a> TypeChecker<'a> {
         store
     }
 
-    // Apply a constraint, return true if the constraint helped removing type candidates,
-    // i.e. we are making progress
+    /// Returns a map of the public types (from public declaration with `pub` keyword).
+    fn get_pub_types(
+        &mut self,
+        types: &TypeStore,
+        names: &NameStore,
+        funs: &Vec<Function>,
+    ) -> HashMap<String, Type> {
+        let mut pub_types = HashMap::new();
+        for fun in funs {
+            if fun.is_pub {
+                let name = names.get(fun.n_id);
+                let t = types.get(name.t_id);
+                pub_types.insert(fun.ident.clone(), t.clone());
+            }
+        }
+
+        pub_types
+    }
+
+    /// Apply a constraints, it may modify the type variable store `store`.
+    /// Progress can be made or not, depending on the state of the store.
     fn apply_constr(
         &mut self,
         constr: &TypeConstraint,

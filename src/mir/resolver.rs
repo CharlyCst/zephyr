@@ -586,7 +586,7 @@ impl<'a> NameResolver<'a> {
         }
     }
 
-    // must be called first to bring all global function declarations in scope
+    /// Register top level functions into the global state (`state`).
     fn register_functions(&mut self, funs: &Vec<ast::Function>, state: &mut State) {
         for fun in funs {
             let mut params = Vec::new();
