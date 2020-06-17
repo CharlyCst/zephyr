@@ -5,6 +5,7 @@ use std::fmt;
 
 pub type NameId = usize;
 
+/// A type program, ready to be converted to MIR.
 pub struct ResolvedProgram {
     pub funs: Vec<Function>,
     pub names: NameStore,
