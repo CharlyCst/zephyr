@@ -43,7 +43,7 @@ pub fn to_mir<'a>(
 
     println!("{}", typed_program.types);
 
-    error_handler.print_and_exit();
+    error_handler.flush_and_exit_if_err();
 
     println!("\n/// MIR Production ///\n");
 
@@ -52,7 +52,7 @@ pub fn to_mir<'a>(
 
     println!("{}", mir);
 
-    error_handler.print_and_exit();
+    error_handler.flush_and_exit_if_err();
 
     mir
 }

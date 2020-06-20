@@ -10,6 +10,7 @@ pub struct Location {
 pub struct Error {
     pub loc: Option<Location>,
     pub t: ErrorType,
+    pub level: Level,
     pub message: String,
 }
 
@@ -17,6 +18,13 @@ pub struct Error {
 pub enum ErrorType {
     Internal,
     Any,
+}
+
+/// Error: the compilation failed.
+/// Warning: non critical but should be fixed.
+pub enum Level {
+    Error,
+    Warning,
 }
 
 // Error without location are the smallest
