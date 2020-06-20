@@ -38,7 +38,8 @@ bitwise_and    -> addition ("&" addition)*
 addition       -> multiplication (("+" | "-") multiplication)*
 multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
-call           -> primary ( "(" arguments? ")" )*
+call           -> access ( "(" arguments? ")" )*
+access         -> primary ( "." primary )*
 primary        -> NUMBER | BOOLEAN | IDENTIFIER | "false" | "true"
                 | "(" expression ")"
 arguments      -> expression ( "," expression )* ","?
