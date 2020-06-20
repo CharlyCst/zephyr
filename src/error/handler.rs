@@ -1,7 +1,8 @@
-use super::errors::{Error, ErrorType, Location};
+use super::errors::{Error, ErrorType, Level, Location};
 use std::collections::HashMap;
 
 const RED: &'static str = "\x1B[31m";
+const YELLOW: &'static str = "\x1B[33m";
 const MAGENTA: &'static str = "\x1B[35m";
 const BOLD: &'static str = "\x1B[1m";
 const END: &'static str = "\x1B[0m";
@@ -26,6 +27,15 @@ impl ErrorHandler {
         }
     }
 
+    /// Create a fresh `ErrorHandler` without backing it with a file.
+    pub fn new_no_file() -> ErrorHandler {
+        ErrorHandler {
+            has_error: false,
+            errors: Vec::new(),
+            codes: HashMap::new(),
+        }
+    }
+
     /// Returns a file owned by the ErrorHandler.
     pub fn get_file(&self, f_id: u16) -> Option<&str> {
         if let Some(s) = self.codes.get(&f_id) {
@@ -35,12 +45,23 @@ impl ErrorHandler {
         }
     }
 
+    /// Report a warning without location.
+    pub fn warn_no_loc(&mut self, message: String) {
+        self.errors.push(Error {
+            loc: None,
+            t: ErrorType::Any,
+            level: Level::Warning,
+            message: message,
+        })
+    }
+
     /// Report an error without location.
     pub fn report_no_loc(&mut self, message: String) {
         self.has_error = true;
         self.errors.push(Error {
             loc: None,
             t: ErrorType::Any,
+            level: Level::Error,
             message: message,
         })
     }
@@ -51,6 +72,7 @@ impl ErrorHandler {
         self.errors.push(Error {
             loc: Some(loc),
             t: ErrorType::Any,
+            level: Level::Error,
             message: message,
         })
     }
@@ -61,6 +83,7 @@ impl ErrorHandler {
         self.errors.push(Error {
             loc: Some(loc),
             t: ErrorType::Internal,
+            level: Level::Error,
             message: message,
         })
     }
@@ -71,6 +94,7 @@ impl ErrorHandler {
         self.errors.push(Error {
             loc: None,
             t: ErrorType::Internal,
+            level: Level::Error,
             message: message,
         })
     }
@@ -99,13 +123,23 @@ impl ErrorHandler {
 
     /// If at least one error has been reported, print the errors and exit.
     /// Return immediately without exiting otherwise.
-    pub fn print_and_exit(&mut self) {
+    pub fn flush_and_exit_if_err(&mut self) {
         if !self.has_error {
             return;
         } else if self.errors.len() == 0 {
             exit();
         }
+        self.print_all();
+        exit();
+    }
 
+    /// Unconditionnaly print all errors that have been reported.
+    pub fn flush(&mut self) {
+        self.print_all();
+    }
+
+    /// Print all the errors accumulated by this handler.
+    fn print_all(&mut self) {
         // Sort errors on file ID.
         let mut errors_no_loc = Vec::new();
         let mut errors_by_files: HashMap<u16, Vec<&Error>> = HashMap::new();
@@ -131,16 +165,22 @@ impl ErrorHandler {
             if let Some(code) = self.codes.get(&f_id) {
                 self.print_errors_with_loc(code, errors);
             } else {
-                let err = Error {
-                    loc: None,
-                    t: ErrorType::Internal,
-                    message: String::from("Found errors with unknown file ID."),
-                };
-                self.print(&err);
+                if let Some(err) = errors.first() {
+                    let err = Error {
+                        loc: None,
+                        t: ErrorType::Internal,
+                        level: Level::Error,
+                        message: format!(
+                            "Found errors with unknown file ID '{}': '{}'.",
+                            f_id, err.message
+                        ),
+                    };
+                    self.print(&err);
+                } else {
+                    continue;
+                }
             }
         }
-
-        exit();
     }
 
     /// Pretty print errors with code context.
@@ -193,8 +233,8 @@ impl ErrorHandler {
 
     /// Pretty print an error with position information.
     fn print_line(&self, e: &Error, code: String, pos: u32, len: u32, line: usize) {
-        let color = get_color(e.t);
-        let err_name = get_err_name(e.t);
+        let color = get_color(e);
+        let err_name = get_err_name(e);
 
         println!("{:>5} | {}", line, code);
         println!(
@@ -214,8 +254,8 @@ impl ErrorHandler {
 
     /// Pretty print an error without position information.
     fn print(&self, e: &Error) {
-        let color = get_color(e.t);
-        let err_name = get_err_name(e.t);
+        let color = get_color(e);
+        let err_name = get_err_name(e);
 
         println!(
             "{}{}{}:{}{} {}{}\n",
@@ -236,17 +276,23 @@ impl ErrorHandler {
     }
 }
 
-fn get_color(t: ErrorType) -> &'static str {
-    match t {
+fn get_color(e: &Error) -> &'static str {
+    match e.t {
         ErrorType::Internal => MAGENTA,
-        ErrorType::Any => RED,
+        ErrorType::Any => match e.level {
+            Level::Error => RED,
+            Level::Warning => YELLOW,
+        },
     }
 }
 
-fn get_err_name(t: ErrorType) -> &'static str {
-    match t {
+fn get_err_name(e: &Error) -> &'static str {
+    match e.t {
         ErrorType::Internal => "Internal",
-        ErrorType::Any => "Error",
+        ErrorType::Any => match e.level {
+            Level::Error => "Error",
+            Level::Warning => "Warning",
+        },
     }
 }
 

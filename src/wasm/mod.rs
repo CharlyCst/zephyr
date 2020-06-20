@@ -15,7 +15,7 @@ pub fn to_wasm<'a>(
     let mut compiler = mir_to_wasm::Compiler::new(error_handler);
     let program = compiler.compile(mir_program);
 
-    error_handler.print_and_exit();
+    error_handler.flush_and_exit_if_err();
 
     program
 }
