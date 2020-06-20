@@ -582,7 +582,10 @@ impl<'a> NameResolver<'a> {
                     };
                     (expr, return_t)
                 }
-            }
+            },
+            ast::Expression::Access { .. } => {
+                panic!("Access operator is not yet implemented");
+            },
         }
     }
 

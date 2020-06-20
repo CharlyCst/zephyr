@@ -57,6 +57,10 @@ pub enum Expression {
         fun: Box<Expression>,
         args: Vec<Expression>,
     },
+    Access {
+        namespace: Box<Expression>,
+        field: Box<Expression>,
+    },
 }
 
 pub enum Statement {
@@ -234,6 +238,7 @@ impl fmt::Display for Expression {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Expression::Access { namespace, field } => write!(f, "({}.{})", namespace, field),
             Expression::Unary { unop, expr } => match unop {
                 UnaryOperator::Not => write!(f, "!{}", expr),
                 UnaryOperator::Minus => write!(f, "-{}", expr),
