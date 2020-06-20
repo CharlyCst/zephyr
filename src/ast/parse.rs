@@ -787,7 +787,7 @@ impl<'a> Parser<'a> {
     }
 
     fn call(&mut self) -> Result<Expression, ()> {
-        let mut expr = self.primary()?;
+        let mut expr = self.access()?;
         while self.next_match(TokenType::LeftPar) {
             let args = self.arguments();
             if !self.next_match_report(
@@ -803,6 +803,23 @@ impl<'a> Parser<'a> {
             };
         }
         Ok(expr)
+    }
+
+    fn access(&mut self) -> Result<Expression, ()> {
+        let mut namespace = self.primary()?;
+
+        loop {
+            if self.next_match(TokenType::Dot) {
+                let field = self.primary()?;
+                namespace = Expression::Access {
+                    namespace: Box::new(namespace),
+                    field: Box::new(field),
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(namespace)
     }
 
     fn primary(&mut self) -> Result<Expression, ()> {
