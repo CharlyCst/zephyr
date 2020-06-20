@@ -25,7 +25,7 @@ pub fn get_ast(f_id: u16, error_handler: &mut ErrorHandler) -> ast::Program {
     let ast_program = parser.parse();
     println!("{}", ast_program);
 
-    error_handler.print_and_exit();
+    error_handler.flush_and_exit_if_err();
 
     ast_program
 }
