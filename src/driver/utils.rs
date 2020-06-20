@@ -1,6 +1,6 @@
 use std::fs;
 
-/// Returns a list of path to files to be parsed and a flag indicating if the path point at a
+/// Returns a list of path to files to be parsed and a flag indicating if the path points at a
 /// file. In case of success, return at least one path.
 pub fn resolve_path(path: &str) -> Result<(Vec<String>, bool), String> {
     let file_info = if let Ok(f) = fs::metadata(&path) {

@@ -6,12 +6,13 @@ use crate::error;
 use crate::mir;
 use crate::wasm;
 
-/// Exit the program and return an error code 64 (malformed entry)
+/// Takes `self` as argument, exit the program and return an error code 64 (malformed entry)
 #[macro_use]
 macro_rules! exit {
-    () => {
+    ($v:expr) => {{
+        $v.err.flush();
         std::process::exit(64);
-    };
+    }};
 }
 
 /// The Driver is responsible for orchestrating the compilation process, that is resolving
@@ -20,6 +21,7 @@ pub struct Driver {
     input: String,
     output: String,
     file_id: u16,
+    err: error::ErrorHandler,
 }
 
 impl Driver {
@@ -28,6 +30,7 @@ impl Driver {
             input: input,
             output: output,
             file_id: 0,
+            err: error::ErrorHandler::new_no_file(),
         }
     }
 
@@ -37,17 +40,20 @@ impl Driver {
             if let Ok(res) = self.get_package_ast(&self.input.clone()) {
                 res
             } else {
-                exit!();
+                exit!(self);
             };
         let mir_program = mir::to_mir(pkg_ast, &mut error_handler);
         let binary = wasm::to_wasm(mir_program, &mut error_handler);
 
         // Write down compiled code
         match fs::write(&self.output, binary) {
-            Ok(_) => std::process::exit(0),
+            Ok(_) => {
+                self.err.flush();
+                std::process::exit(0)
+            }
             Err(e) => {
-                println!("{}", e);
-                exit!();
+                self.err.report_no_loc(e.to_string());
+                exit!(self);
             }
         }
     }
@@ -58,12 +64,13 @@ impl Driver {
         let (paths, is_unique_file) = match resolve_path(path) {
             Ok(result) => result,
             Err(err) => {
-                println!("{}", &err);
-                exit!();
+                self.err.report_no_loc(err);
+                exit!(self);
             }
         };
         if paths.len() == 0 {
-            println!("Internal error: no file to compile.");
+            self.err
+                .report_internal_no_loc(String::from("No file to compile: bad path."));
             return Err(());
         }
 
@@ -101,32 +108,32 @@ impl Driver {
                 } else {
                     if is_orphan(&package_name) {
                         if !validate_orphan_file(&package_name) {
-                            println!(
-                                "Warning: malformed orphan file name: '{}' at '{}'.",
+                            self.err.warn_no_loc(format!(
+                                "Malformed orphan file name: '{}' at '{}'.",
                                 &package_name, path
-                            );
+                            ));
                         }
                     } else if is_single_file_package(&package_name) {
                         if let Some((host_package, guest_package)) =
                             validate_single_file_package(&package_name)
                         {
                             if &host_package != name {
-                                println!("Error: malformed single file package '{}' at '{}', host package should be '{}/{}'.", &package_name, path, name, guest_package);
-                                exit!();
+                                self.err.report_no_loc(format!("Malformed single file package '{}' at '{}', host package should be '{}/{}'.", &package_name, path, name, guest_package));
+                                exit!(self);
                             }
                         } else {
-                            println!(
-                                "Error: malformed single file package name '{}' at '{}'.",
+                            self.err.report_no_loc(format!(
+                                "Malformed single file package name '{}' at '{}'.",
                                 &package_name, path
-                            );
-                            exit!();
+                            ));
+                            exit!(self);
                         }
                     } else {
-                        println!(
-                            "Error: multiple packages defined in the same directory at '{}'.",
+                        self.err.report_no_loc(format!(
+                            "Multiple packages defined in the same directory at '{}'.",
                             path
-                        );
-                        exit!()
+                        ));
+                        exit!(self)
                     }
                 }
             } else {
@@ -137,11 +144,11 @@ impl Driver {
                         }
                     // else add package to AST
                     } else {
-                        println!(
-                            "Error: malformed single file package '{}' at '{}'.",
+                        self.err.report_no_loc(format!(
+                            "Malformed single file package '{}' at '{}'.",
                             &package_name, path
-                        );
-                        exit!();
+                        ));
+                        exit!(self);
                     }
                 } else if is_orphan(&package_name) {
                     if validate_orphan_file(&package_name) {
@@ -149,15 +156,15 @@ impl Driver {
                             continue;
                         }
                     } else {
-                        println!(
-                            "Error: malformed orphan file name: '{}' at '{}'.",
+                        self.err.report_no_loc(format!(
+                            "Malformed orphan file name: '{}' at '{}'.",
                             &package_name, path
-                        );
-                        exit!();
+                        ));
+                        exit!(self);
                     }
                 } else {
                     if !validate_package(&package_name) {
-                        println!("Package name '{}' is malformed. A package name must contain only lower case characters or underscores '_'.", package_name);
+                        self.err.warn_no_loc(format!("Package name '{}' is malformed. A package name must contain only lower case characters or underscores '_'.", package_name));
                         continue;
                     } else if is_unique_file {
                         // Unique belonging to a well formed package, scan the whole directory for
@@ -188,9 +195,9 @@ impl Driver {
                 error_handler,
             ))
         } else {
-            println!("Could not find a valid package at '{}'.", path);
+            self.err
+                .report_no_loc(format!("Could not find a valid package at '{}'.", path));
             Err(())
         }
     }
 }
-
