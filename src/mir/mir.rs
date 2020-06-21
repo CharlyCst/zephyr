@@ -22,7 +22,7 @@ pub struct Function {
 }
 
 pub type LocalId = usize; // For now NameId are used as LocalId
-pub type FunctionId = usize;
+pub type FunctionId = u64;
 
 pub struct Local {
     pub id: LocalId,

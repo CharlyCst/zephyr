@@ -21,6 +21,7 @@ pub struct Driver {
     input: String,
     output: String,
     file_id: u16,
+    package_id: u32,
     err: error::ErrorHandler,
 }
 
@@ -30,6 +31,7 @@ impl Driver {
             input: input,
             output: output,
             file_id: 0,
+            package_id: 0,
             err: error::ErrorHandler::new_no_file(),
         }
     }
@@ -77,6 +79,7 @@ impl Driver {
         // Build package ASTs
         let mut ast_programs = Vec::new();
         let mut files = Vec::new();
+        let package_id = self.fresh_package_id();
         for path in paths {
             let f_id = self.file_id;
             self.file_id += 1;
@@ -85,7 +88,7 @@ impl Driver {
         }
         for (code, f_id) in files.into_iter() {
             let mut error_handler = error::ErrorHandler::new(code, f_id);
-            let ast_program = ast::get_ast(f_id, &mut error_handler);
+            let ast_program = ast::get_ast(f_id, package_id, &mut error_handler);
             ast_programs.push((ast_program, error_handler));
         }
 
@@ -191,6 +194,7 @@ impl Driver {
                     exposed: exposed,
                     used: used,
                     funs: funs,
+                    package_id: package_id,
                 },
                 error_handler,
             ))
@@ -199,5 +203,12 @@ impl Driver {
                 .report_no_loc(format!("Could not find a valid package at '{}'.", path));
             Err(())
         }
+    }
+
+    /// Returns a fresh package ID.
+    fn fresh_package_id(&mut self) -> u32 {
+        let package_id = self.package_id;
+        self.package_id += 1;
+        package_id
     }
 }

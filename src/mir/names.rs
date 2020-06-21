@@ -4,6 +4,7 @@ use crate::error::Location;
 use std::fmt;
 
 pub type NameId = usize;
+pub type FunId = u64;
 
 /// A type program, ready to be converted to MIR.
 pub struct ResolvedProgram {
@@ -22,6 +23,7 @@ pub struct Function {
     pub exposed: Option<String>,
     pub loc: Location,
     pub n_id: NameId,
+    pub fun_id: FunId,
 }
 
 pub struct Block {
@@ -96,7 +98,7 @@ pub enum Expression {
         t_id: TypeId,
     },
     CallDirect {
-        fun_id: NameId,
+        fun_id: FunId,
         args: Vec<Expression>,
         loc: Location,
         t_id: TypeId,

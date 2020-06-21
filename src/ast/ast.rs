@@ -101,6 +101,7 @@ pub struct Program {
     pub funs: Vec<Function>,
     pub exposed: Vec<Expose>,
     pub used: Vec<Use>,
+    pub package_id: u32,
 }
 
 pub struct Package {

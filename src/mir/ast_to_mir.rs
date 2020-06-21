@@ -89,7 +89,7 @@ impl<'a> MIRProducer<'a> {
             body: block,
             is_pub: fun.is_pub,
             exposed: fun.exposed,
-            fun_id: fun.n_id,
+            fun_id: fun.fun_id,
         })
     }
 
