@@ -10,12 +10,14 @@ struct State {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
-    functions: HashMap<String, NameId>,
+    functions: HashMap<String, (FunId, NameId)>,
     constraints: ConstraintStore,
+    fun_counter: u32,
+    package_id: u32,
 }
 
 impl State {
-    pub fn new() -> State {
+    pub fn new(package_id: u32) -> State {
         let contexts = vec![HashMap::new()];
         State {
             names: NameStore::new(),
@@ -23,6 +25,8 @@ impl State {
             contexts: contexts,
             functions: HashMap::new(),
             constraints: ConstraintStore::new(),
+            fun_counter: 0,
+            package_id: package_id,
         }
     }
 
@@ -32,6 +36,12 @@ impl State {
 
     pub fn exit_scope(&mut self) {
         self.contexts.pop();
+    }
+
+    pub fn fresh_f_id(&mut self) -> FunId {
+        let f_id = (self.fun_counter as u64) + ((self.package_id as u64) << 32);
+        self.fun_counter += 1;
+        f_id
     }
 
     pub fn declare(
@@ -84,7 +94,7 @@ impl<'a> NameResolver<'a> {
 
     pub fn resolve(&mut self, ast_program: ast::Program) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new();
+        let mut state = State::new(ast_program.package_id);
         let mut named_funs = Vec::with_capacity(funs.len());
         let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
@@ -93,7 +103,7 @@ impl<'a> NameResolver<'a> {
 
         // Resolve exposed funs
         for exposed in &ast_program.exposed {
-            if let Some(f_id) = state.functions.get(&exposed.ident) {
+            if let Some((f_id, _)) = state.functions.get(&exposed.ident) {
                 let exposed_name = if let Some(alias) = &exposed.alias {
                     alias.clone()
                 } else {
@@ -128,7 +138,7 @@ impl<'a> NameResolver<'a> {
     fn resolve_function(
         &mut self,
         fun: ast::Function,
-        exposed_funs: &HashMap<usize, String>,
+        exposed_funs: &HashMap<FunId, String>,
         state: &mut State,
     ) -> Option<Function> {
         state.new_scope();
@@ -146,6 +156,19 @@ impl<'a> NameResolver<'a> {
         };
         let fun_t_id = fun_name.t_id;
         let fun_n_id = fun_name.n_id;
+        let f_id = if let Some((f_id, _)) = state.functions.get(&fun.ident) {
+            *f_id
+        } else {
+            self.err.report_internal(
+                fun.loc,
+                format!(
+                    "Function name '{}' is not registered in resolver state.",
+                    &fun.ident
+                ),
+            );
+            state.exit_scope();
+            return None;
+        };
 
         for param in fun.params.into_iter() {
             let t = match get_var_type(&param) {
@@ -174,7 +197,7 @@ impl<'a> NameResolver<'a> {
         let block = self.resolve_block(fun.block, state, &mut locals, fun_t_id);
         state.exit_scope();
 
-        let exposed = if let Some(exposed_name) = exposed_funs.get(&fun_n_id) {
+        let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
             Some(exposed_name.clone())
         } else {
             None
@@ -189,6 +212,7 @@ impl<'a> NameResolver<'a> {
             exposed: exposed,
             loc: fun.loc,
             n_id: fun_n_id,
+            fun_id: f_id,
         });
     }
 
@@ -516,10 +540,11 @@ impl<'a> NameResolver<'a> {
 
                 // Check if variable is a known function
                 if let ast::Expression::Variable { ref var } = **fun {
-                    if let Some(fun_id) = state.functions.get(&var.ident) {
+                    if let Some((fun_id, n_id)) = state.functions.get(&var.ident) {
                         // Known function => direct call
                         let fun_id = *fun_id;
-                        let fun_t = state.names.get(fun_id).t_id;
+                        let n_id = *n_id;
+                        let fun_t = state.names.get(n_id).t_id;
                         let return_t = state.types.fresh(var.loc, vec![Type::Any]);
                         let loc = if n > 0 {
                             var.loc.merge(resolved_args[n - 1].get_loc())
@@ -582,10 +607,10 @@ impl<'a> NameResolver<'a> {
                     };
                     (expr, return_t)
                 }
-            },
+            }
             ast::Expression::Access { .. } => {
                 panic!("Access operator is not yet implemented");
-            },
+            }
         }
     }
 
@@ -624,7 +649,8 @@ impl<'a> NameResolver<'a> {
                 let error = format!("Function {} declared multiple times", fun.ident);
                 self.err.report(fun.loc, error);
             } else if let Ok((n_id, _)) = declaration {
-                state.functions.insert(fun.ident.clone(), n_id);
+                let fun_id = state.fresh_f_id();
+                state.functions.insert(fun.ident.clone(), (fun_id, n_id));
             }
         }
     }

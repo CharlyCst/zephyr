@@ -6,16 +6,18 @@ pub struct Parser<'a> {
     err: &'a mut ErrorHandler,
     tokens: Vec<Token>,
     current: usize,
+    package_id: u32,
 }
 
 /// Works on a list of tokens and converts it into an Abstract Syntax Tree,
 /// following the grammar of the language (defined in 'grammar.md')
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, error_handler: &mut ErrorHandler) -> Parser {
+    pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &mut ErrorHandler) -> Parser {
         Parser {
             err: error_handler,
             tokens: tokens,
             current: 0,
+            package_id: package_id,
         }
     }
 
@@ -59,6 +61,7 @@ impl<'a> Parser<'a> {
             funs: funs,
             exposed: exposed,
             used: used,
+            package_id: self.package_id,
         }
     }
 
