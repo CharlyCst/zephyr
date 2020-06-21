@@ -124,6 +124,7 @@ pub struct Expose {
     pub loc: Location,
 }
 
+#[derive(Clone)]
 pub struct Use {
     pub path: String,
     pub alias: Option<String>,
