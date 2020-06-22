@@ -28,6 +28,7 @@ pub use mir::Program;
 
 pub fn to_mir<'a>(
     ast_program: ast::Program,
+    _namespace: HashMap<String, HashMap<String, ASTType>>,
     error_handler: &mut ErrorHandler,
 ) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
