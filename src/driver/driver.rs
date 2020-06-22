@@ -27,6 +27,7 @@ pub struct Driver {
     file_id: u16,
     package_id: u32,
     err: error::ErrorHandler,
+    pub_types: HashMap<String, HashMap<String, mir::ASTType>>, // package -> (decl -> type)
 }
 
 impl Driver {
@@ -39,6 +40,7 @@ impl Driver {
             file_id: 0,
             package_id: 0,
             err: error::ErrorHandler::new_no_file(),
+            pub_types: HashMap::new(),
         }
     }
 
@@ -65,7 +67,6 @@ impl Driver {
     }
 
     /// Returns the MIR of the package located at the given path.
-    /// TODO: Cache MIR pub types.
     fn get_package_mir<P: AsRef<Path>>(
         &mut self,
         path: P,
@@ -84,18 +85,17 @@ impl Driver {
                 // In the future we ill check `used_root` against known package such as `std`.
                 // For now we only handle subpackages.
                 // TODO: Should we hide exposed declarations of imported packages?
-                if used_root == self.package_name && self.package_root.is_some(){
-                    // TODO: Cache MIR packages
+                let pub_types = if let Some(pub_types) = self.pub_types.get(&used.path) {
+                    pub_types.clone()
+                } else if used_root == self.package_name && self.package_root.is_some(){
                     let mut package_path = self.package_root.clone().unwrap();
                     package_path.push(strip_root(&used.path));
+                    // TODO: Handle single file packages.
                     if let Ok((sub_pkg_mir, err_handler)) = self.get_package_mir(package_path, false) {
                         error_handler.merge(err_handler);
                         mir_funs.extend(sub_pkg_mir.funs);
-                        if let Some(alias) = &used.alias {
-                            namespaces.insert(alias.clone(), sub_pkg_mir.pub_types);
-                        } else {
-                            namespaces.insert(used_alias.clone(), sub_pkg_mir.pub_types);
-                        }
+                        self.pub_types.insert(used.path.clone(), sub_pkg_mir.pub_types.clone());
+                        sub_pkg_mir.pub_types 
                     } else {
                         self.err.merge(error_handler);
                         exit!(self);
@@ -103,13 +103,18 @@ impl Driver {
                 } else {
                     self.err.report_no_loc(format!("Unknown package '{}'.", &used.path));
                     exit!(self);
+                };
+                if let Some(alias) = &used.alias {
+                    namespaces.insert(alias.clone(), pub_types);
+                } else {
+                    namespaces.insert(used_alias.clone(), pub_types);
                 }
             } else {
                 self.err.merge(error_handler);
                 exit!(self);
             }
         }
-        let mut mir_program = mir::to_mir(pkg_ast, &mut error_handler);
+        let mut mir_program = mir::to_mir(pkg_ast, namespaces, &mut error_handler);
         mir_program.funs.extend(mir_funs);
         Ok((mir_program, error_handler))
     }
