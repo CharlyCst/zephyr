@@ -8,7 +8,7 @@ mod tokens;
 pub use ast::*;
 pub use tokens::*;
 
-pub fn get_ast(f_id: u16, error_handler: &mut ErrorHandler) -> ast::Program {
+pub fn get_ast(f_id: u16, package_id: u32, error_handler: &mut ErrorHandler) -> ast::Program {
     println!("\n/// Scanning ///\n");
 
     let mut scanner = scan::Scanner::new(f_id, error_handler);
@@ -21,7 +21,7 @@ pub fn get_ast(f_id: u16, error_handler: &mut ErrorHandler) -> ast::Program {
 
     println!("\n/// Parsing ///\n");
 
-    let mut parser = parse::Parser::new(tokens, error_handler);
+    let mut parser = parse::Parser::new(tokens, package_id, error_handler);
     let ast_program = parser.parse();
     println!("{}", ast_program);
 
