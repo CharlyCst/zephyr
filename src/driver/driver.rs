@@ -90,7 +90,14 @@ impl Driver {
                 } else if used_root == self.package_name && self.package_root.is_some(){
                     let mut package_path = self.package_root.clone().unwrap();
                     package_path.push(strip_root(&used.path));
-                    // TODO: Handle single file packages.
+                    // TODO: Handle single file packages
+                    if !package_path.exists() {
+                        // No directory found, look for a single file package
+                        package_path = self.package_root.clone().unwrap();
+                        let mut file_path = strip_root(&used.path).to_owned();
+                        file_path.push_str(".frk");
+                        package_path.push(file_path);
+                    }
                     if let Ok((sub_pkg_mir, err_handler)) = self.get_package_mir(package_path, false) {
                         error_handler.merge(err_handler);
                         mir_funs.extend(sub_pkg_mir.funs);
