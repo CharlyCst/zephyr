@@ -86,13 +86,14 @@ impl Driver {
                 // For now we only handle subpackages.
                 // TODO: Should we hide exposed declarations of imported packages?
                 let pub_types = if let Some(pub_types) = self.pub_types.get(&used.path) {
+                    // Already processed and cached.
                     pub_types.clone()
                 } else if used_root == self.package_name && self.package_root.is_some(){
+                    // Process used package.
                     let mut package_path = self.package_root.clone().unwrap();
                     package_path.push(strip_root(&used.path));
-                    // TODO: Handle single file packages
                     if !package_path.exists() {
-                        // No directory found, look for a single file package
+                        // No directory found, look for a single file package.
                         package_path = self.package_root.clone().unwrap();
                         let mut file_path = strip_root(&used.path).to_owned();
                         file_path.push_str(".frk");
