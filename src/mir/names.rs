@@ -1,4 +1,4 @@
-use super::types::{ConstraintStore, TypeId, TypeVarStore};
+use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
@@ -24,6 +24,11 @@ pub struct Function {
     pub loc: Location,
     pub n_id: NameId,
     pub fun_id: FunId,
+}
+
+#[derive(Clone)]
+pub enum Declaration {
+    Function { t: Type, fun_id: FunId },
 }
 
 pub struct Block {

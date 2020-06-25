@@ -1,12 +1,12 @@
 #![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
-use super::types::Type as ASTType;
+use super::names::Declaration;
 
 use std::fmt;
 use std::collections::HashMap;
 
 pub struct Program {
     pub funs: Vec<Function>,
-    pub pub_types: HashMap<String, ASTType>
+    pub pub_decls: HashMap<String, Declaration>
 }
 
 pub struct Function {

@@ -1,4 +1,4 @@
-use super::names::{Function, NameStore};
+use super::names::{Declaration, Function, NameStore};
 use super::types::id::T_ID_INTEGER;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
@@ -42,13 +42,13 @@ impl<'a> TypeChecker<'a> {
         }
 
         let store = self.build_store(&type_vars);
-        let pub_types = self.get_pub_types(&store, &prog.names, &prog.funs);
+        let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs);
 
         TypedProgram {
             funs: prog.funs,
             names: prog.names,
             types: store,
-            pub_types: pub_types,
+            pub_decls: pub_decls,
         }
     }
 
@@ -81,22 +81,28 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Returns a map of the public types (from public declaration with `pub` keyword).
-    fn get_pub_types(
+    fn get_pub_decls(
         &mut self,
         types: &TypeStore,
         names: &NameStore,
         funs: &Vec<Function>,
-    ) -> HashMap<String, Type> {
-        let mut pub_types = HashMap::new();
+    ) -> HashMap<String, Declaration> {
+        let mut pub_decls = HashMap::new();
         for fun in funs {
             if fun.is_pub {
                 let name = names.get(fun.n_id);
                 let t = types.get(name.t_id);
-                pub_types.insert(fun.ident.clone(), t.clone());
+                pub_decls.insert(
+                    fun.ident.clone(),
+                    Declaration::Function {
+                        t: t.clone(),
+                        fun_id: fun.fun_id,
+                    },
+                );
             }
         }
 
-        pub_types
+        pub_decls
     }
 
     /// Apply a constraints, it may modify the type variable store `store`.
