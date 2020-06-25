@@ -57,7 +57,7 @@ impl<'a> MIRProducer<'a> {
             }
         }
 
-        Program { funs: funs, pub_types: prog.pub_types }
+        Program { funs: funs, pub_decls: prog.pub_decls }
     }
 
     fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Result<Function, String> {

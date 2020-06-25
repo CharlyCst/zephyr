@@ -6,8 +6,8 @@ use self::types::TypeStore;
 
 use std::collections::HashMap;
 
-pub use self::names::NameId;
-pub use self::types::{TypeId, Type as ASTType};
+pub use self::names::{Declaration, NameId};
+pub use self::types::TypeId;
 pub use mir::*;
 
 mod ast_to_mir;
@@ -21,14 +21,14 @@ pub struct TypedProgram {
     pub funs: Vec<names::Function>,
     pub names: NameStore,
     pub types: TypeStore,
-    pub pub_types: HashMap<String, ASTType>
+    pub pub_decls: HashMap<String, Declaration>,
 }
 
 pub use mir::Program;
 
 pub fn to_mir<'a>(
     ast_program: ast::Program,
-    _namespace: HashMap<String, HashMap<String, ASTType>>,
+    _namespace: HashMap<String, HashMap<String, Declaration>>,
     error_handler: &mut ErrorHandler,
 ) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
