@@ -88,6 +88,10 @@ pub enum Expression {
     Literal {
         value: Value,
     },
+    Function {
+        fun_id: FunId,
+        loc: Location,
+    },
     Binary {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
@@ -124,6 +128,7 @@ impl Expression {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
             },
+            Expression::Function { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,
