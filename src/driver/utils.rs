@@ -1,6 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub enum PackageType {
+    Package { name: String },
+    SingleFilePackage { parent: String, name: String },
+    OrphanFile { name: String },
+}
+
 /// Returns a list of files pointed by `path` and a flag set to `true` if `path` points at a
 /// file, false otherwise. In case of success, return at least one path.
 pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), String> {
@@ -8,7 +14,10 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
     let file_info = if let Ok(f) = fs::metadata(&path) {
         f
     } else {
-        return Err(format!("Path '{}' does not exist.", path.to_str().unwrap_or("")));
+        return Err(format!(
+            "Path '{}' does not exist.",
+            path.to_str().unwrap_or("")
+        ));
     };
     if file_info.is_dir() {
         if let Ok(dir) = fs::read_dir(path) {
@@ -25,7 +34,10 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
                 }
             }
             if paths.len() == 0 {
-                Err(format!("Could not find any fork file (.frk) in '{}'", path.to_str().unwrap_or("")))
+                Err(format!(
+                    "Could not find any fork file (.frk) in '{}'",
+                    path.to_str().unwrap_or("")
+                ))
             } else {
                 Ok((paths, false))
             }
@@ -41,18 +53,18 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
         if ext.eq("frk") {
             Ok((vec![path.to_owned()], true))
         } else {
-            Err(format!("Invalid file extension '{}'.", ext.to_str().unwrap_or("")))
+            Err(format!(
+                "Invalid file extension '{}'.",
+                ext.to_str().unwrap_or("")
+            ))
         }
     } else {
-        Err(format!("{}' is neither a file nor a directory.", path.to_str().unwrap_or("")))
+        Err(format!(
+            "{}' is neither a file nor a directory.",
+            path.to_str().unwrap_or("")
+        ))
     }
 }
-
-/// Returns 
-/* pub fn get_subpackage_path(package_path: &str, subpackage: &str) {
-    let mut path = PathBuf::new();
-    path.push(package_path);
-}*/
 
 /// Returns the path without the root package.
 pub fn strip_root(path: &str) -> &str {
@@ -60,7 +72,7 @@ pub fn strip_root(path: &str) -> &str {
     loop {
         if let Some(c) = iter.next() {
             if c == '/' {
-               return iter.as_str();
+                return iter.as_str();
             }
         } else {
             // Empty string
@@ -69,7 +81,7 @@ pub fn strip_root(path: &str) -> &str {
     }
 }
 
-/// Returns the root and alias of a use path if it is well formed, i.e. is a sequence 
+/// Returns the root and alias of a use path if it is well formed, i.e. is a sequence
 /// of well formed package names separated by '/'.
 pub fn validate_use_path(path: &str) -> Option<(String, String)> {
     let path = path
@@ -91,14 +103,46 @@ pub fn validate_use_path(path: &str) -> Option<(String, String)> {
         }
         next = if let Some(next_next) = iter.next() {
             next_next
-        } else  {
+        } else {
             return Some((root, next));
         }
     }
 }
 
+/// Returns the type of package infered from its name. Returns an error if name is not well
+/// formatted.
+pub fn get_package_type(package_name: &str) -> Result<PackageType, String> {
+    if is_orphan(package_name) {
+        if validate_orphan_file(package_name) {
+            Ok(PackageType::OrphanFile {
+                name: package_name.to_string(),
+            })
+        } else {
+            Err(format!("Malformed orphan file name: '{}'", package_name,))
+        }
+    } else if is_single_file_package(package_name) {
+        if let Some((parent, name)) = validate_single_file_package(package_name) {
+            Ok(PackageType::SingleFilePackage {
+                parent: parent,
+                name: name,
+            })
+        } else {
+            Err(format!(
+                "Malformed single file package name: '{}'",
+                package_name,
+            ))
+        }
+    } else if validate_package(package_name) {
+        Ok(PackageType::Package {
+            name: package_name.to_string(),
+        })
+    } else {
+        Err(format!("Malformed package name: '{}'", package_name))
+    }
+}
+
 /// Returns `true` if the package looks like an orphan file (i.e. it starts with an `#`)
-pub fn is_orphan(package_name: &str) -> bool {
+fn is_orphan(package_name: &str) -> bool {
     if let Some(c) = package_name.chars().next() {
         c == '#'
     } else {
@@ -107,7 +151,7 @@ pub fn is_orphan(package_name: &str) -> bool {
 }
 
 /// Returns `true` if the package looks like a single file package
-pub fn is_single_file_package(package_name: &str) -> bool {
+fn is_single_file_package(package_name: &str) -> bool {
     // A single file package MUST contain a `/`, and is the only
     // type of package allowed to.
     package_name.chars().find(|c| *c == '/').is_some()
@@ -116,7 +160,7 @@ pub fn is_single_file_package(package_name: &str) -> bool {
 /// Returns `true` if the package name is correct, that is:
 /// - It contrains only lower case characters and underscores
 /// - It starts with a lower case character
-pub fn validate_package(package_name: &str) -> bool {
+fn validate_package(package_name: &str) -> bool {
     let mut is_first = true;
     for c in package_name.chars() {
         if c == '_' && !is_first {
@@ -134,7 +178,7 @@ pub fn validate_package(package_name: &str) -> bool {
 /// Returns `true` if the package name is a valid orphan file, that is:
 /// - It starts with `#`
 /// - It is followed by  a valid package name
-pub fn validate_orphan_file(package_name: &str) -> bool {
+fn validate_orphan_file(package_name: &str) -> bool {
     match package_name.chars().next() {
         Some('#') => true,
         _ => return false,
@@ -148,7 +192,7 @@ pub fn validate_orphan_file(package_name: &str) -> bool {
 /// - It starts with the host package name (a valid package name)
 /// - Is followed by a a slash `/`
 /// - Itself followed by the single file package name (a valid package name)
-pub fn validate_single_file_package(package_name: &str) -> Option<(String, String)> {
+fn validate_single_file_package(package_name: &str) -> Option<(String, String)> {
     let mut parts = package_name.split('/');
     let host_package = if let Some(host_package) = parts.next() {
         host_package.to_string()
@@ -232,9 +276,18 @@ mod tests {
     #[test]
     /// test `validate_use_path`
     fn use_path() {
-        assert_eq!(validate_use_path("std/math/crypto"), Some((String::from("std"), String::from("crypto"))));
-        assert_eq!(validate_use_path("std/math"), Some((String::from("std"), String::from("math"))));
-        assert_eq!(validate_use_path("external_package/foo/bar_buzz"), Some((String::from("external_package"), String::from("bar_buzz"))));
+        assert_eq!(
+            validate_use_path("std/math/crypto"),
+            Some((String::from("std"), String::from("crypto")))
+        );
+        assert_eq!(
+            validate_use_path("std/math"),
+            Some((String::from("std"), String::from("math")))
+        );
+        assert_eq!(
+            validate_use_path("external_package/foo/bar_buzz"),
+            Some((String::from("external_package"), String::from("bar_buzz")))
+        );
         assert_eq!(validate_use_path("std"), None);
         assert_eq!(validate_use_path("Std/math"), None);
     }
