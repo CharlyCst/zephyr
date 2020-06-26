@@ -27,7 +27,7 @@ pub struct Driver {
     file_id: u16,
     package_id: u32,
     err: error::ErrorHandler,
-    pub_types: HashMap<String, HashMap<String, mir::ASTType>>, // package -> (decl -> type)
+    pub_decls: HashMap<String, HashMap<String, mir::Declaration>>, // package -> (decl -> type)
 }
 
 impl Driver {
@@ -40,7 +40,7 @@ impl Driver {
             file_id: 0,
             package_id: 0,
             err: error::ErrorHandler::new_no_file(),
-            pub_types: HashMap::new(),
+            pub_decls: HashMap::new(),
         }
     }
 
@@ -85,9 +85,9 @@ impl Driver {
                 // In the future we ill check `used_root` against known package such as `std`.
                 // For now we only handle subpackages.
                 // TODO: Should we hide exposed declarations of imported packages?
-                let pub_types = if let Some(pub_types) = self.pub_types.get(&used.path) {
+                let pub_decls = if let Some(pub_decls) = self.pub_decls.get(&used.path) {
                     // Already processed and cached.
-                    pub_types.clone()
+                    pub_decls.clone()
                 } else if used_root == self.package_name && self.package_root.is_some(){
                     // Process used package.
                     let mut package_path = self.package_root.clone().unwrap();
@@ -102,8 +102,8 @@ impl Driver {
                     if let Ok((sub_pkg_mir, err_handler)) = self.get_package_mir(package_path, false) {
                         error_handler.merge(err_handler);
                         mir_funs.extend(sub_pkg_mir.funs);
-                        self.pub_types.insert(used.path.clone(), sub_pkg_mir.pub_types.clone());
-                        sub_pkg_mir.pub_types 
+                        self.pub_decls.insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
+                        sub_pkg_mir.pub_decls 
                     } else {
                         self.err.merge(error_handler);
                         exit!(self);
@@ -113,9 +113,9 @@ impl Driver {
                     exit!(self);
                 };
                 if let Some(alias) = &used.alias {
-                    namespaces.insert(alias.clone(), pub_types);
+                    namespaces.insert(alias.clone(), pub_decls);
                 } else {
-                    namespaces.insert(used_alias.clone(), pub_types);
+                    namespaces.insert(used_alias.clone(), pub_decls);
                 }
             } else {
                 self.err.merge(error_handler);

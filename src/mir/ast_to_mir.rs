@@ -57,7 +57,7 @@ impl<'a> MIRProducer<'a> {
             }
         }
 
-        Program { funs: funs, pub_types: prog.pub_types }
+        Program { funs: funs, pub_decls: prog.pub_decls }
     }
 
     fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Result<Function, String> {
@@ -232,7 +232,7 @@ impl<'a> MIRProducer<'a> {
                         Type::I32 => Value::I32((*val).try_into().unwrap()),
                         Type::I64 => Value::I64((*val).try_into().unwrap()),
                         _ => {
-                            return Err(String::from("Integer constant of non integer type"));
+                            return Err(String::from("Integer constant of non integer type."));
                         }
                     };
                     stmts.push(Statement::Const { val: val })
@@ -242,6 +242,7 @@ impl<'a> MIRProducer<'a> {
                 }),
             },
             Expr::Variable { var } => stmts.push(Statement::Get { l_id: var.n_id }),
+            Expr::Function { .. } => return Err(String::from("Function as expression are not yet supported.")),
             Expr::Binary {
                 expr_left,
                 binop,
