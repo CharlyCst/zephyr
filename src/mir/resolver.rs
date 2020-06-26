@@ -11,39 +11,49 @@ struct State {
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
     functions: HashMap<String, (FunId, NameId)>,
+    used_namespace: HashMap<String, HashMap<String, Declaration>>,
     constraints: ConstraintStore,
     fun_counter: u32,
     package_id: u32,
 }
 
 impl State {
-    pub fn new(package_id: u32) -> State {
+    pub fn new(
+        package_id: u32,
+        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+    ) -> State {
         let contexts = vec![HashMap::new()];
         State {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts: contexts,
             functions: HashMap::new(),
+            used_namespace: used_namespace,
             constraints: ConstraintStore::new(),
             fun_counter: 0,
             package_id: package_id,
         }
     }
 
+    /// Starts a new scope.
     pub fn new_scope(&mut self) {
         self.contexts.push(HashMap::new());
     }
 
+    /// Exit the current scope.
     pub fn exit_scope(&mut self) {
         self.contexts.pop();
     }
 
+    /// Return a fresh function ID.
     pub fn fresh_f_id(&mut self) -> FunId {
         let f_id = (self.fun_counter as u64) + ((self.package_id as u64) << 32);
         self.fun_counter += 1;
         f_id
     }
 
+    /// Declare a name, will fail if the name already exists in the current context or correspont
+    /// to an import alias.
     pub fn declare(
         &mut self,
         ident: String,
@@ -52,6 +62,8 @@ impl State {
     ) -> Result<(NameId, TypeId), Location> {
         if let Some(n) = self.find_in_context(&ident) {
             return Err(n.loc);
+        } else if let Some(_) = self.used_namespace.get(&ident) {
+            return Err(Location::dummy()); // TODO: get the location of the corresponding `use` statement.
         }
 
         let ident_key = ident.clone();
@@ -61,10 +73,12 @@ impl State {
         Ok((n_id, t_id))
     }
 
+    /// Adds a new contraints, will be used in the type checking stage.
     pub fn new_constraint(&mut self, constraint: TypeConstraint) {
         self.constraints.add(constraint)
     }
 
+    /// Return the corresponding Name if it is in context. This does not include used alias.
     pub fn find_in_context(&self, ident: &str) -> Option<&Name> {
         for ctx in self.contexts.iter().rev() {
             match ctx.get(ident) {
@@ -92,9 +106,13 @@ impl<'a> NameResolver<'a> {
         NameResolver { err: error_handler }
     }
 
-    pub fn resolve(&mut self, ast_program: ast::Program) -> ResolvedProgram {
+    pub fn resolve(
+        &mut self,
+        ast_program: ast::Program,
+        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+    ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new(ast_program.package_id);
+        let mut state = State::new(ast_program.package_id, used_namespace);
         let mut named_funs = Vec::with_capacity(funs.len());
         let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
@@ -502,7 +520,14 @@ impl<'a> NameResolver<'a> {
                 }
             },
             ast::Expression::Variable { var } => {
-                if let Some(name) = state.find_in_context(&var.ident) {
+                if let Some((fun_id, n_id)) = state.functions.get(&var.ident) {
+                    let expr = Expression::Function {
+                        fun_id: *fun_id,
+                        loc: var.loc,
+                    };
+                    let t_id = state.names.get(*n_id).t_id;
+                    (expr, t_id)
+                } else if let Some(name) = state.find_in_context(&var.ident) {
                     let expr = Expression::Variable {
                         var: Variable {
                             ident: var.ident.clone(),
@@ -537,43 +562,32 @@ impl<'a> NameResolver<'a> {
                     resolved_args.push(arg);
                     args_t.push(arg_t);
                 }
+                let (fun, fun_t) = self.resolve_expression(fun, state);
+                let loc = if n > 0 {
+                    fun.get_loc().merge(resolved_args[n - 1].get_loc())
+                } else {
+                    fun.get_loc()
+                };
 
-                // Check if variable is a known function
-                if let ast::Expression::Variable { ref var } = **fun {
-                    if let Some((fun_id, n_id)) = state.functions.get(&var.ident) {
-                        // Known function => direct call
-                        let fun_id = *fun_id;
-                        let n_id = *n_id;
-                        let fun_t = state.names.get(n_id).t_id;
-                        let return_t = state.types.fresh(var.loc, vec![Type::Any]);
-                        let loc = if n > 0 {
-                            var.loc.merge(resolved_args[n - 1].get_loc())
-                        } else {
-                            var.loc
-                        };
+                match fun {
+                    Expression::Function { fun_id, .. } => {
+                        // Direct call
+                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Arguments(
                             args_t, fun_t, args_loc, loc,
                         ));
                         state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
-                        (
-                            Expression::CallDirect {
-                                fun_id: fun_id,
-                                loc: loc,
-                                args: resolved_args,
-                                t_id: return_t,
-                            },
-                            return_t,
-                        )
-                    } else {
-                        // Duplicate code (see below)! Waiting for chaining if let proposal
-                        // https://github.com/rust-lang/rust/issues/53667
-                        let (fun, fun_t) = self.resolve_expression(fun, state);
-                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                        let loc = if n > 0 {
-                            fun.get_loc().merge(resolved_args[n - 1].get_loc())
-                        } else {
-                            fun.get_loc()
+                        let expr = Expression::CallDirect {
+                            fun_id: fun_id,
+                            loc: loc,
+                            args: resolved_args,
+                            t_id: return_t,
                         };
+                        (expr, return_t)
+                    }
+                    _ => {
+                        // Indirect call
+                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Arguments(
                             args_t, fun_t, args_loc, loc,
                         ));
@@ -587,25 +601,6 @@ impl<'a> NameResolver<'a> {
                         };
                         (expr, return_t)
                     }
-                } else {
-                    // Duplicate code! Edit both !!!
-                    let (fun, fun_t) = self.resolve_expression(fun, state);
-                    let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                    let loc = if n > 0 {
-                        fun.get_loc().merge(resolved_args[n - 1].get_loc())
-                    } else {
-                        fun.get_loc()
-                    };
-                    state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc, loc));
-                    state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
-
-                    let expr = Expression::CallIndirect {
-                        loc: loc,
-                        fun: Box::new(fun),
-                        args: resolved_args,
-                        t_id: return_t,
-                    };
-                    (expr, return_t)
                 }
             }
             ast::Expression::Access { .. } => {
