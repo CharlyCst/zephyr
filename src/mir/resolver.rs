@@ -541,14 +541,7 @@ impl<'a> NameResolver<'a> {
                         var.loc,
                         format!("Variable {} used but not declared", var.ident),
                     );
-                    let dummy_expr = Expression::Literal {
-                        value: Value::Boolean {
-                            loc: var.loc,
-                            val: false,
-                            t_id: T_ID_BOOL,
-                        },
-                    };
-                    return (dummy_expr, T_ID_BOOL);
+                    return (get_dummy_expr(), T_ID_BOOL);
                 }
             }
             ast::Expression::Call { fun, args } => {
@@ -603,8 +596,54 @@ impl<'a> NameResolver<'a> {
                     }
                 }
             }
-            ast::Expression::Access { .. } => {
-                panic!("Access operator is not yet implemented");
+            ast::Expression::Access { namespace, field } => {
+                let (namespace, loc_namespace, namespace_ident) = match &(**namespace) {
+                    ast::Expression::Variable { var } => {
+                        if let Some(namespace) = state.used_namespace.get(&var.ident) {
+                            (namespace, var.loc, &var.ident)
+                        } else {
+                            self.err.report(
+                                var.loc,
+                                format!("The identifier '{}' is not defined.", &var.ident),
+                            );
+                            return (get_dummy_expr(), T_ID_BOOL);
+                        }
+                    }
+                    _ => {
+                        let (expr, _) = self.resolve_expression(namespace, state);
+                        self.err.report(
+                            expr.get_loc(),
+                            String::from("The left operand of an access must be an identifier."),
+                        );
+                        return (get_dummy_expr(), T_ID_BOOL);
+                    }
+                };
+                let (field, loc_field) = match &(**field) {
+                    ast::Expression::Variable { var } => (var.ident.clone(), var.loc),
+                    _ => {
+                        let (expr, _) = self.resolve_expression(field, state);
+                        self.err.report(
+                            expr.get_loc(),
+                            String::from("The left operand of an access must be an identifier."),
+                        );
+                        return (get_dummy_expr(), T_ID_BOOL);
+                    }
+                };
+                let loc = loc_namespace.merge(loc_field);
+                if let Some(Declaration::Function { fun_id, t }) = namespace.get(&field) {
+                    let expr = Expression::Function {
+                        fun_id: *fun_id,
+                        loc: loc,
+                    };
+                    let t_id = state.types.fresh(loc, vec![t.clone()]);
+                    (expr, t_id)
+                } else {
+                    self.err.report(
+                        loc_field,
+                        format!("'{}' is not a member of '{}'.", &field, namespace_ident),
+                    );
+                    return (get_dummy_expr(), T_ID_BOOL);
+                }
             }
         }
     }
@@ -670,5 +709,17 @@ fn check_built_in_type(t: &str) -> Option<Type> {
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
         _ => None,
+    }
+}
+
+/// Used because we can not yet return an error from `resolve_expression`.
+/// TODO: Remove this
+fn get_dummy_expr() -> Expression {
+    Expression::Literal {
+        value: Value::Boolean {
+            loc: Location::dummy(),
+            val: false,
+            t_id: T_ID_BOOL,
+        },
     }
 }
