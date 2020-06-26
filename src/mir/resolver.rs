@@ -6,6 +6,21 @@ use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
 
+/// Unwrap a `Result` and return its content. In case of failure, silently report and error
+/// and `continue` to the next iteration.
+/// Takes `self` and a result as arguments.
+#[macro_use]
+macro_rules! unwrap {
+    ($v:expr, $result:expr) => {{
+        if let Ok(result) = $result {
+            result
+        } else {
+            $v.err.silent_report();
+            continue;
+        }
+    }};
+}
+
 struct State {
     names: NameStore,
     types: TypeVarStore,
@@ -264,7 +279,7 @@ impl<'a> NameResolver<'a> {
                         );
                         continue;
                     };
-                    let (expr, t_id) = self.resolve_expression(&mut expr, state);
+                    let (expr, t_id) = unwrap!(self, self.resolve_expression(&mut expr, state));
                     let loc = var.loc.merge(expr.get_loc());
                     state.new_constraint(TypeConstraint::Equality(var_t_id, t_id, loc));
                     Statement::AssignStmt {
@@ -276,7 +291,8 @@ impl<'a> NameResolver<'a> {
                     match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
                         Ok((n_id, var_t_id)) => {
                             locals.push(n_id);
-                            let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                            let (expr, expr_t_id) =
+                                unwrap!(self, self.resolve_expression(&mut expr, state));
                             let loc = var.loc.merge(expr.get_loc());
                             state
                                 .new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
@@ -303,7 +319,8 @@ impl<'a> NameResolver<'a> {
                     block,
                     else_block,
                 } => {
-                    let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                    let (expr, expr_t_id) =
+                        unwrap!(self, self.resolve_expression(&mut expr, state));
                     state.new_constraint(TypeConstraint::Equality(
                         expr_t_id,
                         T_ID_BOOL,
@@ -323,7 +340,8 @@ impl<'a> NameResolver<'a> {
                     }
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
-                    let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                    let (expr, expr_t_id) =
+                        unwrap!(self, self.resolve_expression(&mut expr, state));
                     state.new_constraint(TypeConstraint::Equality(
                         expr_t_id,
                         T_ID_BOOL,
@@ -337,7 +355,8 @@ impl<'a> NameResolver<'a> {
                 }
                 ast::Statement::ReturnStmt { expr, loc } => {
                     if let Some(mut ret_expr) = expr {
-                        let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state);
+                        let (expr, ret_t_id) =
+                            unwrap!(self, self.resolve_expression(&mut ret_expr, state));
                         state.new_constraint(TypeConstraint::Return(
                             fun_t_id,
                             ret_t_id,
@@ -361,7 +380,7 @@ impl<'a> NameResolver<'a> {
                     }
                 }
                 ast::Statement::ExprStmt { mut expr } => {
-                    let (expr, _) = self.resolve_expression(&mut expr, state);
+                    let (expr, _) = unwrap!(self, self.resolve_expression(&mut expr, state));
                     Statement::ExprStmt {
                         expr: Box::new(expr),
                     }
@@ -378,10 +397,10 @@ impl<'a> NameResolver<'a> {
         &mut self,
         expr: &mut ast::Expression,
         state: &mut State,
-    ) -> (Expression, TypeId) {
+    ) -> Result<(Expression, TypeId), ()> {
         match expr {
             ast::Expression::Unary { unop, expr } => {
-                let (expr, t_id) = self.resolve_expression(expr, state);
+                let (expr, t_id) = self.resolve_expression(expr, state)?;
                 match unop {
                     ast::UnaryOperator::Minus => {
                         let loc = expr.get_loc();
@@ -392,7 +411,7 @@ impl<'a> NameResolver<'a> {
                             loc: loc,
                             t_id: t_id,
                         };
-                        (expr, t_id)
+                        Ok((expr, t_id))
                     }
                     ast::UnaryOperator::Not => {
                         let loc = expr.get_loc();
@@ -403,7 +422,7 @@ impl<'a> NameResolver<'a> {
                             loc: loc,
                             t_id: t_id,
                         };
-                        (expr, t_id)
+                        Ok((expr, t_id))
                     }
                 }
             }
@@ -412,8 +431,8 @@ impl<'a> NameResolver<'a> {
                 binop,
                 expr_right,
             } => {
-                let (left_expr, left_t_id) = self.resolve_expression(expr_left, state);
-                let (right_expr, right_t_id) = self.resolve_expression(expr_right, state);
+                let (left_expr, left_t_id) = self.resolve_expression(expr_left, state)?;
+                let (right_expr, right_t_id) = self.resolve_expression(expr_right, state)?;
                 match binop {
                     ast::BinaryOperator::Remainder => {
                         let loc = left_expr.get_loc().merge(right_expr.get_loc());
@@ -431,7 +450,7 @@ impl<'a> NameResolver<'a> {
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
-                        (expr, left_t_id)
+                        Ok((expr, left_t_id))
                     }
                     ast::BinaryOperator::Plus
                     | ast::BinaryOperator::Multiply
@@ -452,7 +471,7 @@ impl<'a> NameResolver<'a> {
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
-                        (expr, left_t_id)
+                        Ok((expr, left_t_id))
                     }
                     ast::BinaryOperator::Greater
                     | ast::BinaryOperator::GreaterEqual
@@ -473,7 +492,7 @@ impl<'a> NameResolver<'a> {
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
-                        (expr, T_ID_BOOL)
+                        Ok((expr, T_ID_BOOL))
                     }
                     ast::BinaryOperator::Equal | ast::BinaryOperator::NotEqual => {
                         let loc = left_expr.get_loc().merge(right_expr.get_loc());
@@ -491,7 +510,7 @@ impl<'a> NameResolver<'a> {
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
-                        (expr, T_ID_BOOL)
+                        Ok((expr, T_ID_BOOL))
                     }
                     _ => panic!("Binop not implemented yet"), // TODO
                 }
@@ -506,7 +525,7 @@ impl<'a> NameResolver<'a> {
                             t_id: fresh_t_id,
                         },
                     };
-                    (expr, fresh_t_id)
+                    Ok((expr, fresh_t_id))
                 }
                 ast::Value::Boolean { val, loc } => {
                     let expr = Expression::Literal {
@@ -516,7 +535,7 @@ impl<'a> NameResolver<'a> {
                             t_id: T_ID_BOOL,
                         },
                     };
-                    (expr, T_ID_BOOL)
+                    Ok((expr, T_ID_BOOL))
                 }
             },
             ast::Expression::Variable { var } => {
@@ -526,7 +545,7 @@ impl<'a> NameResolver<'a> {
                         loc: var.loc,
                     };
                     let t_id = state.names.get(*n_id).t_id;
-                    (expr, t_id)
+                    Ok((expr, t_id))
                 } else if let Some(name) = state.find_in_context(&var.ident) {
                     let expr = Expression::Variable {
                         var: Variable {
@@ -535,13 +554,13 @@ impl<'a> NameResolver<'a> {
                             n_id: name.n_id,
                         },
                     };
-                    (expr, name.t_id)
+                    Ok((expr, name.t_id))
                 } else {
                     self.err.report(
                         var.loc,
                         format!("Variable {} used but not declared", var.ident),
                     );
-                    return (get_dummy_expr(), T_ID_BOOL);
+                    return Err(());
                 }
             }
             ast::Expression::Call { fun, args } => {
@@ -550,12 +569,12 @@ impl<'a> NameResolver<'a> {
                 let mut args_t = Vec::with_capacity(n);
                 let mut args_loc = Vec::with_capacity(n);
                 for arg in args {
-                    let (arg, arg_t) = self.resolve_expression(arg, state);
+                    let (arg, arg_t) = self.resolve_expression(arg, state)?;
                     args_loc.push(arg.get_loc());
                     resolved_args.push(arg);
                     args_t.push(arg_t);
                 }
-                let (fun, fun_t) = self.resolve_expression(fun, state);
+                let (fun, fun_t) = self.resolve_expression(fun, state)?;
                 let loc = if n > 0 {
                     fun.get_loc().merge(resolved_args[n - 1].get_loc())
                 } else {
@@ -576,7 +595,7 @@ impl<'a> NameResolver<'a> {
                             args: resolved_args,
                             t_id: return_t,
                         };
-                        (expr, return_t)
+                        Ok((expr, return_t))
                     }
                     _ => {
                         // Indirect call
@@ -592,7 +611,7 @@ impl<'a> NameResolver<'a> {
                             args: resolved_args,
                             t_id: return_t,
                         };
-                        (expr, return_t)
+                        Ok((expr, return_t))
                     }
                 }
             }
@@ -606,27 +625,27 @@ impl<'a> NameResolver<'a> {
                                 var.loc,
                                 format!("The identifier '{}' is not defined.", &var.ident),
                             );
-                            return (get_dummy_expr(), T_ID_BOOL);
+                            return Err(());
                         }
                     }
                     _ => {
-                        let (expr, _) = self.resolve_expression(namespace, state);
+                        let (expr, _) = self.resolve_expression(namespace, state)?;
                         self.err.report(
                             expr.get_loc(),
                             String::from("The left operand of an access must be an identifier."),
                         );
-                        return (get_dummy_expr(), T_ID_BOOL);
+                        return Err(());
                     }
                 };
                 let (field, loc_field) = match &(**field) {
                     ast::Expression::Variable { var } => (var.ident.clone(), var.loc),
                     _ => {
-                        let (expr, _) = self.resolve_expression(field, state);
+                        let (expr, _) = self.resolve_expression(field, state)?;
                         self.err.report(
                             expr.get_loc(),
                             String::from("The left operand of an access must be an identifier."),
                         );
-                        return (get_dummy_expr(), T_ID_BOOL);
+                        return Err(());
                     }
                 };
                 let loc = loc_namespace.merge(loc_field);
@@ -636,13 +655,13 @@ impl<'a> NameResolver<'a> {
                         loc: loc,
                     };
                     let t_id = state.types.fresh(loc, vec![t.clone()]);
-                    (expr, t_id)
+                    Ok((expr, t_id))
                 } else {
                     self.err.report(
                         loc_field,
                         format!("'{}' is not a member of '{}'.", &field, namespace_ident),
                     );
-                    return (get_dummy_expr(), T_ID_BOOL);
+                    return Err(());
                 }
             }
         }
@@ -709,17 +728,5 @@ fn check_built_in_type(t: &str) -> Option<Type> {
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
         _ => None,
-    }
-}
-
-/// Used because we can not yet return an error from `resolve_expression`.
-/// TODO: Remove this
-fn get_dummy_expr() -> Expression {
-    Expression::Literal {
-        value: Value::Boolean {
-            loc: Location::dummy(),
-            val: false,
-            t_id: T_ID_BOOL,
-        },
     }
 }
