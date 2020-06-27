@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -47,7 +47,7 @@ impl Driver {
     /// Starts the compilation and exit.
     pub fn compile(&mut self) {
         let (pkg_mir, mut error_handler) =
-            if let Ok(res) = self.get_package_mir(self.input.clone(), true) {
+            if let Ok(res) = self.get_package_mir(self.input.clone(), true, HashSet::new()) {
                 res
             } else {
                 exit!(self);
@@ -72,6 +72,7 @@ impl Driver {
         &mut self,
         path: P,
         is_root: bool,
+        imported: HashSet<String>,
     ) -> Result<(mir::Program, error::ErrorHandler), ()> {
         let (mut pkg_ast, mut error_handler) = if let Ok(res) = self.get_package_ast(path, is_root)
         {
@@ -80,10 +81,25 @@ impl Driver {
             return Err(());
         };
 
+        let mut package_import = HashSet::new();
         let mut namespaces = HashMap::new();
         let mut mir_funs = Vec::new();
         for used in pkg_ast.used.iter_mut() {
             if let Some((used_root, used_alias)) = validate_use_path(&used.path) {
+                if imported.contains(&used.path) {
+                    self.err.report_no_loc(format!(
+                        "Circular import detected: '{}' already imported.",
+                        &used.path
+                    ));
+                    exit!(self);
+                }
+                if package_import.contains(&used.path) {
+                    self.err.warn_no_loc(format!(
+                        "Package '{}' is imported multiple times from the same package.",
+                        &used.path
+                    ));
+                }
+                package_import.insert(used.path.clone());
                 // In the future we ill check `used_root` against known package such as `std`.
                 // For now we only handle subpackages.
                 // TODO: Should we hide exposed declarations of imported packages?
@@ -101,8 +117,10 @@ impl Driver {
                         file_path.push_str(".frk");
                         package_path.push(file_path);
                     }
+                    let mut imported = imported.clone();
+                    imported.insert(used.path.clone());
                     if let Ok((sub_pkg_mir, err_handler)) =
-                        self.get_package_mir(package_path, false)
+                        self.get_package_mir(package_path, false, imported.clone())
                     {
                         error_handler.merge(err_handler);
                         mir_funs.extend(sub_pkg_mir.funs);
@@ -116,6 +134,7 @@ impl Driver {
                 } else {
                     self.err
                         .report_no_loc(format!("Unknown package '{}'.", &used.path));
+                    self.err.merge(error_handler);
                     exit!(self);
                 };
                 if let Some(alias) = &used.alias {
@@ -124,6 +143,8 @@ impl Driver {
                     namespaces.insert(used_alias.clone(), pub_decls);
                 }
             } else {
+                self.err
+                    .report_no_loc(format!("Use path is not well formatted '{}'.", &used.path));
                 self.err.merge(error_handler);
                 exit!(self);
             }
@@ -153,17 +174,22 @@ impl Driver {
             return Err(());
         }
         let path = path.as_ref();
-        let directory = if path.is_file() {
-            path.parent()
-                .expect("Could not retireve directory name.")
-                .file_name()
+        let directory = if is_root {
+            // We do not check the directory for root package.
+            ""
         } else {
-            // Already a directory.
-            path.file_name()
-        }
-        .expect("Failed retrieving the directory name.")
-        .to_str()
-        .expect("Directory name contains unexpected characters.");
+            if path.is_file() {
+                path.parent()
+                    .expect("Could not retireve directory name.")
+                    .file_name()
+            } else {
+                // Already a directory.
+                path.file_name()
+            }
+            .expect("Failed retrieving the directory name.")
+            .to_str()
+            .expect("Directory name contains unexpected characters.")
+        };
 
         // Build package ASTs
         let mut ast_programs = Vec::new();
@@ -192,6 +218,7 @@ impl Driver {
         let mut exposed = Vec::new();
         let mut used = Vec::new();
         let mut package: Option<(String, error::ErrorHandler)> = None;
+        let mut expected_package_name: Option<String> = None;
 
         // Iterate over ast_program of all fork files in the folder
         for (ast, err_handler, file_name) in ast_programs {
@@ -220,13 +247,12 @@ impl Driver {
                                 parent,
                                 name: package_name,
                             } => {
-                                if &parent != name {
-                                    self.err.report_no_loc(format!("Found single file package whose parent name '{}' does not correspond tot he actual parent '{}'.", parent, name));
-                                    exit!(self);
-                                } else if file_name != package_name {
-                                    self.err.report_no_loc(format!("Found single file package whose name '{}' does not correspond to filename '{}'", package_name, file_name));
-                                    exit!(self);
-                                }
+                                self.verify_single_package(
+                                    &parent,
+                                    &package_name,
+                                    name,
+                                    &file_name,
+                                );
                             }
                             PackageType::OrphanFile { .. } => {}
                         }
@@ -242,13 +268,33 @@ impl Driver {
                                 }
                                 is_orphan = true;
                             }
-                            PackageType::SingleFilePackage { .. } => {
+                            PackageType::SingleFilePackage { parent, name } => {
                                 if !is_unique_file {
+                                    // Verify that parent name corresponds to the current package.
+                                    match expected_package_name {
+                                        Some(ref expected_name) => {
+                                            self.verify_single_package(
+                                                &parent,
+                                                &name,
+                                                expected_name,
+                                                &file_name,
+                                            );
+                                        }
+                                        None => {
+                                            expected_package_name = Some(parent);
+                                        }
+                                    }
                                     // Ingore it if we are not looking for a single file.
                                     continue;
                                 }
                             }
                             PackageType::Package { name } => {
+                                if let Some(ref expected_name) = expected_package_name {
+                                    if expected_name != &name {
+                                        self.err.report_no_loc(format!("Found single file package whose parent name '{}' does not correspond to the actual parent '{}'.", expected_name, &name));
+                                        exit!(self);
+                                    }
+                                }
                                 if !is_root && &name != directory {
                                     self.err.report_no_loc(format!("Package name '{}' should be the same as its directory: '{}'.", name, directory));
                                     exit!(self);
@@ -309,5 +355,26 @@ impl Driver {
         let package_id = self.package_id;
         self.package_id += 1;
         package_id
+    }
+
+    /// Verify integrity of a single file package name and parent directory. Raise an error if
+    /// needed.
+    fn verify_single_package(
+        &mut self,
+        parent: &str,
+        name: &str,
+        expected_parent: &str,
+        file_name: &str,
+    ) {
+        if parent != expected_parent {
+            self.err.report_no_loc(format!("Found single file package whose parent name '{}' does not correspond to the actual parent '{}'.", parent, expected_parent));
+            exit!(self);
+        } else if file_name != name {
+            self.err.report_no_loc(format!(
+                "Found single file package whose name '{}' does not correspond to filename '{}'",
+                name, file_name
+            ));
+            exit!(self);
+        }
     }
 }
