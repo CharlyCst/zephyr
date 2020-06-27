@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -46,11 +46,12 @@ impl Driver {
 
     /// Starts the compilation and exit.
     pub fn compile(&mut self) {
-        let (pkg_mir, mut error_handler) = if let Ok(res) = self.get_package_mir(self.input.clone(), true) {
-            res
-        } else {
-            exit!(self);
-        };
+        let (pkg_mir, mut error_handler) =
+            if let Ok(res) = self.get_package_mir(self.input.clone(), true, HashSet::new()) {
+                res
+            } else {
+                exit!(self);
+            };
         let binary = wasm::to_wasm(pkg_mir, &mut error_handler);
 
         // Write down compiled code
@@ -71,24 +72,41 @@ impl Driver {
         &mut self,
         path: P,
         is_root: bool,
+        imported: HashSet<String>,
     ) -> Result<(mir::Program, error::ErrorHandler), ()> {
-        let (mut pkg_ast, mut error_handler) = if let Ok(res) = self.get_package_ast(path, is_root) {
+        let (mut pkg_ast, mut error_handler) = if let Ok(res) = self.get_package_ast(path, is_root)
+        {
             res
         } else {
             return Err(());
         };
 
+        let mut package_import = HashSet::new();
         let mut namespaces = HashMap::new();
         let mut mir_funs = Vec::new();
         for used in pkg_ast.used.iter_mut() {
             if let Some((used_root, used_alias)) = validate_use_path(&used.path) {
+                if imported.contains(&used.path) {
+                    self.err.report_no_loc(format!(
+                        "Circular import detected: '{}' already imported.",
+                        &used.path
+                    ));
+                    exit!(self);
+                }
+                if package_import.contains(&used.path) {
+                    self.err.warn_no_loc(format!(
+                        "Package '{}' is imported multiple times from the same package.",
+                        &used.path
+                    ));
+                }
+                package_import.insert(used.path.clone());
                 // In the future we ill check `used_root` against known package such as `std`.
                 // For now we only handle subpackages.
                 // TODO: Should we hide exposed declarations of imported packages?
                 let pub_decls = if let Some(pub_decls) = self.pub_decls.get(&used.path) {
                     // Already processed and cached.
                     pub_decls.clone()
-                } else if used_root == self.package_name && self.package_root.is_some(){
+                } else if used_root == self.package_name && self.package_root.is_some() {
                     // Process used package.
                     let mut package_path = self.package_root.clone().unwrap();
                     package_path.push(strip_root(&used.path));
@@ -99,17 +117,24 @@ impl Driver {
                         file_path.push_str(".frk");
                         package_path.push(file_path);
                     }
-                    if let Ok((sub_pkg_mir, err_handler)) = self.get_package_mir(package_path, false) {
+                    let mut imported = imported.clone();
+                    imported.insert(used.path.clone());
+                    if let Ok((sub_pkg_mir, err_handler)) =
+                        self.get_package_mir(package_path, false, imported.clone())
+                    {
                         error_handler.merge(err_handler);
                         mir_funs.extend(sub_pkg_mir.funs);
-                        self.pub_decls.insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
-                        sub_pkg_mir.pub_decls 
+                        self.pub_decls
+                            .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
+                        sub_pkg_mir.pub_decls
                     } else {
                         self.err.merge(error_handler);
                         exit!(self);
                     }
                 } else {
-                    self.err.report_no_loc(format!("Unknown package '{}'.", &used.path));
+                    self.err
+                        .report_no_loc(format!("Unknown package '{}'.", &used.path));
+                    self.err.merge(error_handler);
                     exit!(self);
                 };
                 if let Some(alias) = &used.alias {
@@ -118,6 +143,8 @@ impl Driver {
                     namespaces.insert(used_alias.clone(), pub_decls);
                 }
             } else {
+                self.err
+                    .report_no_loc(format!("Use path is not well formatted '{}'.", &used.path));
                 self.err.merge(error_handler);
                 exit!(self);
             }
@@ -146,6 +173,23 @@ impl Driver {
                 .report_internal_no_loc(String::from("No file to compile: bad path."));
             return Err(());
         }
+        let path = path.as_ref();
+        let directory = if is_root {
+            // We do not check the directory for root package.
+            ""
+        } else {
+            if path.is_file() {
+                path.parent()
+                    .expect("Could not retireve directory name.")
+                    .file_name()
+            } else {
+                // Already a directory.
+                path.file_name()
+            }
+            .expect("Failed retrieving the directory name.")
+            .to_str()
+            .expect("Directory name contains unexpected characters.")
+        };
 
         // Build package ASTs
         let mut ast_programs = Vec::new();
@@ -155,12 +199,18 @@ impl Driver {
             let f_id = self.file_id;
             self.file_id += 1;
             let code = fs::read_to_string(&path).expect("Internal error: invalid path.");
-            files.push((code, f_id));
+            let file_name = path
+                .file_stem()
+                .expect("Internal error: path is not a file.")
+                .to_str()
+                .expect("File name at seems to use non standard characters")
+                .to_string();
+            files.push((code, f_id, file_name));
         }
-        for (code, f_id) in files.into_iter() {
+        for (code, f_id, file_name) in files.into_iter() {
             let mut error_handler = error::ErrorHandler::new(code, f_id);
             let ast_program = ast::get_ast(f_id, package_id, &mut error_handler);
-            ast_programs.push((ast_program, error_handler));
+            ast_programs.push((ast_program, error_handler, file_name));
         }
 
         // Merge package ASTs
@@ -168,107 +218,111 @@ impl Driver {
         let mut exposed = Vec::new();
         let mut used = Vec::new();
         let mut package: Option<(String, error::ErrorHandler)> = None;
+        let mut expected_package_name: Option<String> = None;
 
         // Iterate over ast_program of all fork files in the folder
-        for (ast, err_handler) in ast_programs {
+        for (ast, err_handler, file_name) in ast_programs {
             let package_name = ast.package.path;
-            if let Some((ref name, ref mut error_handler)) = package {
-                if &package_name == name {
-                    // Extend AST package
-                    error_handler.merge(err_handler);
-                    funs.extend(ast.funs);
-                    exposed.extend(ast.exposed);
-                    used.extend(ast.used);
-                } else {
-                    if is_orphan(&package_name) {
-                        if !validate_orphan_file(&package_name) {
-                            self.err.warn_no_loc(format!(
-                                "Malformed orphan file name: '{}' at '{}'.",
-                                &package_name,
-                                path.as_ref().to_str().unwrap_or("")
-                            ));
-                        }
-                    } else if is_single_file_package(&package_name) {
-                        if let Some((host_package, guest_package)) =
-                            validate_single_file_package(&package_name)
-                        {
-                            if &host_package != name {
-                                self.err.report_no_loc(format!(
-                                        "Malformed single file package '{}' at '{}', host package should be '{}/{}'.",
-                                        &package_name,
-                                        path.as_ref().to_str().unwrap_or(""),
-                                        name,
-                                        guest_package
-                                ));
-                                exit!(self);
+            match get_package_type(&package_name) {
+                Ok(package_type) => {
+                    if let Some((ref name, ref mut error_handler)) = package {
+                        match package_type {
+                            PackageType::Package { name: package_name } => {
+                                if &package_name == name {
+                                    // Extend AST package
+                                    error_handler.merge(err_handler);
+                                    funs.extend(ast.funs);
+                                    exposed.extend(ast.exposed);
+                                    used.extend(ast.used);
+                                } else {
+                                    self.err.report_no_loc(format!(
+                                        "Unexpectec package name '{}' at '{}'",
+                                        package_name,
+                                        path.to_str().unwrap_or("")
+                                    ));
+                                    exit!(self);
+                                }
                             }
-                        } else {
-                            self.err.report_no_loc(format!(
-                                "Malformed single file package name '{}' at '{}'.",
-                                &package_name,
-                                path.as_ref().to_str().unwrap_or("")
-                            ));
-                            exit!(self);
+                            PackageType::SingleFilePackage {
+                                parent,
+                                name: package_name,
+                            } => {
+                                self.verify_single_package(
+                                    &parent,
+                                    &package_name,
+                                    name,
+                                    &file_name,
+                                );
+                            }
+                            PackageType::OrphanFile { .. } => {}
                         }
                     } else {
-                        self.err.report_no_loc(format!(
-                            "Multiple packages defined in the same directory at '{}'.",
-                            path.as_ref().to_str().unwrap_or("")
-                        ));
-                        exit!(self)
-                    }
-                }
-            } else {
-                if is_single_file_package(&package_name) {
-                    if let Some(_) = validate_single_file_package(&package_name) {
-                        if !is_unique_file {
-                            continue;
+                        let mut is_orphan = false;
+
+                        // Ignore single files
+                        match package_type {
+                            PackageType::OrphanFile { .. } => {
+                                if !is_unique_file {
+                                    // Ingore it if we are not looking for a single file.
+                                    continue;
+                                }
+                                is_orphan = true;
+                            }
+                            PackageType::SingleFilePackage { parent, name } => {
+                                if !is_unique_file {
+                                    // Verify that parent name corresponds to the current package.
+                                    match expected_package_name {
+                                        Some(ref expected_name) => {
+                                            self.verify_single_package(
+                                                &parent,
+                                                &name,
+                                                expected_name,
+                                                &file_name,
+                                            );
+                                        }
+                                        None => {
+                                            expected_package_name = Some(parent);
+                                        }
+                                    }
+                                    // Ingore it if we are not looking for a single file.
+                                    continue;
+                                }
+                            }
+                            PackageType::Package { name } => {
+                                if let Some(ref expected_name) = expected_package_name {
+                                    if expected_name != &name {
+                                        self.err.report_no_loc(format!("Found single file package whose parent name '{}' does not correspond to the actual parent '{}'.", expected_name, &name));
+                                        exit!(self);
+                                    }
+                                }
+                                if !is_root && &name != directory {
+                                    self.err.report_no_loc(format!("Package name '{}' should be the same as its directory: '{}'.", name, directory));
+                                    exit!(self);
+                                }
+                            }
                         }
-                    // else add package to AST
-                    } else {
-                        self.err.report_no_loc(format!(
-                            "Malformed single file package '{}' at '{}'.",
-                            &package_name, path.as_ref().to_str().unwrap_or("")
-                        ));
-                        exit!(self);
-                    }
-                } else if is_orphan(&package_name) {
-                    if validate_orphan_file(&package_name) {
-                        if !is_unique_file {
-                            // Ignore orphan files when scanning for a package.
-                            continue;
+
+                        // Add the package
+                        if is_root {
+                            if !is_orphan {
+                                self.package_root = Some(path.to_owned());
+                            }
+                            self.package_name = package_name.clone();
                         }
-                    } else {
-                        self.err.report_no_loc(format!(
-                            "Malformed orphan file name: '{}' at '{}'.",
-                            &package_name, path.as_ref().to_str().unwrap_or("")
-                        ));
-                        exit!(self);
-                    }
-                } else {
-                    if !validate_package(&package_name) {
-                        self.err.warn_no_loc(format!("Package name '{}' is malformed. A package name must contain only lower case characters or underscores '_'.", package_name));
-                        continue;
-                    } else if is_unique_file {
-                        // Unique belonging to a well formed package, not accepted by the compiler.
-                        self.err.report_no_loc(format!(
-                                "Path pointing at single file belonging to a package '{}'. Use the path of the directory instead.",
-                                path.as_ref().to_str().unwrap_or("")
-                        ));
-                        exit!(self);
+                        package = Some((package_name, err_handler));
+                        funs.extend(ast.funs);
+                        exposed.extend(ast.exposed);
+                        used.extend(ast.used);
                     }
                 }
-                // Well formed package name
-                if is_root {
-                    if !is_orphan(&package_name) {
-                        self.package_root = Some(path.as_ref().to_owned());
-                    }
-                    self.package_name = package_name.clone();
+                Err(error) => {
+                    self.err.report_no_loc(format!(
+                        "{} at '{}'",
+                        error,
+                        path.to_str().unwrap_or("")
+                    ));
+                    exit!(self);
                 }
-                package = Some((package_name, err_handler));
-                funs.extend(ast.funs);
-                exposed.extend(ast.exposed);
-                used.extend(ast.used);
             }
         }
 
@@ -288,11 +342,10 @@ impl Driver {
                 error_handler,
             ))
         } else {
-            self.err
-                .report_no_loc(format!(
-                        "Could not find a valid package at '{}'.",
-                        path.as_ref().to_str().unwrap_or("")
-                ));
+            self.err.report_no_loc(format!(
+                "Could not find a valid package at '{}'.",
+                path.to_str().unwrap_or("")
+            ));
             Err(())
         }
     }
@@ -302,5 +355,26 @@ impl Driver {
         let package_id = self.package_id;
         self.package_id += 1;
         package_id
+    }
+
+    /// Verify integrity of a single file package name and parent directory. Raise an error if
+    /// needed.
+    fn verify_single_package(
+        &mut self,
+        parent: &str,
+        name: &str,
+        expected_parent: &str,
+        file_name: &str,
+    ) {
+        if parent != expected_parent {
+            self.err.report_no_loc(format!("Found single file package whose parent name '{}' does not correspond to the actual parent '{}'.", parent, expected_parent));
+            exit!(self);
+        } else if file_name != name {
+            self.err.report_no_loc(format!(
+                "Found single file package whose name '{}' does not correspond to filename '{}'",
+                name, file_name
+            ));
+            exit!(self);
+        }
     }
 }
