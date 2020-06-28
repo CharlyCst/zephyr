@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use super::utils::*;
 use crate::ast;
+use crate::cli::Config;
 use crate::error;
 use crate::mir;
 use crate::wasm;
@@ -20,8 +21,7 @@ macro_rules! exit {
 /// The Driver is responsible for orchestrating the compilation process, that is resolving
 /// packages, starting each phases of the pipeline and merging code at appropriate time.
 pub struct Driver {
-    input: PathBuf,
-    output: PathBuf,
+    config: Config,
     package_root: Option<PathBuf>,
     package_name: String,
     file_id: u16,
@@ -31,10 +31,9 @@ pub struct Driver {
 }
 
 impl Driver {
-    pub fn new(input: String, output: String) -> Driver {
+    pub fn new(config: Config) -> Driver {
         Driver {
-            input: PathBuf::from(input),
-            output: PathBuf::from(output),
+            config: config,
             package_root: None,
             package_name: String::from(""),
             file_id: 0,
@@ -47,15 +46,25 @@ impl Driver {
     /// Starts the compilation and exit.
     pub fn compile(&mut self) {
         let (pkg_mir, mut error_handler) =
-            if let Ok(res) = self.get_package_mir(self.input.clone(), true, HashSet::new()) {
+            if let Ok(res) = self.get_package_mir(self.config.input.clone(), true, HashSet::new()) {
                 res
             } else {
                 exit!(self);
             };
         let binary = wasm::to_wasm(pkg_mir, &mut error_handler);
 
+        let output = if let Some(output) = &self.config.output {
+            output.clone()
+        } else {
+            if self.package_name != "" {
+                self.package_name.push_str(".wasm");
+                PathBuf::from(self.package_name.clone())
+            } else {
+                PathBuf::from("a.wasm")
+            }
+        };
         // Write down compiled code
-        match fs::write(&self.output, binary) {
+        match fs::write(&output, binary) {
             Ok(_) => {
                 self.err.flush();
                 std::process::exit(0)
