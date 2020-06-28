@@ -46,7 +46,7 @@ for source in "$TEST_PATH"/*.frk; do
     output="$TEST_OUTPUT_PATH/$(basename $source .frk).wasm"
 
     printf "> $source"
-    trace=$($FORK $source $output)
+    trace=$($FORK $source -o $output)
     if ! [ "$?" = "0" ]; then
         printf " ${RED}✗${NC}\n"
         printf "${RED}Failed to compile $(echo $source)${NC}\n\n"
