@@ -45,13 +45,14 @@ impl Driver {
 
     /// Starts the compilation and exit.
     pub fn compile(&mut self) {
-        let (pkg_mir, mut error_handler) =
-            if let Ok(res) = self.get_package_mir(self.config.input.clone(), true, HashSet::new()) {
-                res
-            } else {
-                exit!(self);
-            };
-        let binary = wasm::to_wasm(pkg_mir, &mut error_handler);
+        let (pkg_mir, mut error_handler) = if let Ok(res) =
+            self.get_package_mir(self.config.input.clone(), true, HashSet::new())
+        {
+            res
+        } else {
+            exit!(self);
+        };
+        let binary = wasm::to_wasm(pkg_mir, &mut error_handler, &self.config);
 
         let output = if let Some(output) = &self.config.output {
             output.clone()
@@ -158,7 +159,7 @@ impl Driver {
                 exit!(self);
             }
         }
-        let mut mir_program = mir::to_mir(pkg_ast, namespaces, &mut error_handler);
+        let mut mir_program = mir::to_mir(pkg_ast, namespaces, &mut error_handler, &self.config);
         mir_program.funs.extend(mir_funs);
         Ok((mir_program, error_handler))
     }
@@ -218,7 +219,7 @@ impl Driver {
         }
         for (code, f_id, file_name) in files.into_iter() {
             let mut error_handler = error::ErrorHandler::new(code, f_id);
-            let ast_program = ast::get_ast(f_id, package_id, &mut error_handler);
+            let ast_program = ast::get_ast(f_id, package_id, &mut error_handler, &self.config);
             ast_programs.push((ast_program, error_handler, file_name));
         }
 

@@ -1,5 +1,3 @@
-use std::env;
-
 mod ast;
 mod error;
 mod mir;
