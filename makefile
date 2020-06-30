@@ -26,3 +26,4 @@ book: book/book.toml
 
 .PHONY: serve
 serve:
+	mdbook watch book --open --dest-dir book/book
