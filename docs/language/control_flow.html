@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>High level architecture - Compiler Book</title>
+        <title>Control flow - Compiler Book</title>
         
 
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
@@ -81,7 +81,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html" class="active"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html" class="active"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -147,32 +147,58 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1><a class="header" href="#architecture" id="architecture">Architecture</a></h1>
-<p>For now the compiler is composed of a few crates, namely <code>ast</code>, <code>mir</code>, <code>wasm</code> and <code>error</code>. Others will be created as needed in the future.</p>
-<h2><a class="header" href="#the-compiler-pipeline" id="the-compiler-pipeline">The compiler pipeline</a></h2>
-<p>When compiling source code, the compiler goes through the following stages of the pipeline:</p>
+                        <h1><a class="header" href="#control-flow" id="control-flow">Control flow</a></h1>
+<p>Let's have a look at a more interesting exemple:</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>package &quot;pow&quot;
+
+expose pow as _start
+
+fun pow(a i32, b i32) i32 {
+    if b == 0 {
+        return 1
+    }
+
+    let n = b
+    let x = a
+    let acc = 1
+
+    while n &gt; 1 {
+        if n % 2 == 1 {
+            acc = acc * x
+        }
+        x = x * x
+        n = n / 2
+    }
+    return x * acc
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>There a few new things going on here, first we can use aliases when exporting functions with the <code>as</code> keyword. The reason I chosed <code>_start</code> is because it is the name of the main funtion in runtimes implementing the <a href="https://hacks.mozilla.org/2019/03/standardizing-wasi-a-webassembly-system-interface/">WASI</a> standard:</p>
+<pre><code class="language-sh">wasmtime pow.wasm 2 5
+32
+</code></pre>
+<p>To declare variables in Fork we use the <code>let</code> keyword. We can also use all the basic control flow primitives:</p>
 <ul>
-<li><a href="../ast/ast.html">AST</a>, for Abstract Syntax Tree, this stage is responsible for scanning the source code and parsing, it creates an abstract syntax tree ready to be used by the next stage.</li>
-<li><a href="../mir/mir.html">MIR</a>, or mid level intermediate representation (because we may need an high level intermediate representation in the future ;) ). Its first perform a name resolution step on the AST, that is it looks for name definitions and gives unique IDs for each of them. The name resolution step is also used to generate type constraints, these are used for type checking just after name resolution. Once the program is successfully type-checked, mir-code is emitted, it looks almost like wasm with some minor differences.</li>
-<li><a href="../wasm/wasm.html">WASM</a>, the last step that translates mir to the binary wasm representation, ready to be executed.</li>
+<li><code>if</code> and <code>else</code>.</li>
+<li><code>while</code> loop, <code>for</code> are not yet supported.</li>
+<li><code>return</code> which does what you expect.</li>
 </ul>
-<h2><a class="header" href="#error-handling" id="error-handling">Error handling</a></h2>
-<p>Errors can happen at any stage of the compiler, reporting those errors and helping the developer to solve them is at least as important as compiling correct code.</p>
-<p>To produce high quality errors, each stage of the pipeline (and each substage) is given an <code>ErrorHandler</code> whose job is to store errors. Anywhere in the pipeline the compilation can be aborted and error reported (it is not mandatory to stop compilation as soon as an error occurs).</p>
-<p>To generate helpful messages the <code>ErrorHandler</code> uses <code>Location</code>s, those are composed of a position (in character offset from the beginning of the file) and a length. Errors are stored with their location, and once the error handler is asked to report the errors, the source file is scanned again to get back the lines and erroneous source code.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-                            <a rel="prev" href="../overview/build.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../language/bases.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
 
                         
-                            <a rel="next" href="../ast/ast.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="../language/packages.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
@@ -184,13 +210,13 @@
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-                    <a rel="prev" href="../overview/build.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../language/bases.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
 
                 
-                    <a rel="next" href="../ast/ast.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="../language/packages.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
                 
