@@ -1,0 +1,13 @@
+package "#logical_or"
+
+expose main as _start
+
+fun main() i32 {
+    let a = 1
+    let b = 2
+    if a == a && b == b {
+        return 42
+    }
+    return 1
+}
+

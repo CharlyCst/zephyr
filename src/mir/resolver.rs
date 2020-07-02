@@ -433,9 +433,9 @@ impl<'a> NameResolver<'a> {
             } => {
                 let (left_expr, left_t_id) = self.resolve_expression(expr_left, state)?;
                 let (right_expr, right_t_id) = self.resolve_expression(expr_right, state)?;
+                let loc = left_expr.get_loc().merge(right_expr.get_loc());
                 match binop {
                     ast::BinaryOperator::Remainder => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -456,7 +456,6 @@ impl<'a> NameResolver<'a> {
                     | ast::BinaryOperator::Multiply
                     | ast::BinaryOperator::Minus
                     | ast::BinaryOperator::Divide => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -477,7 +476,6 @@ impl<'a> NameResolver<'a> {
                     | ast::BinaryOperator::GreaterEqual
                     | ast::BinaryOperator::Less
                     | ast::BinaryOperator::LessEqual => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -495,13 +493,25 @@ impl<'a> NameResolver<'a> {
                         Ok((expr, T_ID_BOOL))
                     }
                     ast::BinaryOperator::Equal | ast::BinaryOperator::NotEqual => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
                             T_ID_BASIC,
                             left_expr.get_loc(),
                         ));
+                        let expr = Expression::Binary {
+                            expr_left: Box::new(left_expr),
+                            binop: *binop,
+                            expr_right: Box::new(right_expr),
+                            loc: loc,
+                            t_id: T_ID_BOOL,
+                            op_t_id: left_t_id,
+                        };
+                        Ok((expr, T_ID_BOOL))
+                    }
+                    ast::BinaryOperator::And | ast::BinaryOperator::Or => {
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, T_ID_BOOL, left_expr.get_loc()));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,

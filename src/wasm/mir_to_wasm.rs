@@ -127,7 +127,7 @@ impl<'a> Compiler<'a> {
 
     fn body(&mut self, block: mir::Block, s: &mut LocalState, code: &mut Vec<Instr>) {
         match block {
-            mir::Block::Block { stmts, id } => {
+            mir::Block::Block { stmts, id, .. } => {
                 s.block_start(id);
                 self.statements(stmts, s, code);
                 s.block_end();
@@ -140,18 +140,26 @@ impl<'a> Compiler<'a> {
 
     fn block(&mut self, block: mir::Block, s: &mut LocalState, code: &mut Vec<Instr>) {
         match block {
-            mir::Block::Block { stmts, id } => {
+            mir::Block::Block { stmts, id, t } => {
                 s.block_start(id);
                 code.push(INSTR_BLOCK);
-                code.push(BLOCK_TYPE);
+                if let Some(t) = t {
+                    code.push(type_to_bytes(mir_t_to_wasm(t)));
+                } else {
+                    code.push(BLOCK_TYPE);
+                }
                 self.statements(stmts, s, code);
                 code.push(INSTR_END);
                 s.block_end();
             }
-            mir::Block::Loop { stmts, id } => {
+            mir::Block::Loop { stmts, id, t } => {
                 s.block_start(id);
                 code.push(INSTR_LOOP);
-                code.push(BLOCK_TYPE);
+                if let Some(t) = t {
+                    code.push(type_to_bytes(mir_t_to_wasm(t)));
+                } else {
+                    code.push(BLOCK_TYPE);
+                }
                 self.statements(stmts, s, code);
                 code.push(INSTR_END);
                 s.block_end();
@@ -160,10 +168,15 @@ impl<'a> Compiler<'a> {
                 then_stmts,
                 else_stmts,
                 id,
+                t,
             } => {
                 s.block_start(id);
                 code.push(INSTR_IF);
-                code.push(BLOCK_TYPE);
+                if let Some(t) = t {
+                    code.push(type_to_bytes(mir_t_to_wasm(t)));
+                } else {
+                    code.push(BLOCK_TYPE);
+                }
                 self.statements(then_stmts, s, code);
                 if else_stmts.len() > 0 {
                     code.push(INSTR_ELSE);
