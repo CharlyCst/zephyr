@@ -1,12 +1,12 @@
 #![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
 use super::names::Declaration;
 
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 pub struct Program {
     pub funs: Vec<Function>,
-    pub pub_decls: HashMap<String, Declaration>
+    pub pub_decls: HashMap<String, Declaration>,
 }
 
 pub struct Function {
@@ -35,15 +35,18 @@ pub enum Block {
     Block {
         id: BasicBlockId,
         stmts: Vec<Statement>,
+        t: Option<Type>,
     },
     Loop {
         id: BasicBlockId,
         stmts: Vec<Statement>,
+        t: Option<Type>,
     },
     If {
         id: BasicBlockId,
         then_stmts: Vec<Statement>,
         else_stmts: Vec<Statement>,
+        t: Option<Type>,
     },
 }
 
@@ -138,6 +141,11 @@ pub enum Relop {
     F64Ge,
 }
 
+pub enum Logical {
+    And,
+    Or,
+}
+
 pub enum Parametric {
     Drop,
 }
@@ -204,11 +212,11 @@ impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut strs = Vec::new();
         let stmts = match self {
-            Block::Block { id, stmts } => {
+            Block::Block { id, stmts, .. } => {
                 strs.push(format!("block {} {{", id));
                 stmts
             }
-            Block::Loop { id, stmts } => {
+            Block::Loop { id, stmts, .. } => {
                 strs.push(format!("loop {} {{", id));
                 stmts
             }
