@@ -39,7 +39,7 @@ impl<'a> Scanner<'a> {
         .iter()
         .cloned()
         .collect();
-        
+
         // f_id MUST exist
         let code = error_handler.get_file(f_id).unwrap();
 
@@ -162,7 +162,8 @@ impl<'a> Scanner<'a> {
     /// return
     fn check_stmt_ender(&mut self, token: &Token) {
         let candidate = match token.t {
-            TokenType::NumberLit(_) => true,
+            TokenType::IntegerLit(_) => true,
+            TokenType::FloatLit(_) => true,
             TokenType::BooleanLit(_) => true,
             TokenType::StringLit(_) => true,
             TokenType::Identifier(_) => true,
@@ -235,19 +236,37 @@ impl<'a> Scanner<'a> {
 
     /// Consumes consecutive digit characters and push a number token
     fn number(&mut self, tokens: &mut Vec<Token>) {
+        let mut is_integer = true;
         while !self.is_at_end() && self.peek().is_digit(RADIX) {
             self.advance();
+        }
+        if self.peek() == '.' {
+            self.advance();
+            is_integer = false;
+            while !self.is_at_end() && self.peek().is_digit(RADIX) {
+                self.advance();
+            }
         }
         let str_val = self.code[self.start..self.current]
             .iter()
             .cloned()
             .collect::<String>();
-        match str_val.parse::<u64>() {
-            Ok(n) => self.add_token(tokens, TokenType::NumberLit(n)),
-            Err(_) => self.err.report(
-                self.get_loc(),
-                format!("Could not parse {} as a number", str_val),
-            ),
+        if is_integer {
+            match str_val.parse::<u64>() {
+                Ok(n) => self.add_token(tokens, TokenType::IntegerLit(n)),
+                Err(_) => self.err.report(
+                    self.get_loc(),
+                    format!("Could not parse {} as an integer.", str_val),
+                ),
+            }
+        } else {
+            match str_val.parse::<f64>() {
+                Ok(x) => self.add_token(tokens, TokenType::FloatLit(x)),
+                Err(_) => self.err.report(
+                    self.get_loc(),
+                    format!("Could not parse {} as a float.", str_val),
+                ),
+            }
         }
     }
 

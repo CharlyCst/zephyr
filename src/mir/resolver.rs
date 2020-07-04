@@ -537,6 +537,17 @@ impl<'a> NameResolver<'a> {
                     };
                     Ok((expr, fresh_t_id))
                 }
+                ast::Value::Float { val, loc } => {
+                   let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
+                   let expr = Expression::Literal {
+                        value: Value::Float {
+                            val: *val,
+                            loc: *loc,
+                            t_id: fresh_t_id,
+                        },
+                   };
+                   Ok((expr, fresh_t_id))
+                },
                 ast::Value::Boolean { val, loc } => {
                     let expr = Expression::Literal {
                         value: Value::Boolean {

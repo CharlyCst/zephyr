@@ -245,6 +245,17 @@ impl<'a> MIRProducer<'a> {
                     };
                     stmts.push(Statement::Const { val: val })
                 }
+                V::Float { val, t_id, .. } => {
+                   let t = get_type(*t_id, s)?;
+                   let val = match t {
+                        Type::F32 => Value::F32(*val as f32),
+                        Type::F64 => Value::F64(*val),
+                        _ => {
+                            return Err(String::from("Float constant of non float type."));
+                        }
+                   };
+                   stmts.push(Statement::Const { val: val })
+                },
                 V::Boolean { val, .. } => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),

@@ -1,5 +1,5 @@
 use super::names::{Declaration, Function, NameStore};
-use super::types::id::T_ID_INTEGER;
+use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
 use crate::error::{ErrorHandler, Location};
@@ -56,6 +56,7 @@ impl<'a> TypeChecker<'a> {
     /// satisfyied.
     fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
         let integers = var_store.get(T_ID_INTEGER);
+        let floats = var_store.get(T_ID_FLOAT);
         let mut store = TypeStore::new();
         for var in var_store {
             if var.types.len() == 1 {
@@ -70,9 +71,13 @@ impl<'a> TypeChecker<'a> {
                 // Choose arbitrary type if applicable
                 if var.types == integers.types {
                     store.put(Type::I64);
+                } else if var.types == floats.types {
+                    store.put(Type::F64);
                 } else {
                     // TODO: improve error handling...
-                    self.err.report_no_loc(String::from("Could not infer type"))
+                    println!("{:?}", floats.types);
+                    println!("{:?}", var.types);
+                    self.err.report(var.loc, String::from("Could not infer type"))
                 }
             }
         }
