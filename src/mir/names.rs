@@ -74,6 +74,11 @@ pub enum Value {
         loc: Location,
         t_id: TypeId,
     },
+    Float {
+        val: f64,
+        loc: Location,
+        t_id: TypeId,
+    },
     Boolean {
         val: bool,
         loc: Location,
@@ -127,6 +132,7 @@ impl Expression {
             Expression::Literal { value } => match value {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
+                Value::Float { loc, .. } => *loc,
             },
             Expression::Function { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,

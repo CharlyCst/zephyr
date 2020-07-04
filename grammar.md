@@ -40,8 +40,8 @@ multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
 call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
-primary        -> NUMBER | BOOLEAN | IDENTIFIER | "false" | "true"
-                | "(" expression ")"
+primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | "false" 
+                | "true" | "(" expression ")"
 arguments      -> expression ( "," expression )* ","?
 ```
 

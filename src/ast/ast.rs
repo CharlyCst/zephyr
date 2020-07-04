@@ -3,6 +3,7 @@ use std::fmt;
 
 pub enum Value {
     Integer { val: u64, loc: Location },
+    Float { val: f64, loc: Location },
     Boolean { val: bool, loc: Location },
 }
 
@@ -230,6 +231,7 @@ impl fmt::Display for Expression {
                 Value::Boolean { val: true, .. } => write!(f, "true"),
                 Value::Boolean { val: false, .. } => write!(f, "false"),
                 Value::Integer { val: n, .. } => write!(f, "{}", n),
+                Value::Float { val: x, .. } => write!(f, "{}", x),
             },
             Expression::Call { fun, args } => write!(
                 f,

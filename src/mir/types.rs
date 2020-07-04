@@ -6,11 +6,12 @@ pub mod id {
     pub const _T_ID_BUG: usize = 0;
     pub const T_ID_BOOL: usize = 1;
     pub const T_ID_INTEGER: usize = 2;
-    pub const T_ID_NUMERIC: usize = 3;
-    pub const T_ID_BASIC: usize = 4;
+    pub const T_ID_FLOAT: usize = 3;
+    pub const T_ID_NUMERIC: usize = 4;
+    pub const T_ID_BASIC: usize = 5;
 }
 // Please update this const when adding/removing default T_ID
-const NB_DEFAULT_T_ID: usize = 5;
+const NB_DEFAULT_T_ID: usize = 6;
 
 pub type TypeId = usize;
 
@@ -102,6 +103,7 @@ impl TypeVarStore {
         store.fresh(Location::dummy(), vec![Type::Bug]);
         store.fresh(Location::dummy(), vec![Type::Bool]);
         store.fresh(Location::dummy(), vec![Type::I32, Type::I64]);
+        store.fresh(Location::dummy(), vec![Type::F32, Type::F64]);
         store.fresh(
             Location::dummy(),
             vec![Type::F32, Type::F64, Type::I32, Type::I64],
