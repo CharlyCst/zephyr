@@ -1,0 +1,11 @@
+package "#test"
+
+expose main as _start
+
+fun main() i32 {
+    let pi = 3.14
+    if pi * 2. == 6.28 {
+        return 42
+    }
+    return 0
+}
