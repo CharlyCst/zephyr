@@ -2,9 +2,12 @@ package "#test"
 
 expose main as _start
 
+fun pi() f32 {
+    return 3.14
+}
+
 fun main() i32 {
-    let pi = 3.14
-    if pi * 2. == 6.28 {
+    if pi() * 2. == 6.28 {
         return 42
     }
     return 0

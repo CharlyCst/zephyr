@@ -868,12 +868,7 @@ impl<'a> Parser<'a> {
                 }
                 Ok(expr)
             }
-            _ => {
-                let loc = token.loc;
-                self.err
-                    .report(loc, String::from("Expected a value or identifier."));
-                Err(())
-            }
+            _ => Err(()),
         }
     }
 

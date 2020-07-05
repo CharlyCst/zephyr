@@ -42,7 +42,7 @@ call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
 primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | "false" 
                 | "true" | "(" expression ")"
-arguments      -> expression ( "," expression )* ","?
+arguments      -> ( expression ( "," expression )* ","? )?
 ```
 
 It is worth noting that there is no semi-colon `;` in Fork, but some are inserted by the scanner following Go-like rules.
