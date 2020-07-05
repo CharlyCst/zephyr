@@ -349,6 +349,13 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let result = self.result();
+        if !self.next_match_report(
+            TokenType::LeftBrace,
+            "A left brace '{' is expected at the beginning of the function body.",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
         let block = self.block()?;
         self.consume_semi_colon();
         Ok(Function {
@@ -829,9 +836,15 @@ impl<'a> Parser<'a> {
         let token = self.advance();
 
         match &token.t {
-            TokenType::NumberLit(n) => Ok(Expression::Literal {
+            TokenType::IntegerLit(n) => Ok(Expression::Literal {
                 value: Value::Integer {
                     val: *n,
+                    loc: token.loc,
+                },
+            }),
+            TokenType::FloatLit(x) => Ok(Expression::Literal {
+                value: Value::Float {
+                    val: *x,
                     loc: token.loc,
                 },
             }),

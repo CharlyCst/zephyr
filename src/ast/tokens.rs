@@ -32,7 +32,8 @@ pub enum TokenType {
 
     // Literals
     Identifier(String),
-    NumberLit(u64),
+    IntegerLit(u64),
+    FloatLit(f64),
     BooleanLit(bool),
     StringLit(String),
 

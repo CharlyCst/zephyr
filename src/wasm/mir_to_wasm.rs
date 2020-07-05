@@ -215,12 +215,15 @@ impl<'a> Compiler<'a> {
                         code.push(INSTR_I64_CST);
                         code.extend(to_leb(x as usize));
                     }
-                    mir::Value::F32(_) => self
-                        .err
-                        .report_internal_no_loc(String::from("Floating points not yet supported")),
-                    mir::Value::F64(_) => self
-                        .err
-                        .report_internal_no_loc(String::from("Floating points not yet supported")),
+                    mir::Value::F32(x) => {
+                        code.push(INSTR_F32_CST);
+                        code.extend(x.to_le_bytes().iter());
+                        println!("{:?}", x.to_le_bytes());
+                    },
+                    mir::Value::F64(x) => {
+                        code.push(INSTR_F64_CST);
+                        code.extend(x.to_le_bytes().iter());
+                    }
                 },
                 mir::Statement::Control { cntrl } => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
@@ -269,6 +272,16 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::I64Div => INSTR_I64_DIV_U,
         mir::Binop::I64Rem => INSTR_I64_REM_U,
 
+        mir::Binop::F32Add => INSTR_F32_ADD,
+        mir::Binop::F32Sub => INSTR_F32_SUB,
+        mir::Binop::F32Mul => INSTR_F32_MUL,
+        mir::Binop::F32Div => INSTR_F32_DIV,
+
+        mir::Binop::F64Add => INSTR_F64_ADD,
+        mir::Binop::F64Sub => INSTR_F64_SUB,
+        mir::Binop::F64Mul => INSTR_F64_MUL,
+        mir::Binop::F64Div => INSTR_F64_DIV,
+
         _ => unimplemented!(),
     }
 }
@@ -303,6 +316,20 @@ fn get_relop(relop: mir::Relop) -> Instr {
         mir::Relop::I64Gt => INSTR_I64_GT_S,
         mir::Relop::I64Le => INSTR_I64_LE_S,
         mir::Relop::I64Ge => INSTR_I64_GE_S,
+
+        mir::Relop::F32Eq => INSTR_F32_EQ,
+        mir::Relop::F32Ne => INSTR_F32_NE,
+        mir::Relop::F32Lt => INSTR_F32_LT,
+        mir::Relop::F32Gt => INSTR_F32_GT,
+        mir::Relop::F32Le => INSTR_F32_LE,
+        mir::Relop::F32Ge => INSTR_F32_GE,
+
+        mir::Relop::F64Eq => INSTR_F64_EQ,
+        mir::Relop::F64Ne => INSTR_F64_NE,
+        mir::Relop::F64Lt => INSTR_F64_LT,
+        mir::Relop::F64Gt => INSTR_F64_GT,
+        mir::Relop::F64Le => INSTR_F64_LE,
+        mir::Relop::F64Ge => INSTR_F64_GE,
 
         _ => unimplemented!(),
     }
