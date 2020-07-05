@@ -15,13 +15,17 @@ NC='\033[0m'
 
 # Reading arguments
 verbose=false
-while getopts ":hv" opt; do
+compiler_verbose=false
+while getopts ":hvc" opt; do
     case ${opt} in
         h ) # help
             printf "Usage: tests.sh [-h] [-v]\n"
             ;;
         v ) # verbose
             verbose=true
+            ;;
+        c ) # verbose
+            compiler_verbose=true
             ;;
     esac
 done
@@ -46,7 +50,14 @@ for source in "$TEST_PATH"/*.frk; do
     output="$TEST_OUTPUT_PATH/$(basename $source .frk).wasm"
 
     printf "> $source"
-    trace=$($FORK $source -o $output)
+
+    # Set the verbose flag if the compile-verbose mode is selected
+    flags=""
+    if [[ "$compiler_verbose" = true ]]; then
+        flags="-v"
+    fi
+
+    trace=$($FORK $flags $source -o $output)
     if ! [ "$?" = "0" ]; then
         printf " ${RED}✗${NC}\n"
         printf "${RED}Failed to compile $(echo $source)${NC}\n\n"
