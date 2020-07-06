@@ -219,7 +219,7 @@ impl<'a> Compiler<'a> {
                         code.push(INSTR_F32_CST);
                         code.extend(x.to_le_bytes().iter());
                         println!("{:?}", x.to_le_bytes());
-                    },
+                    }
                     mir::Value::F64(x) => {
                         code.push(INSTR_F64_CST);
                         code.extend(x.to_le_bytes().iter());
@@ -281,8 +281,6 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::F64Sub => INSTR_F64_SUB,
         mir::Binop::F64Mul => INSTR_F64_MUL,
         mir::Binop::F64Div => INSTR_F64_DIV,
-
-        _ => unimplemented!(),
     }
 }
 
@@ -330,8 +328,6 @@ fn get_relop(relop: mir::Relop) -> Instr {
         mir::Relop::F64Gt => INSTR_F64_GT,
         mir::Relop::F64Le => INSTR_F64_LE,
         mir::Relop::F64Ge => INSTR_F64_GE,
-
-        _ => unimplemented!(),
     }
 }
 

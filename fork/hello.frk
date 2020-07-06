@@ -1,22 +1,10 @@
 // This code is written in fork
 
-package "hello"
+package "main"
 
-pub fun Main(a i32, b i32) i32 {
-    if b == 0 {
-        return 1
-    }
+expose add as _start
 
-    let n = b
-    let x = a
-    let acc = 1
-
-    while n > 1 {
-        if n % 2 == 1 {
-            acc = acc * x
-        }
-        x = x * x
-        n = n / 2
-    }
-    return x * acc
+pub fun add(a i32, b i32) i32 {
+    return a + b
 }
+
