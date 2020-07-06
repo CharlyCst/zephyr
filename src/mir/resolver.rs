@@ -4,38 +4,71 @@ use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
 use crate::error::{ErrorHandler, Location};
 
-use super::ResolvedProgram;
-
 use std::collections::HashMap;
+
+/// Unwrap a `Result` and return its content. In case of failure, silently report and error
+/// and `continue` to the next iteration.
+/// Takes `self` and a result as arguments.
+#[macro_use]
+macro_rules! unwrap {
+    ($v:expr, $result:expr) => {{
+        if let Ok(result) = $result {
+            result
+        } else {
+            $v.err.silent_report();
+            continue;
+        }
+    }};
+}
 
 struct State {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
-    functions: HashMap<String, NameId>,
+    functions: HashMap<String, (FunId, NameId)>,
+    used_namespace: HashMap<String, HashMap<String, Declaration>>,
     constraints: ConstraintStore,
+    fun_counter: u32,
+    package_id: u32,
 }
 
 impl State {
-    pub fn new() -> State {
+    pub fn new(
+        package_id: u32,
+        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+    ) -> State {
         let contexts = vec![HashMap::new()];
         State {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts: contexts,
             functions: HashMap::new(),
+            used_namespace: used_namespace,
             constraints: ConstraintStore::new(),
+            fun_counter: 0,
+            package_id: package_id,
         }
     }
 
+    /// Starts a new scope.
     pub fn new_scope(&mut self) {
         self.contexts.push(HashMap::new());
     }
 
+    /// Exit the current scope.
     pub fn exit_scope(&mut self) {
         self.contexts.pop();
     }
 
+    /// Return a fresh function ID.
+    pub fn fresh_f_id(&mut self) -> FunId {
+        let f_id = (self.fun_counter as u64) + ((self.package_id as u64) << 32);
+        self.fun_counter += 1;
+        f_id
+    }
+
+    /// Declare a name, will fail if the name already exists in the current context or correspont
+    /// to an import alias.
     pub fn declare(
         &mut self,
         ident: String,
@@ -44,6 +77,8 @@ impl State {
     ) -> Result<(NameId, TypeId), Location> {
         if let Some(n) = self.find_in_context(&ident) {
             return Err(n.loc);
+        } else if let Some(_) = self.used_namespace.get(&ident) {
+            return Err(Location::dummy()); // TODO: get the location of the corresponding `use` statement.
         }
 
         let ident_key = ident.clone();
@@ -53,10 +88,12 @@ impl State {
         Ok((n_id, t_id))
     }
 
+    /// Adds a new contraints, will be used in the type checking stage.
     pub fn new_constraint(&mut self, constraint: TypeConstraint) {
         self.constraints.add(constraint)
     }
 
+    /// Return the corresponding Name if it is in context. This does not include used alias.
     pub fn find_in_context(&self, ident: &str) -> Option<&Name> {
         for ctx in self.contexts.iter().rev() {
             match ctx.get(ident) {
@@ -75,23 +112,48 @@ impl State {
     }
 }
 
-pub struct NameResolver<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct NameResolver<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> NameResolver<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> NameResolver<'a, 'b> {
+impl<'a> NameResolver<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> NameResolver {
         NameResolver { err: error_handler }
     }
 
-    pub fn resolve(&mut self, funs: Vec<ast::Function>) -> ResolvedProgram {
-        let mut state = State::new();
+    pub fn resolve(
+        &mut self,
+        ast_program: ast::Program,
+        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+    ) -> ResolvedProgram {
+        let funs = ast_program.funs;
+        let mut state = State::new(ast_program.package_id, used_namespace);
         let mut named_funs = Vec::with_capacity(funs.len());
+        let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
+        // Register functions names and signatures
         self.register_functions(&funs, &mut state);
 
+        // Resolve exposed funs
+        for exposed in &ast_program.exposed {
+            if let Some((f_id, _)) = state.functions.get(&exposed.ident) {
+                let exposed_name = if let Some(alias) = &exposed.alias {
+                    alias.clone()
+                } else {
+                    exposed.ident.clone()
+                };
+                exposed_funs.insert(*f_id, exposed_name);
+            } else {
+                self.err.report(
+                    exposed.loc,
+                    format!("Exposed function '{}' is not defined.", &exposed.ident),
+                )
+            }
+        }
+
+        // Resolve function bodies
         for fun in funs.into_iter() {
-            if let Some(named_fun) = self.resolve_function(fun, &mut state) {
+            if let Some(named_fun) = self.resolve_function(fun, &exposed_funs, &mut state) {
                 named_funs.push(named_fun);
             }
         }
@@ -104,7 +166,14 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         }
     }
 
-    fn resolve_function(&mut self, fun: ast::Function, state: &mut State) -> Option<Function> {
+    /// Check that each names used inside the function are correctly defined.
+    /// Also responsible for checking if the function is exposed.
+    fn resolve_function(
+        &mut self,
+        fun: ast::Function,
+        exposed_funs: &HashMap<FunId, String>,
+        state: &mut State,
+    ) -> Option<Function> {
         state.new_scope();
         let mut locals = Vec::new();
         let mut fun_params = Vec::new();
@@ -120,6 +189,19 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         };
         let fun_t_id = fun_name.t_id;
         let fun_n_id = fun_name.n_id;
+        let f_id = if let Some((f_id, _)) = state.functions.get(&fun.ident) {
+            *f_id
+        } else {
+            self.err.report_internal(
+                fun.loc,
+                format!(
+                    "Function name '{}' is not registered in resolver state.",
+                    &fun.ident
+                ),
+            );
+            state.exit_scope();
+            return None;
+        };
 
         for param in fun.params.into_iter() {
             let t = match get_var_type(&param) {
@@ -148,14 +230,22 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         let block = self.resolve_block(fun.block, state, &mut locals, fun_t_id);
         state.exit_scope();
 
+        let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
+            Some(exposed_name.clone())
+        } else {
+            None
+        };
+
         return Some(Function {
             ident: fun.ident,
             params: fun_params,
             locals: locals,
             block: block,
-            exported: fun.exported,
+            is_pub: fun.is_pub,
+            exposed: exposed,
             loc: fun.loc,
             n_id: fun_n_id,
+            fun_id: f_id,
         });
     }
 
@@ -189,7 +279,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                         );
                         continue;
                     };
-                    let (expr, t_id) = self.resolve_expression(&mut expr, state);
+                    let (expr, t_id) = unwrap!(self, self.resolve_expression(&mut expr, state));
                     let loc = var.loc.merge(expr.get_loc());
                     state.new_constraint(TypeConstraint::Equality(var_t_id, t_id, loc));
                     Statement::AssignStmt {
@@ -201,7 +291,8 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
                         Ok((n_id, var_t_id)) => {
                             locals.push(n_id);
-                            let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                            let (expr, expr_t_id) =
+                                unwrap!(self, self.resolve_expression(&mut expr, state));
                             let loc = var.loc.merge(expr.get_loc());
                             state
                                 .new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
@@ -228,7 +319,8 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     block,
                     else_block,
                 } => {
-                    let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                    let (expr, expr_t_id) =
+                        unwrap!(self, self.resolve_expression(&mut expr, state));
                     state.new_constraint(TypeConstraint::Equality(
                         expr_t_id,
                         T_ID_BOOL,
@@ -248,7 +340,8 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     }
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
-                    let (expr, expr_t_id) = self.resolve_expression(&mut expr, state);
+                    let (expr, expr_t_id) =
+                        unwrap!(self, self.resolve_expression(&mut expr, state));
                     state.new_constraint(TypeConstraint::Equality(
                         expr_t_id,
                         T_ID_BOOL,
@@ -262,7 +355,8 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 }
                 ast::Statement::ReturnStmt { expr, loc } => {
                     if let Some(mut ret_expr) = expr {
-                        let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state);
+                        let (expr, ret_t_id) =
+                            unwrap!(self, self.resolve_expression(&mut ret_expr, state));
                         state.new_constraint(TypeConstraint::Return(
                             fun_t_id,
                             ret_t_id,
@@ -286,7 +380,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                     }
                 }
                 ast::Statement::ExprStmt { mut expr } => {
-                    let (expr, _) = self.resolve_expression(&mut expr, state);
+                    let (expr, _) = unwrap!(self, self.resolve_expression(&mut expr, state));
                     Statement::ExprStmt {
                         expr: Box::new(expr),
                     }
@@ -303,10 +397,10 @@ impl<'a, 'b> NameResolver<'a, 'b> {
         &mut self,
         expr: &mut ast::Expression,
         state: &mut State,
-    ) -> (Expression, TypeId) {
+    ) -> Result<(Expression, TypeId), ()> {
         match expr {
             ast::Expression::Unary { unop, expr } => {
-                let (expr, t_id) = self.resolve_expression(expr, state);
+                let (expr, t_id) = self.resolve_expression(expr, state)?;
                 match unop {
                     ast::UnaryOperator::Minus => {
                         let loc = expr.get_loc();
@@ -317,7 +411,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             loc: loc,
                             t_id: t_id,
                         };
-                        (expr, t_id)
+                        Ok((expr, t_id))
                     }
                     ast::UnaryOperator::Not => {
                         let loc = expr.get_loc();
@@ -328,7 +422,7 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             loc: loc,
                             t_id: t_id,
                         };
-                        (expr, t_id)
+                        Ok((expr, t_id))
                     }
                 }
             }
@@ -337,11 +431,11 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 binop,
                 expr_right,
             } => {
-                let (left_expr, left_t_id) = self.resolve_expression(expr_left, state);
-                let (right_expr, right_t_id) = self.resolve_expression(expr_right, state);
+                let (left_expr, left_t_id) = self.resolve_expression(expr_left, state)?;
+                let (right_expr, right_t_id) = self.resolve_expression(expr_right, state)?;
+                let loc = left_expr.get_loc().merge(right_expr.get_loc());
                 match binop {
                     ast::BinaryOperator::Remainder => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -356,13 +450,12 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
-                        (expr, left_t_id)
+                        Ok((expr, left_t_id))
                     }
                     ast::BinaryOperator::Plus
                     | ast::BinaryOperator::Multiply
                     | ast::BinaryOperator::Minus
                     | ast::BinaryOperator::Divide => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -377,13 +470,12 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
-                        (expr, left_t_id)
+                        Ok((expr, left_t_id))
                     }
                     ast::BinaryOperator::Greater
                     | ast::BinaryOperator::GreaterEqual
                     | ast::BinaryOperator::Less
                     | ast::BinaryOperator::LessEqual => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -398,10 +490,9 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
-                        (expr, T_ID_BOOL)
+                        Ok((expr, T_ID_BOOL))
                     }
                     ast::BinaryOperator::Equal | ast::BinaryOperator::NotEqual => {
-                        let loc = left_expr.get_loc().merge(right_expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -416,7 +507,20 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
-                        (expr, T_ID_BOOL)
+                        Ok((expr, T_ID_BOOL))
+                    }
+                    ast::BinaryOperator::And | ast::BinaryOperator::Or => {
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
+                        state.new_constraint(TypeConstraint::Equality(left_t_id, T_ID_BOOL, left_expr.get_loc()));
+                        let expr = Expression::Binary {
+                            expr_left: Box::new(left_expr),
+                            binop: *binop,
+                            expr_right: Box::new(right_expr),
+                            loc: loc,
+                            t_id: T_ID_BOOL,
+                            op_t_id: left_t_id,
+                        };
+                        Ok((expr, T_ID_BOOL))
                     }
                     _ => panic!("Binop not implemented yet"), // TODO
                 }
@@ -431,8 +535,19 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             t_id: fresh_t_id,
                         },
                     };
-                    (expr, fresh_t_id)
+                    Ok((expr, fresh_t_id))
                 }
+                ast::Value::Float { val, loc } => {
+                   let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
+                   let expr = Expression::Literal {
+                        value: Value::Float {
+                            val: *val,
+                            loc: *loc,
+                            t_id: fresh_t_id,
+                        },
+                   };
+                   Ok((expr, fresh_t_id))
+                },
                 ast::Value::Boolean { val, loc } => {
                     let expr = Expression::Literal {
                         value: Value::Boolean {
@@ -441,11 +556,18 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             t_id: T_ID_BOOL,
                         },
                     };
-                    (expr, T_ID_BOOL)
+                    Ok((expr, T_ID_BOOL))
                 }
             },
             ast::Expression::Variable { var } => {
-                if let Some(name) = state.find_in_context(&var.ident) {
+                if let Some((fun_id, n_id)) = state.functions.get(&var.ident) {
+                    let expr = Expression::Function {
+                        fun_id: *fun_id,
+                        loc: var.loc,
+                    };
+                    let t_id = state.names.get(*n_id).t_id;
+                    Ok((expr, t_id))
+                } else if let Some(name) = state.find_in_context(&var.ident) {
                     let expr = Expression::Variable {
                         var: Variable {
                             ident: var.ident.clone(),
@@ -453,20 +575,13 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             n_id: name.n_id,
                         },
                     };
-                    (expr, name.t_id)
+                    Ok((expr, name.t_id))
                 } else {
                     self.err.report(
                         var.loc,
                         format!("Variable {} used but not declared", var.ident),
                     );
-                    let dummy_expr = Expression::Literal {
-                        value: Value::Boolean {
-                            loc: var.loc,
-                            val: false,
-                            t_id: T_ID_BOOL,
-                        },
-                    };
-                    return (dummy_expr, T_ID_BOOL);
+                    return Err(());
                 }
             }
             ast::Expression::Call { fun, args } => {
@@ -475,47 +590,37 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 let mut args_t = Vec::with_capacity(n);
                 let mut args_loc = Vec::with_capacity(n);
                 for arg in args {
-                    let (arg, arg_t) = self.resolve_expression(arg, state);
+                    let (arg, arg_t) = self.resolve_expression(arg, state)?;
                     args_loc.push(arg.get_loc());
                     resolved_args.push(arg);
                     args_t.push(arg_t);
                 }
+                let (fun, fun_t) = self.resolve_expression(fun, state)?;
+                let loc = if n > 0 {
+                    fun.get_loc().merge(resolved_args[n - 1].get_loc())
+                } else {
+                    fun.get_loc()
+                };
 
-                // Check if variable is a known function
-                if let ast::Expression::Variable { ref var } = **fun {
-                    if let Some(fun_id) = state.functions.get(&var.ident) {
-                        // Known function => direct call
-                        let fun_id = *fun_id;
-                        let fun_t = state.names.get(fun_id).t_id;
-                        let return_t = state.types.fresh(var.loc, vec![Type::Any]);
-                        let loc = if n > 0 {
-                            var.loc.merge(resolved_args[n - 1].get_loc())
-                        } else {
-                            var.loc
-                        };
+                match fun {
+                    Expression::Function { fun_id, .. } => {
+                        // Direct call
+                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Arguments(
                             args_t, fun_t, args_loc, loc,
                         ));
                         state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
-                        (
-                            Expression::CallDirect {
-                                fun_id: fun_id,
-                                loc: loc,
-                                args: resolved_args,
-                                t_id: return_t,
-                            },
-                            return_t,
-                        )
-                    } else {
-                        // Duplicate code (see below)! Waiting for chaining if let proposal
-                        // https://github.com/rust-lang/rust/issues/53667
-                        let (fun, fun_t) = self.resolve_expression(fun, state);
-                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                        let loc = if n > 0 {
-                            fun.get_loc().merge(resolved_args[n - 1].get_loc())
-                        } else {
-                            fun.get_loc()
+                        let expr = Expression::CallDirect {
+                            fun_id: fun_id,
+                            loc: loc,
+                            args: resolved_args,
+                            t_id: return_t,
                         };
+                        Ok((expr, return_t))
+                    }
+                    _ => {
+                        // Indirect call
+                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Arguments(
                             args_t, fun_t, args_loc, loc,
                         ));
@@ -527,33 +632,63 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                             args: resolved_args,
                             t_id: return_t,
                         };
-                        (expr, return_t)
+                        Ok((expr, return_t))
                     }
-                } else {
-                    // Duplicate code! Edit both !!!
-                    let (fun, fun_t) = self.resolve_expression(fun, state);
-                    let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                    let loc = if n > 0 {
-                        fun.get_loc().merge(resolved_args[n - 1].get_loc())
-                    } else {
-                        fun.get_loc()
-                    };
-                    state.new_constraint(TypeConstraint::Arguments(args_t, fun_t, args_loc, loc));
-                    state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
-
-                    let expr = Expression::CallIndirect {
+                }
+            }
+            ast::Expression::Access { namespace, field } => {
+                let (namespace, loc_namespace, namespace_ident) = match &(**namespace) {
+                    ast::Expression::Variable { var } => {
+                        if let Some(namespace) = state.used_namespace.get(&var.ident) {
+                            (namespace, var.loc, &var.ident)
+                        } else {
+                            self.err.report(
+                                var.loc,
+                                format!("The identifier '{}' is not defined.", &var.ident),
+                            );
+                            return Err(());
+                        }
+                    }
+                    _ => {
+                        let (expr, _) = self.resolve_expression(namespace, state)?;
+                        self.err.report(
+                            expr.get_loc(),
+                            String::from("The left operand of an access must be an identifier."),
+                        );
+                        return Err(());
+                    }
+                };
+                let (field, loc_field) = match &(**field) {
+                    ast::Expression::Variable { var } => (var.ident.clone(), var.loc),
+                    _ => {
+                        let (expr, _) = self.resolve_expression(field, state)?;
+                        self.err.report(
+                            expr.get_loc(),
+                            String::from("The left operand of an access must be an identifier."),
+                        );
+                        return Err(());
+                    }
+                };
+                let loc = loc_namespace.merge(loc_field);
+                if let Some(Declaration::Function { fun_id, t }) = namespace.get(&field) {
+                    let expr = Expression::Function {
+                        fun_id: *fun_id,
                         loc: loc,
-                        fun: Box::new(fun),
-                        args: resolved_args,
-                        t_id: return_t,
                     };
-                    (expr, return_t)
+                    let t_id = state.types.fresh(loc, vec![t.clone()]);
+                    Ok((expr, t_id))
+                } else {
+                    self.err.report(
+                        loc_field,
+                        format!("'{}' is not a member of '{}'.", &field, namespace_ident),
+                    );
+                    return Err(());
                 }
             }
         }
     }
 
-    // must be called first to bring all global function declarations in scope
+    /// Register top level functions into the global state (`state`).
     fn register_functions(&mut self, funs: &Vec<ast::Function>, state: &mut State) {
         for fun in funs {
             let mut params = Vec::new();
@@ -588,7 +723,8 @@ impl<'a, 'b> NameResolver<'a, 'b> {
                 let error = format!("Function {} declared multiple times", fun.ident);
                 self.err.report(fun.loc, error);
             } else if let Ok((n_id, _)) = declaration {
-                state.functions.insert(fun.ident.clone(), n_id);
+                let fun_id = state.fresh_f_id();
+                state.functions.insert(fun.ident.clone(), (fun_id, n_id));
             }
         }
     }

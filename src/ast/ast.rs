@@ -3,6 +3,7 @@ use std::fmt;
 
 pub enum Value {
     Integer { val: u64, loc: Location },
+    Float { val: f64, loc: Location },
     Boolean { val: bool, loc: Location },
 }
 
@@ -57,6 +58,10 @@ pub enum Expression {
         fun: Box<Expression>,
         args: Vec<Expression>,
     },
+    Access {
+        namespace: Box<Expression>,
+        field: Box<Expression>,
+    },
 }
 
 pub enum Statement {
@@ -86,12 +91,44 @@ pub enum Statement {
     },
 }
 
+pub enum Declaration {
+    Function(Function),
+    Use(Use),
+    Expose(Expose),
+}
+
+pub struct Program {
+    pub package: Package,
+    pub funs: Vec<Function>,
+    pub exposed: Vec<Expose>,
+    pub used: Vec<Use>,
+    pub package_id: u32,
+}
+
+pub struct Package {
+    pub path: String,
+    pub loc: Location,
+}
+
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub result: Option<(String, Location)>,
     pub block: Block,
-    pub exported: bool,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct Expose {
+    pub ident: String,
+    pub alias: Option<String>,
+    pub loc: Location,
+}
+
+#[derive(Clone)]
+pub struct Use {
+    pub path: String,
+    pub alias: Option<String>,
     pub loc: Location,
 }
 
@@ -99,13 +136,34 @@ pub struct Block {
     pub stmts: Vec<Statement>,
 }
 
-pub struct Program {
-    pub funs: Vec<Function>,
-}
-
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut program = String::from("");
+        // Package
+        program.push_str(&format!("packge \"{}\";\n\n", self.package.path));
+        // Use
+        for is_used in &self.used {
+            program.push_str(&format!("use \"{}\"", is_used.path));
+            if let Some(ref alias) = is_used.alias {
+                program.push_str(&format!(" as {}", alias));
+            }
+            program.push_str(";\n");
+        }
+        if self.used.len() > 0 {
+            program.push_str("\n");
+        }
+        // Expose
+        for expose in &self.exposed {
+            program.push_str(&format!("expose {}", expose.ident));
+            if let Some(ref alias) = expose.alias {
+                program.push_str(&format!(" as {}", alias));
+            }
+            program.push_str(";\n");
+        }
+        if self.exposed.len() > 0 {
+            program.push_str("\n");
+        }
+        // Fun
         for stmt in &self.funs {
             program.push_str(&format!("{}\n", stmt));
         }
@@ -115,7 +173,7 @@ impl fmt::Display for Program {
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let prefix = if self.exported { "export " } else { "" };
+        let prefix = if self.is_pub { "pub " } else { "" };
         let params = self
             .params
             .iter()
@@ -173,6 +231,7 @@ impl fmt::Display for Expression {
                 Value::Boolean { val: true, .. } => write!(f, "true"),
                 Value::Boolean { val: false, .. } => write!(f, "false"),
                 Value::Integer { val: n, .. } => write!(f, "{}", n),
+                Value::Float { val: x, .. } => write!(f, "{}", x),
             },
             Expression::Call { fun, args } => write!(
                 f,
@@ -183,6 +242,7 @@ impl fmt::Display for Expression {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Expression::Access { namespace, field } => write!(f, "({}.{})", namespace, field),
             Expression::Unary { unop, expr } => match unop {
                 UnaryOperator::Not => write!(f, "!{}", expr),
                 UnaryOperator::Minus => write!(f, "-{}", expr),

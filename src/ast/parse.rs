@@ -2,34 +2,70 @@ use super::ast::*;
 use super::tokens::{Token, TokenType};
 use crate::error::{ErrorHandler, Location};
 
-pub struct Parser<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct Parser<'a> {
+    err: &'a mut ErrorHandler,
     tokens: Vec<Token>,
     current: usize,
+    package_id: u32,
 }
 
-impl<'a, 'b> Parser<'a, 'b> {
-    pub fn new(tokens: Vec<Token>, error_handler: &'b mut ErrorHandler<'a>) -> Parser<'a, 'b> {
+/// Works on a list of tokens and converts it into an Abstract Syntax Tree,
+/// following the grammar of the language (defined in 'grammar.md')
+impl<'a> Parser<'a> {
+    pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &mut ErrorHandler) -> Parser {
         Parser {
             err: error_handler,
             tokens: tokens,
             current: 0,
+            package_id: package_id,
         }
     }
 
+    /// Main function converting a list of token in vectors of declarations
+    /// (functions, use, expose)
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
+        let mut exposed = Vec::new();
+        let mut used = Vec::new();
+
+        let package = match self.package() {
+            Ok(pack) => pack,
+            Err(()) => {
+                self.err.silent_report();
+                // @TODO: In the future we may wan to parse the code anyway in order to provide feedback
+                // even though the `package` declaration is missing.
+                Package {
+                    path: String::from(""),
+                    loc: Location {
+                        pos: 0,
+                        len: 0,
+                        f_id: 0,
+                    },
+                }
+            }
+        };
 
         while !self.is_at_end() {
-            match self.function() {
-                Ok(expr) => funs.push(expr),
+            match self.declaration() {
+                Ok(decl) => match decl {
+                    Declaration::Function(fun) => funs.push(fun),
+                    Declaration::Use(uses) => used.push(uses),
+                    Declaration::Expose(expose) => exposed.push(expose),
+                },
                 Err(()) => self.err.silent_report(),
             }
         }
 
-        Program { funs: funs }
+        Program {
+            package: package,
+            funs: funs,
+            exposed: exposed,
+            used: used,
+            package_id: self.package_id,
+        }
     }
 
+    /// Is the last token of the file?
     fn is_at_end(&self) -> bool {
         match self.peek().t {
             TokenType::EOF => true,
@@ -37,20 +73,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Shows the current token without consuming it
     fn peek(&self) -> &Token {
         let cur = self.current;
         &self.tokens[cur]
     }
 
-    fn previous(&self) -> &Token {
-        let prev = self.current - 1;
-        if prev > 0 {
-            &self.tokens[prev]
-        } else {
-            &self.tokens[0]
-        }
-    }
-
+    // @TODO: test
+    // In theory if the tokens list is valid, only EOF is at the last position
+    // of the tokens list, so peekpeek <=> peek only for EOF (is_at_end == true)
+    /// Shows the next token (after the current) if it exists, else shows the
+    /// current token
     fn peekpeek(&self) -> &Token {
         let next = self.current + 1;
         if next >= self.tokens.len() {
@@ -60,6 +93,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Shows the previous token (already consumed)
+    fn previous(&self) -> &Token {
+        let prev = self.current - 1;
+        if prev > 0 {
+            &self.tokens[prev]
+        } else {
+            &self.tokens[0]
+        }
+    }
+
+    /// Consumes and returns the current token by moving current to the right
     fn advance(&mut self) -> &Token {
         let token = &self.tokens[self.current];
         if !self.is_at_end() {
@@ -68,13 +112,16 @@ impl<'a, 'b> Parser<'a, 'b> {
         token
     }
 
+    /// Moves the cursor one position to the left (marking already consumed
+    /// tokens as not consumed)
     fn back(&mut self) {
         if self.current > 0 {
             self.current -= 1;
         }
     }
 
-    // If the next token has type t, consume it and return true, return false otherwise
+    /// If the next token has type t, consume it and return true, return false
+    /// otherwise
     fn next_match(&mut self, t: TokenType) -> bool {
         if self.peek().t == t {
             self.advance();
@@ -84,7 +131,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    // Same as `next_match` but report an error if the token doesn't match
+    /// Same as `next_match` but report an error if the token doesn't match
     fn next_match_report(&mut self, t: TokenType, err: &str) -> bool {
         if self.peek().t == t {
             self.advance();
@@ -96,6 +143,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Consumes token until a semi-colon, used in the context of invalid lines
     fn synchronize(&mut self) {
         let mut token = self.advance();
         while token.t != TokenType::SemiColon && !self.is_at_end() {
@@ -103,6 +151,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Consumes until the next top level declaration
     fn synchronize_fun(&mut self) {
         let mut token = self.advance();
         while token.t != TokenType::Fun && !self.is_at_end() {
@@ -110,6 +159,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Expects the current token to be a semicolon and consumes it, throws an
+    /// error if it's not
     fn consume_semi_colon(&mut self) {
         let semi_colon = self.advance();
         if semi_colon.t != TokenType::SemiColon {
@@ -122,8 +173,149 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /* All the following functions try to parse a grammar element, and
+    recursively parse all sub-elements as defined in the gammar of the
+    language */
+
+    /// Parses the 'package' grammar element
+    fn package(&mut self) -> Result<Package, ()> {
+        let start = self.peek().loc;
+        if !self.next_match_report(
+            TokenType::Package,
+            "Programs must start with a 'package' keyword",
+        ) {
+            return Err(());
+        }
+
+        let token = self.advance();
+        if let TokenType::StringLit(ref string) = token.t {
+            let string = string.clone();
+            let end = self.peek().loc;
+            self.consume_semi_colon();
+            Ok(Package {
+                loc: start.merge(end),
+                path: string,
+            })
+        } else {
+            let loc = token.loc;
+            self.synchronize();
+            self.err.report(
+                loc,
+                String::from("'package' keyword should be followed by a double quoted path"),
+            );
+            Err(())
+        }
+    }
+
+    /// Parses a 'declaration' that can be either a 'use', 'expose' or 'fun'
+    fn declaration(&mut self) -> Result<Declaration, ()> {
+        match self.peek().t {
+            TokenType::Fun | TokenType::Pub => Ok(Declaration::Function(self.function()?)),
+            TokenType::Use => Ok(Declaration::Use(self._use()?)),
+            TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
+            _ => {
+                self.err.report(
+                    self.peek().loc,
+                    String::from(
+                        "Top level declaration must be one of 'function', 'use', 'expose'",
+                    ),
+                );
+                self.synchronize();
+                Err(())
+            }
+        }
+    }
+
+    /// Parses the 'use' grammar element
+    fn _use(&mut self) -> Result<Use, ()> {
+        let start = self.peek().loc;
+        if !self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword") {
+            return Err(());
+        }
+
+        let token = self.advance();
+        if let TokenType::StringLit(ref string) = token.t {
+            let string = string.clone();
+            let alias = if self.next_match(TokenType::As) {
+                let token = self.advance();
+                if let TokenType::Identifier(ref ident) = token.t {
+                    Some(ident.clone())
+                } else {
+                    let loc = token.loc;
+                    self.err.report(
+                        loc,
+                        String::from("'as' should be followed by an identifier"),
+                    );
+                    return Err(());
+                }
+            } else {
+                None
+            };
+            let end = self.peek().loc;
+            self.consume_semi_colon();
+            Ok(Use {
+                loc: start.merge(end),
+                path: string,
+                alias: alias,
+            })
+        } else {
+            let loc = token.loc;
+            self.err.report(
+                loc,
+                String::from("'use' keyword should be followed by a double quoted path"),
+            );
+            Err(())
+        }
+    }
+
+    /// Parses the 'expose' grammar element
+    fn expose(&mut self) -> Result<Expose, ()> {
+        let start = self.peek().loc;
+        if !self.next_match_report(
+            TokenType::Expose,
+            "Expose statement must start by 'expose' keyword",
+        ) {
+            return Err(());
+        }
+
+        let token = self.advance();
+        if let TokenType::Identifier(ref ident) = token.t {
+            let ident = ident.clone();
+            let alias = if self.next_match(TokenType::As) {
+                let token = self.advance();
+                if let TokenType::Identifier(ref alias_ident) = token.t {
+                    Some(alias_ident.clone())
+                } else {
+                    let loc = token.loc;
+                    self.err.report(
+                        loc,
+                        String::from("'as' should be followed by an identifier"),
+                    );
+                    return Err(());
+                }
+            } else {
+                None
+            };
+            let end = self.peek().loc;
+            self.consume_semi_colon();
+            Ok(Expose {
+                loc: start.merge(end),
+                ident: ident,
+                alias: alias,
+            })
+        } else {
+            let loc = token.loc;
+            self.err.report(
+                loc,
+                String::from("'expose' keyword should be followed by an identifier"),
+            );
+            Err(())
+        }
+    }
+
+    /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
-        let exported = self.next_match(TokenType::Export);
+        let is_pub = self.next_match(TokenType::Pub);
         if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
             self.synchronize_fun();
             return Err(());
@@ -157,6 +349,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             return Err(());
         }
         let result = self.result();
+        if !self.next_match_report(
+            TokenType::LeftBrace,
+            "A left brace '{' is expected at the beginning of the function body.",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
         let block = self.block()?;
         self.consume_semi_colon();
         Ok(Function {
@@ -164,11 +363,12 @@ impl<'a, 'b> Parser<'a, 'b> {
             params: params,
             result: result,
             block: block,
-            exported: exported,
+            is_pub: is_pub,
             loc: loc,
         })
     }
 
+    /// Parses the 'parameters' grammar element
     fn parameters(&mut self) -> Vec<Variable> {
         let mut params = Vec::new();
         while let Token {
@@ -206,6 +406,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         params
     }
 
+    /// Parses the 'result' grammar element
     fn result(&mut self) -> Option<(String, Location)> {
         if let TokenType::Identifier(ref t) = self.peek().t {
             let result = Some((t.clone(), self.peek().loc));
@@ -216,6 +417,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Parses the 'statement' grammar element
     fn statement(&mut self) -> Result<Statement, ()> {
         match self.peek().t {
             TokenType::Let => {
@@ -242,6 +444,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
+    /// Parses the 'expr_stmt' grammar element
     fn expr_stmt(&mut self) -> Result<Statement, ()> {
         let expr = self.expression()?;
         if !self.next_match_report(TokenType::SemiColon, "This statement is not complete") {
@@ -252,6 +455,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
+    /// Parses the 'assign_stmt' grammar element
     fn assign_stmt(&mut self) -> Result<Statement, ()> {
         let (ident, loc) = match self.advance() {
             Token {
@@ -287,8 +491,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    // The `let` token must have been consumed
+    /// Parses the 'let_stmt' grammar element (assuming the `let` token has
+    /// been consumed )
     fn let_stmt(&mut self) -> Result<Statement, ()> {
+        // The `let` token must have been consumed
         let next = self.advance();
         let (ident, loc) = match next {
             Token {
@@ -323,8 +529,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    // The `if` token must have been consumed
+    /// Parses the 'if_stmt' grammar element (assuming the `if` token has
+    /// been consumed )
     fn if_stmt(&mut self) -> Result<Statement, ()> {
+        // The `if` token must have been consumed
         let expr = self.expression()?;
         if !self.next_match_report(
             TokenType::LeftBrace,
@@ -360,8 +568,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    // The `while` token must have been consumed
+    /// Parses the 'while_stmt' grammar element (assuming the `while` token has
+    /// been consumed )
     fn while_stmt(&mut self) -> Result<Statement, ()> {
+        // The `while` token must have been consumed
         let expr = self.expression()?;
         if !self.next_match_report(
             TokenType::LeftBrace,
@@ -377,8 +587,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         })
     }
 
-    // The `return` token must have been consumed
+    /// Parses the 'return_stmt' grammar element (assuming the `return` token has
+    /// been consumed )
     fn return_stmt(&mut self) -> Result<Statement, ()> {
+        // The `return` token must have been consumed
         let loc = self.previous().loc;
         let expr = self.expression();
         match expr {
@@ -400,8 +612,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
     }
 
-    // The `{` token must have been consumed
+    /// Parses the '{' grammar element (assuming the `{` token has been
+    /// consumed )
     fn block(&mut self) -> Result<Block, ()> {
+        // The `{` token must have been consumed
         let mut stmts = Vec::new();
         while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
             let next_expr = self.statement();
@@ -413,6 +627,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(Block { stmts: stmts })
     }
 
+    /// Parses the 'expression' grammar element. As the grammar is unambiguous,
+    /// precedence are directly baked into the grammar: the lowest priority
+    /// elements are processed first, and will recursively call elements of
+    /// higher priority
     fn expression(&mut self) -> Result<Expression, ()> {
         self.logical_or()
     }
@@ -579,7 +797,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn call(&mut self) -> Result<Expression, ()> {
-        let mut expr = self.primary()?;
+        let mut expr = self.access()?;
         while self.next_match(TokenType::LeftPar) {
             let args = self.arguments();
             if !self.next_match_report(
@@ -597,13 +815,36 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(expr)
     }
 
+    fn access(&mut self) -> Result<Expression, ()> {
+        let mut namespace = self.primary()?;
+
+        loop {
+            if self.next_match(TokenType::Dot) {
+                let field = self.primary()?;
+                namespace = Expression::Access {
+                    namespace: Box::new(namespace),
+                    field: Box::new(field),
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(namespace)
+    }
+
     fn primary(&mut self) -> Result<Expression, ()> {
         let token = self.advance();
 
         match &token.t {
-            TokenType::NumberLit(n) => Ok(Expression::Literal {
+            TokenType::IntegerLit(n) => Ok(Expression::Literal {
                 value: Value::Integer {
                     val: *n,
+                    loc: token.loc,
+                },
+            }),
+            TokenType::FloatLit(x) => Ok(Expression::Literal {
+                value: Value::Float {
+                    val: *x,
                     loc: token.loc,
                 },
             }),

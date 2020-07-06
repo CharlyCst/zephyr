@@ -1,6 +1,9 @@
-// Test else primitive
+package "#test"
 
-export fun Main() i32 {
+expose main as _start
+
+// Test else primitive
+fun main() i32 {
 	if  1 == 2 {
 		return 1
 	} else {

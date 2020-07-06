@@ -1,6 +1,9 @@
-// Check that return statement end function and return a value
+package "#test"
 
-export fun Main() i32 {
+expose main as _start
+
+// Check that return statement end function and return a value
+fun main() i32 {
     return 42
     return 1
 }

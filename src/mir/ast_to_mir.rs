@@ -13,6 +13,7 @@ use std::convert::TryInto;
 enum FromBinop {
     Binop(Binop),
     Relop(Relop),
+    Logical(Logical),
 }
 
 struct State {
@@ -37,12 +38,12 @@ impl State {
     }
 }
 
-pub struct MIRProducer<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct MIRProducer<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> MIRProducer<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> MIRProducer<'a, 'b> {
+impl<'a> MIRProducer<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> MIRProducer {
         MIRProducer { err: error_handler }
     }
 
@@ -57,7 +58,10 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
             }
         }
 
-        Program { funs: funs }
+        Program {
+            funs: funs,
+            pub_decls: prog.pub_decls,
+        }
     }
 
     fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Result<Function, String> {
@@ -87,8 +91,9 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
             ret_types: ret_t,
             locals: locals,
             body: block,
-            exported: fun.exported,
-            fun_id: fun.n_id,
+            is_pub: fun.is_pub,
+            exposed: fun.exposed,
+            fun_id: fun.fun_id,
         })
     }
 
@@ -120,6 +125,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
         let reduced_block = Block::Block {
             id: id,
             stmts: stmts,
+            t: None,
         };
         Ok(reduced_block)
     }
@@ -177,12 +183,14 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                     let loop_block = Block::Loop {
                         id: loop_id,
                         stmts: loop_stmts,
+                        t: None,
                     };
                     let block_block = Block::Block {
                         id: block_id,
                         stmts: vec![Statement::Block {
                             block: Box::new(loop_block),
                         }],
+                        t: None,
                     };
                     stmts.push(Statement::Block {
                         block: Box::new(block_block),
@@ -205,6 +213,7 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                         id: if_id,
                         then_stmts: then_stmts,
                         else_stmts: else_stmts,
+                        t: None,
                     };
                     stmts.push(Statement::Block {
                         block: Box::new(if_block),
@@ -231,16 +240,32 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                         Type::I32 => Value::I32((*val).try_into().unwrap()),
                         Type::I64 => Value::I64((*val).try_into().unwrap()),
                         _ => {
-                            return Err(String::from("Integer constant of non integer type"));
+                            return Err(String::from("Integer constant of non integer type."));
                         }
                     };
                     stmts.push(Statement::Const { val: val })
                 }
+                V::Float { val, t_id, .. } => {
+                   let t = get_type(*t_id, s)?;
+                   let val = match t {
+                        Type::F32 => Value::F32(*val as f32),
+                        Type::F64 => Value::F64(*val),
+                        _ => {
+                            return Err(String::from("Float constant of non float type."));
+                        }
+                   };
+                   stmts.push(Statement::Const { val: val })
+                },
                 V::Boolean { val, .. } => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),
             },
             Expr::Variable { var } => stmts.push(Statement::Get { l_id: var.n_id }),
+            Expr::Function { .. } => {
+                return Err(String::from(
+                    "Function as expression are not yet supported.",
+                ))
+            }
             Expr::Binary {
                 expr_left,
                 binop,
@@ -251,15 +276,58 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
             } => {
                 let t = get_type(*op_t_id, s)?;
                 let from_binop = get_binop(*binop, t)?;
-                self.reduce_expr(expr_left, stmts, s)?;
-                self.reduce_expr(expr_right, stmts, s)?;
                 match from_binop {
-                    FromBinop::Binop(binop) => stmts.push(Statement::Binop { binop: binop }),
-                    FromBinop::Relop(relop) => stmts.push(Statement::Relop { relop: relop }),
+                    FromBinop::Binop(binop) => {
+                        self.reduce_expr(expr_left, stmts, s)?;
+                        self.reduce_expr(expr_right, stmts, s)?;
+                        stmts.push(Statement::Binop { binop: binop })
+                    }
+                    FromBinop::Relop(relop) => {
+                        self.reduce_expr(expr_left, stmts, s)?;
+                        self.reduce_expr(expr_right, stmts, s)?;
+                        stmts.push(Statement::Relop { relop: relop })
+                    }
+                    FromBinop::Logical(logical) => match logical {
+                        Logical::And => {
+                            let if_id = s.fresh_bb_id();
+                            let mut then_stmts = Vec::new();
+                            self.reduce_expr(expr_right, &mut then_stmts, s)?;
+                            let else_stmts = vec![Statement::Const { val: Value::I32(0) }];
+                            let if_block = Block::If {
+                                id: if_id,
+                                then_stmts: then_stmts,
+                                else_stmts: else_stmts,
+                                t: Some(Type::I32),
+                            };
+                            self.reduce_expr(expr_left, stmts, s)?;
+                            stmts.push(Statement::Block {
+                                block: Box::new(if_block),
+                            });
+                        }
+                        Logical::Or => {
+                            let if_id = s.fresh_bb_id();
+                            let then_stmts = vec![Statement::Const { val: Value::I32(1) }];
+                            let mut else_stmts = Vec::new();
+                            self.reduce_expr(expr_right, &mut else_stmts, s)?;
+                            let if_block = Block::If {
+                                id: if_id,
+                                then_stmts: then_stmts,
+                                else_stmts: else_stmts,
+                                t: Some(Type::I32),
+                            };
+                            self.reduce_expr(expr_left, stmts, s)?;
+                            stmts.push(Statement::Block {
+                                block: Box::new(if_block),
+                            });
+                        }
+                    },
                 }
             }
             Expr::Unary {
-                unop, expr, t_id, loc
+                unop,
+                expr,
+                t_id,
+                loc,
             } => {
                 let t = get_type(*t_id, s)?;
 
@@ -267,26 +335,19 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
                 //  > (integer, minus): push zero first, then binary operator
                 //  > (bool, not):      push one first, then binary operator
                 match unop {
-                    ASTUnop::Minus => {
-                        match t {
-                            Type::I32 => {
-                                stmts.push(Statement::Const { val: Value::I32(0) });
-                            },
-                            Type::I64 => {
-                                stmts.push(Statement::Const { val: Value::I64(0) });
-                            },
-                            _ => {},
-                        }
-                    }
+                    ASTUnop::Minus => match t {
+                        Type::I32 => stmts.push(Statement::Const { val: Value::I32(0) }),
+                        Type::I64 => stmts.push(Statement::Const { val: Value::I64(0) }),
+                        _ => {}
+                    },
                     ASTUnop::Not => {
                         match t {
                             // we should only have I32 for booleans if the typing phase is correct
-                            Type::I32 => {
-                                stmts.push(Statement::Const { val: Value::I32(1) });
-                            },
-                            _ => {
-                                self.err.report_internal(*loc, String::from("Not applied to something else than a boolean (I32) → error in type phase"));
-                            },
+                            Type::I32 => stmts.push(Statement::Const { val: Value::I32(1) }),
+                            _ => self.err.report_internal(
+                                *loc,
+                                String::from("Not applied to something else than a boolean (I32) → error in type phase")
+                            ),
                         }
                     }
                 }
@@ -295,16 +356,18 @@ impl<'a, 'b> MIRProducer<'a, 'b> {
 
                 // generic case: push operator (might be unary or binary)
                 let stmt = match unop {
-                    ASTUnop::Minus => {
-                        match t {
-                            Type::I32 => Statement::Binop { binop: Binop::I32Sub },
-                            Type::I64 => Statement::Binop { binop: Binop::I64Sub },
-                            Type::F32 => Statement::Unop { unop: Unop::F32Neg },
-                            Type::F64 => Statement::Unop { unop: Unop::F64Neg },
-                        }
-                    }
-                    ASTUnop::Not => {
-                        Statement::Binop { binop: Binop::I32Xor }
+                    ASTUnop::Minus => match t {
+                        Type::I32 => Statement::Binop {
+                            binop: Binop::I32Sub,
+                        },
+                        Type::I64 => Statement::Binop {
+                            binop: Binop::I64Sub,
+                        },
+                        Type::F32 => Statement::Unop { unop: Unop::F32Neg },
+                        Type::F64 => Statement::Unop { unop: Unop::F64Neg },
+                    },
+                    ASTUnop::Not => Statement::Binop {
+                        binop: Binop::I32Xor,
                     },
                 };
                 stmts.push(stmt);
@@ -340,6 +403,9 @@ fn get_binop(binop: ASTBinop, t: Type) -> Result<FromBinop, String> {
             ASTBinop::Greater => Ok(FromBinop::Relop(Relop::I32Gt)),
             ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::I32Le)),
             ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::I32Ge)),
+
+            ASTBinop::And => Ok(FromBinop::Logical(Logical::And)),
+            ASTBinop::Or => Ok(FromBinop::Logical(Logical::Or)),
 
             _ => Err(String::from("Bad binary operator for i32")),
         },

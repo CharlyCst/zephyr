@@ -1,21 +1,34 @@
-use super::types::TypeId;
+use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
 
 pub type NameId = usize;
+pub type FunId = u64;
 
-// Defining named and typed AST nodes.
-// In the future we may want to consider moving this
-// into a new HIR phase.
+/// A type program, ready to be converted to MIR.
+pub struct ResolvedProgram {
+    pub funs: Vec<Function>,
+    pub names: NameStore,
+    pub types: TypeVarStore,
+    pub constraints: ConstraintStore,
+}
+
 pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub locals: Vec<NameId>,
     pub block: Block,
-    pub exported: bool,
+    pub is_pub: bool,
+    pub exposed: Option<String>,
     pub loc: Location,
     pub n_id: NameId,
+    pub fun_id: FunId,
+}
+
+#[derive(Clone)]
+pub enum Declaration {
+    Function { t: Type, fun_id: FunId },
 }
 
 pub struct Block {
@@ -61,6 +74,11 @@ pub enum Value {
         loc: Location,
         t_id: TypeId,
     },
+    Float {
+        val: f64,
+        loc: Location,
+        t_id: TypeId,
+    },
     Boolean {
         val: bool,
         loc: Location,
@@ -74,6 +92,10 @@ pub enum Expression {
     },
     Literal {
         value: Value,
+    },
+    Function {
+        fun_id: FunId,
+        loc: Location,
     },
     Binary {
         expr_left: Box<Expression>,
@@ -90,7 +112,7 @@ pub enum Expression {
         t_id: TypeId,
     },
     CallDirect {
-        fun_id: NameId,
+        fun_id: FunId,
         args: Vec<Expression>,
         loc: Location,
         t_id: TypeId,
@@ -110,7 +132,9 @@ impl Expression {
             Expression::Literal { value } => match value {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
+                Value::Float { loc, .. } => *loc,
             },
+            Expression::Function { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,

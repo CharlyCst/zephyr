@@ -32,21 +32,26 @@ pub enum TokenType {
 
     // Literals
     Identifier(String),
-    NumberLit(u64),
+    IntegerLit(u64),
+    FloatLit(f64),
     BooleanLit(bool),
-    // StringLit(String),
+    StringLit(String),
 
     // Keywords
-    Let,
-    Var,
+    As,
+    Else,
+    Expose,
+    False,
     Fun,
     If,
-    Else,
-    While,
+    Let,
+    Package,
+    Pub,
     Return,
     True,
-    False,
-    Export,
+    Use,
+    Var,
+    While,
 
     // Other
     SemiColon,

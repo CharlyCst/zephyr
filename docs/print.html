@@ -83,7 +83,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="overview/overview.html"><strong aria-hidden="true">1.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="overview/build.html"><strong aria-hidden="true">1.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="overview/architecture.html"><strong aria-hidden="true">1.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="ast/ast.html"><strong aria-hidden="true">2.</strong> AST</a></li><li class="chapter-item expanded "><a href="mir/mir.html"><strong aria-hidden="true">3.</strong> MIR</a></li><li class="chapter-item expanded "><a href="wasm/wasm.html"><strong aria-hidden="true">4.</strong> Wasm</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -152,6 +152,133 @@
                         <h1><a class="header" href="#introduction" id="introduction">Introduction</a></h1>
 <p>Welcome to the Compiler Book!</p>
 <p>This book describes the inner working of the Fork Compiler, it is a work in progress but hopefully it will help you wrap your head around the compiler anyway!</p>
+<h1><a class="header" href="#installation" id="installation">Installation</a></h1>
+<p>Not available yet, figure it out!</p>
+<h1><a class="header" href="#the-fork-language" id="the-fork-language">The Fork language</a></h1>
+<p>This chapter is about introducing the Fork language. </p>
+<p>At the time of writing, Fork is only at version 0.1.0 and does not yet support memory allocation, only numbers and booleans can be manipuled but the language support all other basic features you probably expect, namely:</p>
+<ul>
+<li>Arithmetic, boolean and bit-level manipulation.</li>
+<li>Functions and control flow.</li>
+<li>Typing.</li>
+<li>Compiler errors (not yet perfect but hopefully helpul).</li>
+<li>A package system.</li>
+</ul>
+<p>Without further waiting, let's get started writing Fork!</p>
+<h1><a class="header" href="#a-basic-program" id="a-basic-program">A basic program</a></h1>
+<p>Let's write our first Fork program:</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>package &quot;main&quot;
+
+expose add 
+
+fun add(a i32, b i32) i32 {
+    return a + b
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>In Fork a file always starts with a <code>package</code> declaration, so here we are defining a <code>main</code> package. There is no name imposed, it could also have been <code>add</code> or anything you like! More on that in a later chapter.</p>
+<p>This package exposes a single declaration, an <code>add</code> function. Remember that Fork targets WebAssembly, which is meant to live inside some runtime, thus we need to expose functions for the runtime to be able tu actually run them.</p>
+<p>Then comes to function itself, it has a name, arguments with their types and a return type. Version 0.1.0 only supports <code>i32</code>, <code>i64</code>, <code>f32</code> and <code>f64</code>, but structs, strings and more are comming!</p>
+<p>Notice that there is no semi-colon <code>;</code> in Fork, as in Go those are inserted automatically at the right places so that you don't need to bother with that yourself.</p>
+<p>Now let's compile our program! For now you will have to compile the compiler yourself, you will need the rust toolchain for that, then run <code>cargo build --release</code> at the root of the directory, this will create the binary at <code>target/release/fork</code>. Then you can compile any fork program you like:</p>
+<pre><code class="language-sh">fork add.frk
+</code></pre>
+<p>This will produce a <code>main.wasm</code> file, because we compiled the <code>main</code> package. You can choose the output name with the <code>-o output_name.wasm</code> option.</p>
+<p>Then you need a runtime to actually run a wasm binary, in this exemple we will use <a href="https://github.com/bytecodealliance/wasmtime">wasmtime</a>, but choose the one that floats your boat. With wasmtime we can invoke a wasm function an pass it arguments:</p>
+<pre><code class="language-sh">wasmtime main.wasm --invoke add 3 4
+</code></pre>
+<p>And that is it! You just wrote your first Fork program!</p>
+<h1><a class="header" href="#control-flow" id="control-flow">Control flow</a></h1>
+<p>Let's have a look at a more interesting exemple:</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>package &quot;pow&quot;
+
+expose pow as _start
+
+fun pow(a i32, b i32) i32 {
+    if b == 0 {
+        return 1
+    }
+
+    let n = b
+    let x = a
+    let acc = 1
+
+    while n &gt; 1 {
+        if n % 2 == 1 {
+            acc = acc * x
+        }
+        x = x * x
+        n = n / 2
+    }
+    return x * acc
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>There a few new things going on here, first we can use aliases when exporting functions with the <code>as</code> keyword. The reason I chosed <code>_start</code> is because it is the name of the main funtion in runtimes implementing the <a href="https://hacks.mozilla.org/2019/03/standardizing-wasi-a-webassembly-system-interface/">WASI</a> standard:</p>
+<pre><code class="language-sh">wasmtime pow.wasm 2 5
+32
+</code></pre>
+<p>To declare variables in Fork we use the <code>let</code> keyword. We can also use all the basic control flow primitives:</p>
+<ul>
+<li><code>if</code> and <code>else</code>.</li>
+<li><code>while</code> loop, <code>for</code> are not yet supported.</li>
+<li><code>return</code> which does what you expect.</li>
+</ul>
+<h1><a class="header" href="#packages" id="packages">Packages</a></h1>
+<p>Fork projects are organised into packages, each package lives in its own folder:</p>
+<pre><code class="language-text">src            # package &quot;http&quot;
+├── main.frk
+├── cookies.frk
+└── request    # package &quot;request&quot;
+    ├── headers.frk
+    └── status_code.frk
+</code></pre>
+<p>There is no constraints on the name of the root package, but all its children <strong>must</strong> have the same name as their directories.</p>
+<p>Package can be imported using the <code>use</code> keyword which support optionnal aliasing using <code>as</code>:</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>package &quot;http&quot;
+
+use &quot;http/request&quot;
+
+fun main() {
+    request.send()
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>If no alias is present, the last part of the package path is used as alias.</p>
+<p>A single package may consist of many files, all these files share the same scope, but they <strong>must</strong> all start with the same <code>package &quot;my_package&quot;</code> declaration. In the above exemple, functions writen inside of <code>cookies.frk</code> can be used inside of <code>main.frk</code> without explicitely importing them with the <code>use</code> keyword.</p>
+<p>To make a declaration (i.e function for now) public it must be preceded by the <code>pub</code> keyword:</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>package &quot;request&quot;
+
+pub fun send() {
+    // Do stuff here
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p><code>pub</code> functions can be used by other Fork packages, but are not <em>exposed</em> in the final <code>.wasm</code> file. They can be if the adequate <code>expose</code> statement is present, though.</p>
+<h2><a class="header" href="#single-file-package" id="single-file-package">Single file package</a></h2>
+<p>Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Fork you can create <em>single file packages</em> that lives in the same directory as their parent:</p>
+<pre><code class="language-go">package &quot;http/utils&quot;
+
+// Stuff goes here
+</code></pre>
+<p>This file can live in the folder of <code>http</code> but is still a separate single file package. However, the file <strong>must</strong> have the same name as the package, in this case it must be named named  <code>utils.frk</code>, so that the compiler and most importantly other developers can easily find the file if needed.</p>
+<h2><a class="header" href="#orphan-files" id="orphan-files">Orphan files</a></h2>
+<p>Sometimes you just want to write small scripts, testing can be one of such use cases. Fork offers a notion of <em>orphan files</em> for that purpose, it's like a normal Fork file but its package name must start wirh a <code>#</code>:</p>
+<pre><code class="language-go">package &quot;#test_http&quot;
+</code></pre>
+<p>There are no other constraints on orphan files, they are discarded by the compiler unless they are the target of compilation.</p>
 <h1><a class="header" href="#compiler-overview" id="compiler-overview">Compiler Overview</a></h1>
 <p>This chapter aims at giving an overview of the compiler, without diving in the details. You will learn how to navigate the project structure, build and use the compiler.</p>
 <h2><a class="header" href="#project-structure" id="project-structure">Project structure</a></h2>
@@ -168,10 +295,15 @@
 ├── test
 └── test_out
 </code></pre>
-<p>The compiler sources can be found in the <code>src</code> directory, in which live multiple crates. You can learn more about those crates in the dedicated chapters.</p>
-<p>The <code>fork</code> folder hosts fork source files, they are used for testing and showcase purpose but may be removed in the future. Compiled files can be put inside the <code>out</code> folder, <code>.wasm</code> files are ignored there.</p>
-<p>Tests files lives in <code>test</code> and their outputs are generated in <code>test_out</code>.</p>
-<p>Finally, this book itself lives inside the compiler repository, its sources can be found in the <code>book</code> folder while the produced HTML is hosted in the <code>docs</code> folder. The online version of the book is the one inside the <code>docs</code> folder of the master branch of the Github repository.</p>
+<p><strong>src</strong><br />
+The compiler sources can be found in the <code>src</code> directory, in which live multiple crates. You can learn more about those crates in the dedicated chapters.</p>
+<p><strong>fork</strong><br />
+The <code>fork</code> folder hosts fork source files, they are used for testing and showcase purpose but may be removed in the future. Compiled files can be put inside the <code>out</code> folder, <code>.wasm</code> files are ignored there.</p>
+<p><strong>test</strong><br />
+Tests files lives in <code>test</code> and their outputs are generated in <code>test_out</code>.</p>
+<p><strong>book</strong><br />
+Finally, this book itself lives inside the compiler repository, its sources can be found in the <code>book</code> folder while the produced HTML is hosted in the <code>docs</code> folder. The online version of the book is the one inside the <code>docs</code> folder of the master branch of the Github repository.
+You can find out more information on how to contribute to the book on the <a href="overview/../contributing/documentation.html">documentation</a> chapter.</p>
 <h1><a class="header" href="#building-the-compiler" id="building-the-compiler">Building the compiler</a></h1>
 <h2><a class="header" href="#building-and-compiling" id="building-and-compiling">Building and compiling</a></h2>
 <p>Building the compile is super easy, just run:</p>
@@ -181,7 +313,7 @@
 <p>Compiling a fork (<code>.frk</code>) file to wasm is not harder, use <code>cargo run</code> and pass the arguments (input file and output file) to the compiler:</p>
 <pre><code class="language-bash">cargo run -- test.frk test.wasm
 </code></pre>
-<p>To easy development the main <code>make</code> command compiles <code>fork/hello.frk</code> and output the result to <code>out/hello.wasm</code>. When working on the compiler, one usually just runs:</p>
+<p>To ease development, the main <code>make</code> command compiles <code>fork/hello.frk</code> and output the result to <code>out/hello.wasm</code>. When working on the compiler, one usually just runs:</p>
 <pre><code class="language-bash">make
 </code></pre>
 <h2><a class="header" href="#running-a-compiled-file" id="running-a-compiled-file">Running a compiled file</a></h2>
@@ -227,17 +359,63 @@ export fun Main(a i32, b i32) i32 {
 <h2><a class="header" href="#the-compiler-pipeline" id="the-compiler-pipeline">The compiler pipeline</a></h2>
 <p>When compiling source code, the compiler goes through the following stages of the pipeline:</p>
 <ul>
-<li>AST, for Abstract Syntax Tree, this stage is responsible for scanning the source code and parsing, it creates an abstract syntax tree ready to be used by the next stage.</li>
-<li>MIR, or mid level intermediate representation (because we may need an high level intermediate representation in the future ;) ). Its first perform a name resolution step on the AST, that is it looks for name definitions and gives unique IDs for each of them. The name resolution step is also used to generate type constraints, these are used for type checking just after name resolution. Once the program is successfully type-checked, mir-code is emitted, it looks almost like wasm with some minor differences.</li>
-<li>WASM, the last step that translates mir to the binary wasm representation, ready to be executed.</li>
+<li><a href="overview/../ast/ast.html">AST</a>, for Abstract Syntax Tree, this stage is responsible for scanning the source code and parsing, it creates an abstract syntax tree ready to be used by the next stage.</li>
+<li><a href="overview/../mir/mir.html">MIR</a>, or mid level intermediate representation (because we may need an high level intermediate representation in the future ;) ). Its first perform a name resolution step on the AST, that is it looks for name definitions and gives unique IDs for each of them. The name resolution step is also used to generate type constraints, these are used for type checking just after name resolution. Once the program is successfully type-checked, mir-code is emitted, it looks almost like wasm with some minor differences.</li>
+<li><a href="overview/../wasm/wasm.html">WASM</a>, the last step that translates mir to the binary wasm representation, ready to be executed.</li>
 </ul>
 <h2><a class="header" href="#error-handling" id="error-handling">Error handling</a></h2>
 <p>Errors can happen at any stage of the compiler, reporting those errors and helping the developer to solve them is at least as important as compiling correct code.</p>
 <p>To produce high quality errors, each stage of the pipeline (and each substage) is given an <code>ErrorHandler</code> whose job is to store errors. Anywhere in the pipeline the compilation can be aborted and error reported (it is not mandatory to stop compilation as soon as an error occurs).</p>
-<p>To generate helpful messages the <code>ErrorHandler</code> uses <code>Location</code>s, those are composed of a position (in character offset from the beginning of the file) and a length. Errors are stored with their location, and once the error handler is asked to report the errors the source file is scanned again to get back the lines and erroneous source code.</p>
+<p>To generate helpful messages the <code>ErrorHandler</code> uses <code>Location</code>s, those are composed of a position (in character offset from the beginning of the file) and a length. Errors are stored with their location, and once the error handler is asked to report the errors, the source file is scanned again to get back the lines and erroneous source code.</p>
 <h1><a class="header" href="#ast" id="ast">AST</a></h1>
 <h1><a class="header" href="#mir" id="mir">MIR</a></h1>
 <h1><a class="header" href="#wasm" id="wasm">Wasm</a></h1>
+<h1><a class="header" href="#contributing" id="contributing">Contributing</a></h1>
+<h1><a class="header" href="#documentation" id="documentation">Documentation</a></h1>
+<p>The documentation you are currently reading can be found on the branch <a href="https://github.com/CharlyCst/fork/tree/book">book</a>. This documentation is built using rust's <a href="https://github.com/rust-lang/mdBook">mdbook</a> project. You can find instructions to install it on the project's homepage.</p>
+<p>The documentation can be compiled using our makefile. It will populate the <code>docs/*</code> folder.</p>
+<pre><code class="language-sh">make book
+</code></pre>
+<p>If you want to work on the documentation and preview your changes in real time, you can use the command <code>mdbook serve</code> from within the <code>book/*</code> directory. This will provide you with a local website reloading on sources change.</p>
+<h1><a class="header" href="#roadmap" id="roadmap">Roadmap</a></h1>
+<h2><a class="header" href="#version-010" id="version-010">Version 0.1.0</a></h2>
+<h3><a class="header" href="#memory-allocation" id="memory-allocation">Memory allocation</a></h3>
+<ul>
+<li>Find where to put the source code in the project's structure</li>
+<li>Alloc</li>
+<li>Free</li>
+</ul>
+<h3><a class="header" href="#support-multiple-source-files" id="support-multiple-source-files">Support multiple source files</a></h3>
+<ul>
+<li>import system</li>
+</ul>
+<h3><a class="header" href="#extend-language" id="extend-language">Extend language</a></h3>
+<ul>
+<li>add new keywords</li>
+<li>parse new keywords (grammar)</li>
+<li>keywords
+<ul>
+<li>struct</li>
+<li>...</li>
+</ul>
+</li>
+<li>operators
+<ul>
+<li>unary negation (<code>-1</code> vs. <code>0 - 1</code>)</li>
+</ul>
+</li>
+</ul>
+<h3><a class="header" href="#documentation-1" id="documentation-1">Documentation</a></h3>
+<h4><a class="header" href="#code-the-language" id="code-the-language">Code the language</a></h4>
+<p>This section aims to provide insights on this repo: how the code is structured, how to contribute to the compiler and help build the Fork language.</p>
+<ul>
+<li>...</li>
+</ul>
+<h4><a class="header" href="#code-using-the-language" id="code-using-the-language">Code using the language</a></h4>
+<p>This section aims to provide insights on the Fork language: how to use it to write code</p>
+<ul>
+<li>...</li>
+</ul>
 
                     </main>
 

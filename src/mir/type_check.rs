@@ -1,9 +1,11 @@
-use super::types::id::T_ID_INTEGER;
+use super::names::{Declaration, Function, NameStore};
+use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore};
 use super::{ResolvedProgram, TypedProgram};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 enum Progress {
     Some,
@@ -11,15 +13,16 @@ enum Progress {
     Error,
 }
 
-pub struct TypeChecker<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct TypeChecker<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> TypeChecker<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> TypeChecker<'a, 'b> {
+impl<'a> TypeChecker<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> TypeChecker {
         TypeChecker { err: error_handler }
     }
 
+    /// Type check a ResolvedProgram.
     pub fn check(&mut self, prog: ResolvedProgram) -> TypedProgram {
         let mut type_vars = prog.types;
         let mut constraints = prog.constraints;
@@ -39,15 +42,21 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         }
 
         let store = self.build_store(&type_vars);
+        let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs);
+
         TypedProgram {
             funs: prog.funs,
             names: prog.names,
             types: store,
+            pub_decls: pub_decls,
         }
     }
 
+    /// Build a `TypeStore` from a `TypeVarStore`, should be called once constraints have been
+    /// satisfyied.
     fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
         let integers = var_store.get(T_ID_INTEGER);
+        let floats = var_store.get(T_ID_FLOAT);
         let mut store = TypeStore::new();
         for var in var_store {
             if var.types.len() == 1 {
@@ -62,9 +71,13 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                 // Choose arbitrary type if applicable
                 if var.types == integers.types {
                     store.put(Type::I64);
+                } else if var.types == floats.types {
+                    store.put(Type::F64);
                 } else {
                     // TODO: improve error handling...
-                    self.err.report_no_loc(String::from("Could not infer type"))
+                    println!("{:?}", floats.types);
+                    println!("{:?}", var.types);
+                    self.err.report(var.loc, String::from("Could not infer type"))
                 }
             }
         }
@@ -72,8 +85,33 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         store
     }
 
-    // Apply a constraint, return true if the constraint helped removing type candidates,
-    // i.e. we are making progress
+    /// Returns a map of the public types (from public declaration with `pub` keyword).
+    fn get_pub_decls(
+        &mut self,
+        types: &TypeStore,
+        names: &NameStore,
+        funs: &Vec<Function>,
+    ) -> HashMap<String, Declaration> {
+        let mut pub_decls = HashMap::new();
+        for fun in funs {
+            if fun.is_pub {
+                let name = names.get(fun.n_id);
+                let t = types.get(name.t_id);
+                pub_decls.insert(
+                    fun.ident.clone(),
+                    Declaration::Function {
+                        t: t.clone(),
+                        fun_id: fun.fun_id,
+                    },
+                );
+            }
+        }
+
+        pub_decls
+    }
+
+    /// Apply a constraints, it may modify the type variable store `store`.
+    /// Progress can be made or not, depending on the state of the store.
     fn apply_constr(
         &mut self,
         constr: &TypeConstraint,

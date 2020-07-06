@@ -1,4 +1,8 @@
-export fun Main() i32 {
+package "#test"
+
+expose main as _start
+
+fun main() i32 {
     if fact(1, 6) == 720 {
         return 42
     }

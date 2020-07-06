@@ -1,0 +1,10 @@
+package "#test"
+
+expose main as _start
+
+// Test '_' in identifiers
+fun main() i32 {
+    let _x_ = 42
+    let hello_world = true
+	return _x_
+}

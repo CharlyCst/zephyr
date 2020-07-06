@@ -1,9 +1,12 @@
 #![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
+use super::names::Declaration;
 
+use std::collections::HashMap;
 use std::fmt;
 
 pub struct Program {
     pub funs: Vec<Function>,
+    pub pub_decls: HashMap<String, Declaration>,
 }
 
 pub struct Function {
@@ -13,12 +16,13 @@ pub struct Function {
     pub ret_types: Vec<Type>,
     pub locals: Vec<Local>,
     pub body: Block,
-    pub exported: bool,
+    pub is_pub: bool,
+    pub exposed: Option<String>,
     pub fun_id: FunctionId,
 }
 
 pub type LocalId = usize; // For now NameId are used as LocalId
-pub type FunctionId = usize;
+pub type FunctionId = u64;
 
 pub struct Local {
     pub id: LocalId,
@@ -31,15 +35,18 @@ pub enum Block {
     Block {
         id: BasicBlockId,
         stmts: Vec<Statement>,
+        t: Option<Type>,
     },
     Loop {
         id: BasicBlockId,
         stmts: Vec<Statement>,
+        t: Option<Type>,
     },
     If {
         id: BasicBlockId,
         then_stmts: Vec<Statement>,
         else_stmts: Vec<Statement>,
+        t: Option<Type>,
     },
 }
 
@@ -134,6 +141,11 @@ pub enum Relop {
     F64Ge,
 }
 
+pub enum Logical {
+    And,
+    Or,
+}
+
 pub enum Parametric {
     Drop,
 }
@@ -200,11 +212,11 @@ impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut strs = Vec::new();
         let stmts = match self {
-            Block::Block { id, stmts } => {
+            Block::Block { id, stmts, .. } => {
                 strs.push(format!("block {} {{", id));
                 stmts
             }
-            Block::Loop { id, stmts } => {
+            Block::Loop { id, stmts, .. } => {
                 strs.push(format!("loop {} {{", id));
                 stmts
             }
@@ -252,10 +264,10 @@ impl fmt::Display for Statement {
             Statement::Control { cntrl } => write!(f, "{}", cntrl),
             Statement::Call { call } => write!(f, "{}", call),
             Statement::Const { val } => match val {
-                Value::I32(x) => write!(f, "i32 {}", x),
-                Value::I64(x) => write!(f, "i64 {}", x),
-                Value::F32(x) => write!(f, "f32 {}", x),
-                Value::F64(x) => write!(f, "f64 {}", x),
+                Value::I32(x) => write!(f, "i32.const {}", x),
+                Value::I64(x) => write!(f, "i64.const {}", x),
+                Value::F32(x) => write!(f, "f32.const {}", x),
+                Value::F64(x) => write!(f, "f64.const {}", x),
             },
         }
     }

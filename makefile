@@ -1,6 +1,6 @@
 .PHONY: main
 main: src/main.rs
-	cargo run -- fork/hello.frk out/hello.wasm
+	cargo run -- fork -o out/hello.wasm
 
 .PHONY: setup
 setup:
@@ -26,3 +26,4 @@ book: book/book.toml
 
 .PHONY: serve
 serve:
+	mdbook watch book --open --dest-dir book/book

@@ -1,10 +1,13 @@
 use crate::ast;
+use crate::cli::Config;
 use crate::error::ErrorHandler;
 
-use self::names::NameStore;
-use self::types::{ConstraintStore, TypeStore, TypeVarStore};
+use self::names::{NameStore, ResolvedProgram};
+use self::types::TypeStore;
 
-pub use self::names::NameId;
+use std::collections::HashMap;
+
+pub use self::names::{Declaration, NameId};
 pub use self::types::TypeId;
 pub use mir::*;
 
@@ -15,51 +18,54 @@ mod resolver;
 mod type_check;
 mod types;
 
-pub struct ResolvedProgram {
-    pub funs: Vec<names::Function>,
-    pub names: NameStore,
-    pub types: TypeVarStore,
-    pub constraints: ConstraintStore,
-}
-
 pub struct TypedProgram {
     pub funs: Vec<names::Function>,
     pub names: NameStore,
     pub types: TypeStore,
+    pub pub_decls: HashMap<String, Declaration>,
 }
 
 pub use mir::Program;
 
-pub fn to_mir<'a, 'b>(
+pub fn to_mir<'a>(
     ast_program: ast::Program,
-    error_handler: &'b mut ErrorHandler<'a>,
+    namespace: HashMap<String, HashMap<String, Declaration>>,
+    error_handler: &mut ErrorHandler,
+    config: &Config,
 ) -> mir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
-    let program = name_resolver.resolve(ast_program.funs);
+    let program = name_resolver.resolve(ast_program, namespace);
 
-    println!("\n/// Name Resolution ///\n");
+    if config.verbose {
+        println!("\n/// Name Resolution ///\n");
 
-    println!("{}\n", program.names);
-    println!("{}\n", program.types);
-    println!("{}\n", program.constraints);
+        println!("{}\n", program.names);
+        println!("{}\n", program.types);
+        println!("{}\n", program.constraints);
 
-    println!("\n/// Type Checking ///\n");
+        println!("\n/// Type Checking ///\n");
+    }
 
     let mut type_checker = type_check::TypeChecker::new(error_handler);
     let typed_program = type_checker.check(program);
 
-    println!("{}", typed_program.types);
+    if config.verbose {
+        println!("{}", typed_program.types);
+    }
 
-    error_handler.print_and_exit();
+    error_handler.flush_and_exit_if_err();
 
-    println!("\n/// MIR Production ///\n");
+    if config.verbose {
+        println!("\n/// MIR Production ///\n");
+    }
 
     let mut mir_producer = ast_to_mir::MIRProducer::new(error_handler);
     let mir = mir_producer.reduce(typed_program);
 
-    println!("{}", mir);
+    if config.verbose {
+        println!("{}", mir);
+    }
 
-    error_handler.print_and_exit();
-
+    error_handler.flush_and_exit_if_err();
     mir
 }

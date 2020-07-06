@@ -52,11 +52,12 @@ pub const INSTR_CALL_INDIRECT: Instr = 0x11;
 // Variables
 pub const INSTR_LOCAL_GET: Instr = 0x20;
 pub const INSTR_LOCAL_SET: Instr = 0x21;
-// Numerical
+// Numerical Constants
 pub const INSTR_I32_CST: Instr = 0x41;
 pub const INSTR_I64_CST: Instr = 0x42;
 pub const INSTR_F32_CST: Instr = 0x43;
 pub const INSTR_F64_CST: Instr = 0x44;
+// I32 comparisons
 pub const INSTR_I32_EQZ: Instr = 0x45;
 pub const INSTR_I32_EQ: Instr = 0x46;
 pub const INSTR_I32_NE: Instr = 0x47;
@@ -68,6 +69,7 @@ pub const INSTR_I32_LE_S: Instr = 0x4c;
 pub const INSTR_I32_LE_U: Instr = 0x4d;
 pub const INSTR_I32_GE_S: Instr = 0x4e;
 pub const INSTR_I32_GE_U: Instr = 0x4f;
+// I64 comparisons
 pub const INSTR_I64_EQZ: Instr = 0x50;
 pub const INSTR_I64_EQ: Instr = 0x51;
 pub const INSTR_I64_NE: Instr = 0x52;
@@ -79,6 +81,21 @@ pub const INSTR_I64_LE_S: Instr = 0x57;
 pub const INSTR_I64_LE_U: Instr = 0x58;
 pub const INSTR_I64_GE_S: Instr = 0x59;
 pub const INSTR_I64_GE_U: Instr = 0x5a;
+// F32 comparisons
+pub const INSTR_F32_EQ: Instr = 0x5b;
+pub const INSTR_F32_NE: Instr = 0x5c;
+pub const INSTR_F32_LT: Instr = 0x5d;
+pub const INSTR_F32_GT: Instr = 0x5e;
+pub const INSTR_F32_LE: Instr = 0x5f;
+pub const INSTR_F32_GE: Instr = 0x60;
+// F64 comparisons
+pub const INSTR_F64_EQ: Instr = 0x61;
+pub const INSTR_F64_NE: Instr = 0x62;
+pub const INSTR_F64_LT: Instr = 0x63;
+pub const INSTR_F64_GT: Instr = 0x64;
+pub const INSTR_F64_LE: Instr = 0x65;
+pub const INSTR_F64_GE: Instr = 0x66;
+// I32 operations
 pub const INSTR_I32_ADD: Instr = 0x6a;
 pub const INSTR_I32_SUB: Instr = 0x6b;
 pub const INSTR_I32_MUL: Instr = 0x6c;
@@ -89,6 +106,7 @@ pub const INSTR_I32_REM_U: Instr = 0x70;
 pub const INSTR_I32_AND: Instr = 0x71;
 pub const INSTR_I32_OR: Instr = 0x72;
 pub const INSTR_I32_XOR: Instr = 0x73;
+// I64 operations
 pub const INSTR_I64_ADD: Instr = 0x7c;
 pub const INSTR_I64_SUB: Instr = 0x7d;
 pub const INSTR_I64_MUL: Instr = 0x7e;
@@ -99,9 +117,19 @@ pub const INSTR_I64_REM_U: Instr = 0x82;
 pub const INSTR_I64_AND: Instr = 0x83;
 pub const INSTR_I64_OR: Instr = 0x84;
 pub const INSTR_I64_XOR: Instr = 0x85;
-// Floating point
+// F32 operations
+pub const INSTR_F32_ABS: Instr = 0x8b;
 pub const INSTR_F32_NEG: Instr = 0x8c;
+pub const INSTR_F32_ADD: Instr = 0x92;
+pub const INSTR_F32_SUB: Instr = 0x93;
+pub const INSTR_F32_MUL: Instr = 0x94;
+pub const INSTR_F32_DIV: Instr = 0x95;
+// F64 operations
 pub const INSTR_F64_NEG: Instr = 0x9a;
+pub const INSTR_F64_ADD: Instr = 0xa0;
+pub const INSTR_F64_SUB: Instr = 0xa1;
+pub const INSTR_F64_MUL: Instr = 0xa2;
+pub const INSTR_F64_DIV: Instr = 0xa3;
 
 const LEB_MASK: usize = 0x0000007f;
 

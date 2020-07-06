@@ -1,5 +1,8 @@
-// Test add operator
+package "#test"
 
-export fun Main() i32 {
+expose main as _start
+
+// Test add operator
+fun main() i32 {
     return 38 + 4
 }

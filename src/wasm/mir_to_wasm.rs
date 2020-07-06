@@ -32,7 +32,7 @@ struct LocalState<'a> {
 }
 
 impl<'a> LocalState<'a> {
-    pub fn new(global_state: &'a GlobalState) -> LocalState<'a> {
+    pub fn new(global_state: &GlobalState) -> LocalState {
         LocalState {
             locals: HashMap::new(),
             blocks: HashMap::new(),
@@ -58,12 +58,12 @@ impl<'a> LocalState<'a> {
     }
 }
 
-pub struct Compiler<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+pub struct Compiler<'a> {
+    err: &'a mut ErrorHandler,
 }
 
-impl<'a, 'b> Compiler<'a, 'b> {
-    pub fn new(error_handler: &'b mut ErrorHandler<'a>) -> Compiler<'a, 'b> {
+impl<'a> Compiler<'a> {
+    pub fn new(error_handler: &mut ErrorHandler) -> Compiler {
         Compiler { err: error_handler }
     }
 
@@ -93,21 +93,6 @@ impl<'a, 'b> Compiler<'a, 'b> {
             results.push(t);
         }
 
-        let export_name = if fun.exported {
-            if fun.ident == "Main" {
-                Some(String::from("_start")) // WASI main function
-            } else {
-                if fun.ident == "main" {
-                    self.err
-                        .report_no_loc(String::from("Main function must be capitalized"))
-                    // TODO report line
-                }
-                Some(fun.ident.clone())
-            }
-        } else {
-            None
-        };
-
         let mut code = Vec::new();
         self.locals(&fun, &mut state.locals, &mut code);
         self.body(fun.body, &mut state, &mut code);
@@ -117,8 +102,8 @@ impl<'a, 'b> Compiler<'a, 'b> {
             param_types: params,
             ret_types: results,
             type_idx: std::usize::MAX,
+            exposed: fun.exposed,
             body: code,
-            export_name: export_name,
         }
     }
 
@@ -142,7 +127,7 @@ impl<'a, 'b> Compiler<'a, 'b> {
 
     fn body(&mut self, block: mir::Block, s: &mut LocalState, code: &mut Vec<Instr>) {
         match block {
-            mir::Block::Block { stmts, id } => {
+            mir::Block::Block { stmts, id, .. } => {
                 s.block_start(id);
                 self.statements(stmts, s, code);
                 s.block_end();
@@ -155,18 +140,26 @@ impl<'a, 'b> Compiler<'a, 'b> {
 
     fn block(&mut self, block: mir::Block, s: &mut LocalState, code: &mut Vec<Instr>) {
         match block {
-            mir::Block::Block { stmts, id } => {
+            mir::Block::Block { stmts, id, t } => {
                 s.block_start(id);
                 code.push(INSTR_BLOCK);
-                code.push(BLOCK_TYPE);
+                if let Some(t) = t {
+                    code.push(type_to_bytes(mir_t_to_wasm(t)));
+                } else {
+                    code.push(BLOCK_TYPE);
+                }
                 self.statements(stmts, s, code);
                 code.push(INSTR_END);
                 s.block_end();
             }
-            mir::Block::Loop { stmts, id } => {
+            mir::Block::Loop { stmts, id, t } => {
                 s.block_start(id);
                 code.push(INSTR_LOOP);
-                code.push(BLOCK_TYPE);
+                if let Some(t) = t {
+                    code.push(type_to_bytes(mir_t_to_wasm(t)));
+                } else {
+                    code.push(BLOCK_TYPE);
+                }
                 self.statements(stmts, s, code);
                 code.push(INSTR_END);
                 s.block_end();
@@ -175,10 +168,15 @@ impl<'a, 'b> Compiler<'a, 'b> {
                 then_stmts,
                 else_stmts,
                 id,
+                t,
             } => {
                 s.block_start(id);
                 code.push(INSTR_IF);
-                code.push(BLOCK_TYPE);
+                if let Some(t) = t {
+                    code.push(type_to_bytes(mir_t_to_wasm(t)));
+                } else {
+                    code.push(BLOCK_TYPE);
+                }
                 self.statements(then_stmts, s, code);
                 if else_stmts.len() > 0 {
                     code.push(INSTR_ELSE);
@@ -217,12 +215,15 @@ impl<'a, 'b> Compiler<'a, 'b> {
                         code.push(INSTR_I64_CST);
                         code.extend(to_leb(x as usize));
                     }
-                    mir::Value::F32(_) => self
-                        .err
-                        .report_internal_no_loc(String::from("Floating points not yet supported")),
-                    mir::Value::F64(_) => self
-                        .err
-                        .report_internal_no_loc(String::from("Floating points not yet supported")),
+                    mir::Value::F32(x) => {
+                        code.push(INSTR_F32_CST);
+                        code.extend(x.to_le_bytes().iter());
+                        println!("{:?}", x.to_le_bytes());
+                    }
+                    mir::Value::F64(x) => {
+                        code.push(INSTR_F64_CST);
+                        code.extend(x.to_le_bytes().iter());
+                    }
                 },
                 mir::Statement::Control { cntrl } => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
@@ -271,7 +272,15 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::I64Div => INSTR_I64_DIV_U,
         mir::Binop::I64Rem => INSTR_I64_REM_U,
 
-        _ => unimplemented!(),
+        mir::Binop::F32Add => INSTR_F32_ADD,
+        mir::Binop::F32Sub => INSTR_F32_SUB,
+        mir::Binop::F32Mul => INSTR_F32_MUL,
+        mir::Binop::F32Div => INSTR_F32_DIV,
+
+        mir::Binop::F64Add => INSTR_F64_ADD,
+        mir::Binop::F64Sub => INSTR_F64_SUB,
+        mir::Binop::F64Mul => INSTR_F64_MUL,
+        mir::Binop::F64Div => INSTR_F64_DIV,
     }
 }
 
@@ -306,7 +315,19 @@ fn get_relop(relop: mir::Relop) -> Instr {
         mir::Relop::I64Le => INSTR_I64_LE_S,
         mir::Relop::I64Ge => INSTR_I64_GE_S,
 
-        _ => unimplemented!(),
+        mir::Relop::F32Eq => INSTR_F32_EQ,
+        mir::Relop::F32Ne => INSTR_F32_NE,
+        mir::Relop::F32Lt => INSTR_F32_LT,
+        mir::Relop::F32Gt => INSTR_F32_GT,
+        mir::Relop::F32Le => INSTR_F32_LE,
+        mir::Relop::F32Ge => INSTR_F32_GE,
+
+        mir::Relop::F64Eq => INSTR_F64_EQ,
+        mir::Relop::F64Ne => INSTR_F64_NE,
+        mir::Relop::F64Lt => INSTR_F64_LT,
+        mir::Relop::F64Gt => INSTR_F64_GT,
+        mir::Relop::F64Le => INSTR_F64_LE,
+        mir::Relop::F64Ge => INSTR_F64_GE,
     }
 }
 

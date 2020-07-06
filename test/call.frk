@@ -1,7 +1,14 @@
-// Test direct calls
+package "#test"
 
-export fun Main() i32 {
-    return add(40, 2)
+expose main as _start
+
+// Test direct calls
+fun main() i32 {
+    return add_indirect(40, 2)
+}
+
+fun add_indirect(a i32, b i32) i32 {
+    return add(a, b)
 }
 
 fun add(a i32, b i32) i32 {

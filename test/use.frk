@@ -1,0 +1,11 @@
+package "#test"
+
+// TODO: Test the use keyword
+// use "std/awesome"
+// use "std/math" as math
+
+expose main as _start
+
+fun main() i32 {
+    return 42
+}
