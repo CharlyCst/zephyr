@@ -1,6 +1,6 @@
 # Packages
 
-Fork projects are organised into packages, each package lives in its own folder:
+Zephyr projects are organised into packages, each package lives in its own folder:
 
 ```text
 src            # package "http"
@@ -39,11 +39,11 @@ pub fun send() {
 }
 ```
 
-`pub` functions can be used by other Fork packages, but are not _exposed_ in the final `.wasm` file. They can be if the adequate `expose` statement is present, though.
+`pub` functions can be used by other Zephyr packages, but are not _exposed_ in the final `.wasm` file. They can be if the adequate `expose` statement is present, though.
 
 ## Single file package
 
-Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Fork you can create _single file packages_ that lives in the same directory as their parent:
+Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Zephyr you can create _single file packages_ that lives in the same directory as their parent:
 
 ```go
 package "http/utils"
@@ -55,7 +55,7 @@ This file can live in the folder of `http` but is still a separate single file p
 
 ## Orphan files
 
-Sometimes you just want to write small scripts, testing can be one of such use cases. Fork offers a notion of _orphan files_ for that purpose, it's like a normal Fork file but its package name must start wirh a `#`:
+Sometimes you just want to write small scripts, testing can be one of such use cases. Zephyr offers a notion of _orphan files_ for that purpose, it's like a normal Zephyr file but its package name must start wirh a `#`:
 
 ```go
 package "#test_http"

@@ -1,6 +1,6 @@
 # Documentation
 
-The documentation you are currently reading can be found on the branch [book](https://github.com/CharlyCst/fork/tree/book). This documentation is built using rust's [mdbook](https://github.com/rust-lang/mdBook) project. You can find instructions to install it on the project's homepage.
+The documentation you are currently reading can be found on the branch [book](https://github.com/CharlyCst/zephyr/tree/book). This documentation is built using rust's [mdbook](https://github.com/rust-lang/mdBook) project. You can find instructions to install it on the project's homepage.
 
 The documentation can be compiled using our makefile. It will populate the `docs/*` folder.
 ```sh

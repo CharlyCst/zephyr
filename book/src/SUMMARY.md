@@ -2,7 +2,7 @@
 
 [Introduction](./introduction.md)
 
-- [The Fork language](./language/language.md)
+- [The Zephyr language](./language/language.md)
   - [A basic program](./language/bases.md)
   - [Control flow](./language/control_flow.md)
   - [Packages](./language/packages.md)

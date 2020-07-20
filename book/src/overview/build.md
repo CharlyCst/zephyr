@@ -10,13 +10,13 @@ make build
 
 It is a simple `cargo run` for now, but this may change in the future.
 
-Compiling a fork (`.frk`) file to wasm is not harder, use `cargo run` and pass the arguments (input file and output file) to the compiler:
+Compiling a zephyr (`.frk`) file to wasm is not harder, use `cargo run` and pass the arguments (input file and output file) to the compiler:
 
 ```bash
 cargo run -- test.frk test.wasm
 ```
 
-To ease development, the main `make` command compiles `fork/hello.frk` and output the result to `out/hello.wasm`. When working on the compiler, one usually just runs:
+To ease development, the main `make` command compiles `zephyr/hello.frk` and output the result to `out/hello.wasm`. When working on the compiler, one usually just runs:
 
 ```bash
 make
@@ -32,7 +32,7 @@ wasmtime my_file.wasm [args]
 
 ## An end to end example
 
-First write some Fork code, for instance:
+First write some Zephyr code, for instance:
 
 ```rust
 // Compute a^b
@@ -69,4 +69,4 @@ wasmtime pow.wasm 5 3
 125
 ```
 
-To test even faster, just put your code inside `fork/hello.frk`, run `make` and then execute `out/hello.wasm`, for instance with `wasmtime out/hello.wasm`, and voilà!
+To test even faster, just put your code inside `zephyr/hello.frk`, run `make` and then execute `out/hello.wasm`, for instance with `wasmtime out/hello.wasm`, and voilà!
