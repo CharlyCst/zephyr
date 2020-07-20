@@ -43,13 +43,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fork"
-version = "0.1.0"
-dependencies = [
- "clap",
-]
-
-[[package]]
 name = "heck"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,3 +182,10 @@ name = "version_check"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
+
+[[package]]
+name = "zephyr"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]

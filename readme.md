@@ -1,18 +1,18 @@
-# Fork
+# Zephyr
 
-You are early to the party 🎉 Fork is still a work in progress, feel free to try it out though!
+You are early to the party 🎉 Zephyr is still a work in progress, feel free to try it out though!
 
-Fork is a language that compiles to WebAssembly, it aims at being **very portable** and **easy to integrate** with other wasm modules, possibly written in other languages.
+Zephyr is a language that compiles to WebAssembly, it aims at being **very portable** and **easy to integrate** with other wasm modules, possibly written in other languages.
 
 To achieve these goals, the following features are currently explored:
 
 - **Very small runtime**, exploring a Rust-style automatic memory management system (no GC)
-- **Two module levels**: Fork-level imports/exports and WASM-level imports/exports
+- **Two module levels**: Zephyr-level imports/exports and WASM-level imports/exports
 - Introduce the notion of host **Runtime**, allowing to expose interfaces with multiple underneath implementations using host runtime specific hooks (starting with Web and WASI)
 
-## Trying Fork
+## Trying Zephyr
 
-Fork is still a work in progress and currently lacks some major features, but still you can try it out.
+Zephyr is still a work in progress and currently lacks some major features, but still you can try it out.
 
 First clone this repository and build it
 
@@ -22,7 +22,7 @@ cd fork
 cargo build
 ```
 
-Then write a Fork program:
+Then write a Zephyr program:
 
 ```rust
 export fun Main(a i32, b i32) i32 {
