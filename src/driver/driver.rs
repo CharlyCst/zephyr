@@ -124,7 +124,7 @@ impl Driver {
                         // No directory found, look for a single file package.
                         package_path = self.package_root.clone().unwrap();
                         let mut file_path = strip_root(&used.path).to_owned();
-                        file_path.push_str(".frk");
+                        file_path.push_str(".zph");
                         package_path.push(file_path);
                     }
                     let mut imported = imported.clone();
@@ -230,7 +230,7 @@ impl Driver {
         let mut package: Option<(String, error::ErrorHandler)> = None;
         let mut expected_package_name: Option<String> = None;
 
-        // Iterate over ast_program of all fork files in the folder
+        // Iterate over ast_program of all zephyr files in the folder
         for (ast, err_handler, file_name) in ast_programs {
             let package_name = ast.package.path;
             match get_package_type(&package_name) {

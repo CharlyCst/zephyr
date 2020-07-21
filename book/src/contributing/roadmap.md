@@ -26,10 +26,10 @@
 
 #### Code the language
 
-This section aims to provide insights on this repo: how the code is structured, how to contribute to the compiler and help build the Fork language.
+This section aims to provide insights on this repo: how the code is structured, how to contribute to the compiler and help build the Zephyr language.
 - ...
 
 #### Code using the language
 
-This section aims to provide insights on the Fork language: how to use it to write code
+This section aims to provide insights on the Zephyr language: how to use it to write code
 - ...

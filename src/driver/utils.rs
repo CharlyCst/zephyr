@@ -26,8 +26,8 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
                 if let Ok(entry) = entry {
                     let path = entry.path();
                     if let Some(ext) = path.extension() {
-                        // Only support .frk for now
-                        if ext.eq("frk") {
+                        // Only support .zph for now
+                        if ext.eq("zph") {
                             paths.push(path);
                         }
                     }
@@ -35,7 +35,7 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
             }
             if paths.len() == 0 {
                 Err(format!(
-                    "Could not find any fork file (.frk) in '{}'",
+                    "Could not find any zephyr file (.zph) in '{}'",
                     path.to_str().unwrap_or("")
                 ))
             } else {
@@ -50,7 +50,7 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
         } else {
             return Err(String::from("Could not read file extension"));
         };
-        if ext.eq("frk") {
+        if ext.eq("zph") {
             Ok((vec![path.to_owned()], true))
         } else {
             Err(format!(

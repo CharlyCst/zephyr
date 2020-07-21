@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Packages - Compiler Book</title>
+        <title>Packages - Zephyr Compiler Book</title>
         
 
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
@@ -81,7 +81,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html" class="active"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Zephyr language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html" class="active"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -113,7 +113,7 @@
                         
                     </div>
 
-                    <h1 class="menu-title">Compiler Book</h1>
+                    <h1 class="menu-title">Zephyr Compiler Book</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -148,7 +148,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1><a class="header" href="#packages" id="packages">Packages</a></h1>
-<p>Fork projects are organised into packages, each package lives in its own folder:</p>
+<p>Zephyr projects are organised into packages, each package lives in its own folder:</p>
 <pre><code class="language-text">src            # package &quot;http&quot;
 ├── main.frk
 ├── cookies.frk
@@ -183,16 +183,16 @@ pub fun send() {
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p><code>pub</code> functions can be used by other Fork packages, but are not <em>exposed</em> in the final <code>.wasm</code> file. They can be if the adequate <code>expose</code> statement is present, though.</p>
+<p><code>pub</code> functions can be used by other Zephyr packages, but are not <em>exposed</em> in the final <code>.wasm</code> file. They can be if the adequate <code>expose</code> statement is present, though.</p>
 <h2><a class="header" href="#single-file-package" id="single-file-package">Single file package</a></h2>
-<p>Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Fork you can create <em>single file packages</em> that lives in the same directory as their parent:</p>
+<p>Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Zephyr you can create <em>single file packages</em> that lives in the same directory as their parent:</p>
 <pre><code class="language-go">package &quot;http/utils&quot;
 
 // Stuff goes here
 </code></pre>
 <p>This file can live in the folder of <code>http</code> but is still a separate single file package. However, the file <strong>must</strong> have the same name as the package, in this case it must be named named  <code>utils.frk</code>, so that the compiler and most importantly other developers can easily find the file if needed.</p>
 <h2><a class="header" href="#orphan-files" id="orphan-files">Orphan files</a></h2>
-<p>Sometimes you just want to write small scripts, testing can be one of such use cases. Fork offers a notion of <em>orphan files</em> for that purpose, it's like a normal Fork file but its package name must start wirh a <code>#</code>:</p>
+<p>Sometimes you just want to write small scripts, testing can be one of such use cases. Zephyr offers a notion of <em>orphan files</em> for that purpose, it's like a normal Zephyr file but its package name must start wirh a <code>#</code>:</p>
 <pre><code class="language-go">package &quot;#test_http&quot;
 </code></pre>
 <p>There are no other constraints on orphan files, they are discarded by the compiler unless they are the target of compilation.</p>
