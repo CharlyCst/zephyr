@@ -9,7 +9,27 @@ mod tokens;
 pub use ast::*;
 pub use tokens::*;
 
+pub enum Kind {
+    Zephyr,
+    Asm,
+}
+
+/// Returns the file AST.
+/// The file content corresponding to `f_id` must be owned by the error_handler.
 pub fn get_ast(
+    f_id: u16,
+    package_id: u32,
+    kind: Kind,
+    error_handler: &mut ErrorHandler,
+    config: &Config,
+) -> ast::Program {
+    match kind {
+        Kind::Zephyr => get_zephyr_ast(f_id, package_id, error_handler, config),
+        Kind::Asm => panic!("ASM ast not yet implemented."),
+    }
+}
+
+fn get_zephyr_ast(
     f_id: u16,
     package_id: u32,
     error_handler: &mut ErrorHandler,

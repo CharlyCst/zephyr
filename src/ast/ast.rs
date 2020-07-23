@@ -114,7 +114,7 @@ pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub result: Option<(String, Location)>,
-    pub block: Block,
+    pub body: Body,
     pub is_pub: bool,
     pub loc: Location,
 }
@@ -134,6 +134,11 @@ pub struct Use {
 
 pub struct Block {
     pub stmts: Vec<Statement>,
+}
+
+pub enum Body {
+    Zephyr(Block),
+    Asm,
 }
 
 impl fmt::Display for Program {
@@ -198,8 +203,17 @@ impl fmt::Display for Function {
         write!(
             f,
             "{}{}({}) {}{};",
-            prefix, self.ident, params, result_type, self.block
+            prefix, self.ident, params, result_type, self.body
         )
+    }
+}
+
+impl fmt::Display for Body {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Body::Zephyr(block) => write!(f, "{}", block),
+            Body::Asm => write!(f, "ASM"),
+        }
     }
 }
 

@@ -227,26 +227,36 @@ impl<'a> NameResolver<'a> {
             }
         }
 
-        let block = self.resolve_block(fun.block, state, &mut locals, fun_t_id);
-        state.exit_scope();
+        match fun.body {
+            ast::Body::Zephyr(block) => {
+                let block = self.resolve_block(block, state, &mut locals, fun_t_id);
+                state.exit_scope();
 
-        let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
-            Some(exposed_name.clone())
-        } else {
-            None
-        };
+                let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
+                    Some(exposed_name.clone())
+                } else {
+                    None
+                };
 
-        return Some(Function {
-            ident: fun.ident,
-            params: fun_params,
-            locals: locals,
-            block: block,
-            is_pub: fun.is_pub,
-            exposed: exposed,
-            loc: fun.loc,
-            n_id: fun_n_id,
-            fun_id: f_id,
-        });
+                Some(Function {
+                    ident: fun.ident,
+                    params: fun_params,
+                    locals: locals,
+                    block: block,
+                    is_pub: fun.is_pub,
+                    exposed: exposed,
+                    loc: fun.loc,
+                    n_id: fun_n_id,
+                    fun_id: f_id,
+                })
+            }
+            ast::Body::Asm => {
+                self.err.report_internal_no_loc(String::from(
+                    "Asm function resolution is not yet implemented.",
+                ));
+                None
+            }
+        }
     }
 
     fn resolve_block(
@@ -511,7 +521,11 @@ impl<'a> NameResolver<'a> {
                     }
                     ast::BinaryOperator::And | ast::BinaryOperator::Or => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, T_ID_BOOL, left_expr.get_loc()));
+                        state.new_constraint(TypeConstraint::Equality(
+                            left_t_id,
+                            T_ID_BOOL,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
@@ -538,16 +552,16 @@ impl<'a> NameResolver<'a> {
                     Ok((expr, fresh_t_id))
                 }
                 ast::Value::Float { val, loc } => {
-                   let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
-                   let expr = Expression::Literal {
+                    let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
+                    let expr = Expression::Literal {
                         value: Value::Float {
                             val: *val,
                             loc: *loc,
                             t_id: fresh_t_id,
                         },
-                   };
-                   Ok((expr, fresh_t_id))
-                },
+                    };
+                    Ok((expr, fresh_t_id))
+                }
                 ast::Value::Boolean { val, loc } => {
                     let expr = Expression::Literal {
                         value: Value::Boolean {
