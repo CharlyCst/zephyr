@@ -1,6 +1,8 @@
 use crate::cli::Config;
 use crate::error::ErrorHandler;
 
+mod asm_scan;
+mod asm_tokens;
 mod ast;
 mod parse;
 mod scan;
@@ -25,7 +27,10 @@ pub fn get_ast(
 ) -> ast::Program {
     match kind {
         Kind::Zephyr => get_zephyr_ast(f_id, package_id, error_handler, config),
-        Kind::Asm => panic!("ASM ast not yet implemented."),
+        Kind::Asm => {
+            get_asm_ast(f_id, package_id, error_handler, config);
+            panic!("ASM ast not yet implemented.")
+        },
     }
 }
 
@@ -59,4 +64,27 @@ fn get_zephyr_ast(
 
     error_handler.flush_and_exit_if_err();
     ast_program
+}
+
+fn get_asm_ast(
+    f_id: u16,
+    package_id: u32,
+    error_handler: &mut ErrorHandler,
+    config: &Config,
+) -> () {
+    if config.verbose {
+        println!("\n/// Scanning ///\n");
+    }
+
+    let mut scanner = asm_scan::Scanner::new(f_id, error_handler);
+    let tokens = scanner.scan();
+
+    if config.verbose {
+        for token in tokens.iter() {
+            print!("{} ", token);
+        }
+        println!("\n");
+    }
+
+    error_handler.flush_and_exit_if_err();
 }
