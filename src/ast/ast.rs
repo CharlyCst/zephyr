@@ -1,4 +1,5 @@
 use crate::error::Location;
+use crate::mir::Statement as MirStatement;
 use std::fmt;
 
 pub enum Value {
@@ -138,7 +139,7 @@ pub struct Block {
 
 pub enum Body {
     Zephyr(Block),
-    Asm,
+    Asm(Vec<MirStatement>),
 }
 
 impl fmt::Display for Program {
@@ -212,7 +213,7 @@ impl fmt::Display for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Body::Zephyr(block) => write!(f, "{}", block),
-            Body::Asm => write!(f, "ASM"),
+            Body::Asm(_) => write!(f, "ASM"),
         }
     }
 }

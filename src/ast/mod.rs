@@ -1,6 +1,8 @@
 use crate::cli::Config;
 use crate::error::ErrorHandler;
 
+mod asm_to_mir;
+mod asm_parse;
 mod asm_scan;
 mod asm_tokens;
 mod ast;
@@ -30,7 +32,7 @@ pub fn get_ast(
         Kind::Asm => {
             get_asm_ast(f_id, package_id, error_handler, config);
             panic!("ASM ast not yet implemented.")
-        },
+        }
     }
 }
 
@@ -71,7 +73,7 @@ fn get_asm_ast(
     package_id: u32,
     error_handler: &mut ErrorHandler,
     config: &Config,
-) -> () {
+) -> Program {
     if config.verbose {
         println!("\n/// Scanning ///\n");
     }
@@ -84,7 +86,18 @@ fn get_asm_ast(
             print!("{} ", token);
         }
         println!("\n");
+        println!("\n/// Parsing ///\n");
     }
 
     error_handler.flush_and_exit_if_err();
+
+    let mut parser = asm_parse::Parser::new(tokens, package_id, error_handler);
+    let ast_program = parser.parse();
+
+    if config.verbose {
+        println!("{}", ast_program);
+    }
+
+    error_handler.flush_and_exit_if_err();
+    ast_program
 }

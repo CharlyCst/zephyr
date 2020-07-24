@@ -250,7 +250,7 @@ impl<'a> NameResolver<'a> {
                     fun_id: f_id,
                 })
             }
-            ast::Body::Asm => {
+            ast::Body::Asm(_) => {
                 self.err.report_internal_no_loc(String::from(
                     "Asm function resolution is not yet implemented.",
                 ));
