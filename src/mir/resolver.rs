@@ -227,22 +227,22 @@ impl<'a> NameResolver<'a> {
             }
         }
 
+        let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
+            Some(exposed_name.clone())
+        } else {
+            None
+        };
+
         match fun.body {
             ast::Body::Zephyr(block) => {
                 let block = self.resolve_block(block, state, &mut locals, fun_t_id);
                 state.exit_scope();
 
-                let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
-                    Some(exposed_name.clone())
-                } else {
-                    None
-                };
-
                 Some(Function {
                     ident: fun.ident,
                     params: fun_params,
                     locals: locals,
-                    block: block,
+                    body: Body::Zephyr(block),
                     is_pub: fun.is_pub,
                     exposed: exposed,
                     loc: fun.loc,
@@ -250,11 +250,18 @@ impl<'a> NameResolver<'a> {
                     fun_id: f_id,
                 })
             }
-            ast::Body::Asm(_) => {
-                self.err.report_internal_no_loc(String::from(
-                    "Asm function resolution is not yet implemented.",
-                ));
-                None
+            ast::Body::Asm(stmts) => {
+                Some(Function {
+                    ident: fun.ident,
+                    params: fun_params,
+                    locals: locals,
+                    body: Body::Asm(stmts),
+                    is_pub: fun.is_pub,
+                    exposed: exposed,
+                    loc: fun.loc,
+                    n_id: fun_n_id,
+                    fun_id: f_id,
+                })
             }
         }
     }

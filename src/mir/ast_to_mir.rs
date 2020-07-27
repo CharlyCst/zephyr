@@ -1,7 +1,7 @@
 use super::mir::*;
 use super::names::{
-    Block as NameBlock, Expression as Expr, Function as NameFun, NameStore, Statement as S,
-    Value as V,
+    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun, NameStore,
+    Statement as S, Value as V,
 };
 use super::types::{Type as ASTTypes, TypeId, TypeStore};
 use super::TypedProgram;
@@ -82,7 +82,14 @@ impl<'a> MIRProducer<'a> {
 
         let params = fun.params.iter().map(|p| p.n_id).collect();
         let locals = self.get_locals(&fun, s)?;
-        let block = self.reduce_block(fun.block, s)?;
+        let block = match fun.body {
+            NameBody::Zephyr(block) => self.reduce_block(block, s)?,
+            NameBody::Asm(stmts) => Block::Block {
+                id: s.fresh_bb_id(),
+                stmts: stmts,
+                t: None,
+            },
+        };
 
         Ok(Function {
             ident: fun.ident,
@@ -246,16 +253,16 @@ impl<'a> MIRProducer<'a> {
                     stmts.push(Statement::Const { val: val })
                 }
                 V::Float { val, t_id, .. } => {
-                   let t = get_type(*t_id, s)?;
-                   let val = match t {
+                    let t = get_type(*t_id, s)?;
+                    let val = match t {
                         Type::F32 => Value::F32(*val as f32),
                         Type::F64 => Value::F64(*val),
                         _ => {
                             return Err(String::from("Float constant of non float type."));
                         }
-                   };
-                   stmts.push(Statement::Const { val: val })
-                },
+                    };
+                    stmts.push(Statement::Const { val: val })
+                }
                 V::Boolean { val, .. } => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),

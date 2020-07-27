@@ -1,4 +1,5 @@
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
+use super::mir::Statement as MirStatement;
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
@@ -18,7 +19,7 @@ pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub locals: Vec<NameId>,
-    pub block: Block,
+    pub body: Body,
     pub is_pub: bool,
     pub exposed: Option<String>,
     pub loc: Location,
@@ -29,6 +30,11 @@ pub struct Function {
 #[derive(Clone)]
 pub enum Declaration {
     Function { t: Type, fun_id: FunId },
+}
+
+pub enum Body {
+    Zephyr(Block),
+    Asm(Vec<MirStatement>),
 }
 
 pub struct Block {

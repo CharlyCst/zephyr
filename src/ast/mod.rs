@@ -1,9 +1,9 @@
 use crate::cli::Config;
 use crate::error::ErrorHandler;
 
-mod asm_to_mir;
 mod asm_parse;
 mod asm_scan;
+mod asm_to_mir;
 mod asm_tokens;
 mod ast;
 mod parse;
@@ -29,10 +29,7 @@ pub fn get_ast(
 ) -> ast::Program {
     match kind {
         Kind::Zephyr => get_zephyr_ast(f_id, package_id, error_handler, config),
-        Kind::Asm => {
-            get_asm_ast(f_id, package_id, error_handler, config);
-            panic!("ASM ast not yet implemented.")
-        }
+        Kind::Asm => get_asm_ast(f_id, package_id, error_handler, config),
     }
 }
 
@@ -73,7 +70,7 @@ fn get_asm_ast(
     package_id: u32,
     error_handler: &mut ErrorHandler,
     config: &Config,
-) -> Program {
+) -> ast::Program {
     if config.verbose {
         println!("\n/// Scanning ///\n");
     }
