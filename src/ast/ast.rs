@@ -213,7 +213,14 @@ impl fmt::Display for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Body::Zephyr(block) => write!(f, "{}", block),
-            Body::Asm(_) => write!(f, "ASM"),
+            Body::Asm(stmts) => {
+                let mut body = String::from("{\n");
+                for stmt in stmts {
+                    body.push_str(&format!("    {}\n", stmt));
+                }
+                body.push_str("}");
+                write!(f, "{}", body)
+            },
         }
     }
 }
