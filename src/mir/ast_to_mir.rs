@@ -1,4 +1,5 @@
 use super::mir::*;
+use super::asm_names::*;
 use super::names::{
     Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun, NameStore,
     Statement as S, Value as V,
@@ -47,6 +48,7 @@ impl<'a> MIRProducer<'a> {
         MIRProducer { err: error_handler }
     }
 
+    /// Lower a typed program to MIR
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
@@ -86,7 +88,7 @@ impl<'a> MIRProducer<'a> {
             NameBody::Zephyr(block) => self.reduce_block(block, s)?,
             NameBody::Asm(stmts) => Block::Block {
                 id: s.fresh_bb_id(),
-                stmts: stmts,
+                stmts: self.reduce_asm_statements(stmts, s)?,
                 t: None,
             },
         };
@@ -392,6 +394,34 @@ impl<'a> MIRProducer<'a> {
                 .report(*loc, String::from("Indirect call are not yet supported")),
         }
         Ok(())
+    }
+
+    fn reduce_asm_statements(
+        &mut self,
+        stmts: Vec<AsmStatement>,
+        s: &mut State,
+    ) -> Result<Vec<Statement>, String> {
+        let mut reduced_stmts = Vec::with_capacity(stmts.len());
+        for stmt in stmts {
+            match self.reduce_asm_statement(stmt, s) {
+                Ok(stmt) => reduced_stmts.push(stmt),
+                Err(err) => self.err.report_no_loc(err), //TODO: track location
+            }
+        }
+        Ok(reduced_stmts)
+    }
+
+    fn reduce_asm_statement(
+        &mut self,
+        stmt: AsmStatement,
+        _s: &mut State,
+    ) -> Result<Statement, String> {
+        match stmt {
+            AsmStatement::Const { val } => Ok(Statement::Const { val: val }),
+            AsmStatement::Control { cntrl } => match cntrl {
+                AsmControl::Return => Ok(Statement::Control { cntrl: Control::Return }),
+            }
+        }
     }
 }
 

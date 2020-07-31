@@ -263,12 +263,18 @@ impl fmt::Display for Statement {
             Statement::Block { block } => write!(f, "{}", block),
             Statement::Control { cntrl } => write!(f, "{}", cntrl),
             Statement::Call { call } => write!(f, "{}", call),
-            Statement::Const { val } => match val {
-                Value::I32(x) => write!(f, "i32.const {}", x),
-                Value::I64(x) => write!(f, "i64.const {}", x),
-                Value::F32(x) => write!(f, "f32.const {}", x),
-                Value::F64(x) => write!(f, "f64.const {}", x),
-            },
+            Statement::Const { val } => write!(f, "{}", val),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::I32(x) => write!(f, "i32.const {}", x),
+            Value::I64(x) => write!(f, "i64.const {}", x),
+            Value::F32(x) => write!(f, "f32.const {}", x),
+            Value::F64(x) => write!(f, "f64.const {}", x),
         }
     }
 }

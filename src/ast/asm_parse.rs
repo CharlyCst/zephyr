@@ -1,8 +1,8 @@
-use super::asm_to_mir::{opcode_to_mir, Argument};
+use super::asm_statements::AsmStatement;
+use super::asm_to_mir::{opcode_to_asm, Argument};
 use super::asm_tokens::{Token, TokenType};
 use super::ast;
 use crate::error::{ErrorHandler, Location};
-use crate::mir;
 
 enum Declaration {
     Expose(ast::Expose),
@@ -18,7 +18,11 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &'a mut ErrorHandler) -> Parser<'a> {
+    pub fn new(
+        tokens: Vec<Token>,
+        package_id: u32,
+        error_handler: &'a mut ErrorHandler,
+    ) -> Parser<'a> {
         Parser {
             err: error_handler,
             tokens: tokens,
@@ -38,7 +42,7 @@ impl<'a> Parser<'a> {
                 self.err.silent_report(); // Error message is already emited by self.package.
                 ast::Package {
                     path: String::from(""),
-                    loc: Location::dummy(), 
+                    loc: Location::dummy(),
                 }
             }
         };
@@ -145,7 +149,7 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let token = self.advance();
-        let loc  = token.loc;
+        let loc = token.loc;
         let path = match token.t {
             TokenType::StringLit(ref s) => s.clone(),
             _ => {
@@ -157,7 +161,10 @@ impl<'a> Parser<'a> {
             }
         };
         self.consume_semi_colon();
-        Ok(ast::Package { path: path, loc: loc } )
+        Ok(ast::Package {
+            path: path,
+            loc: loc,
+        })
     }
 
     /// Parse a `declaration`.
@@ -220,7 +227,10 @@ impl<'a> Parser<'a> {
                 loc: loc,
             });
         }
-        self.err.report(loc, String::from("Expect an identifier after 'expose' keyword."));
+        self.err.report(
+            loc,
+            String::from("Expect an identifier after 'expose' keyword."),
+        );
         self.synchronize();
         Err(())
     }
@@ -315,7 +325,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'block' grammar element
-    fn block(&mut self) -> Result<Vec<mir::Statement>, ()> {
+    fn block(&mut self) -> Result<Vec<AsmStatement>, ()> {
         let mut stmts = Vec::new();
 
         // Left brace
@@ -345,7 +355,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'statement' grammar element
-    fn statement(&mut self) -> Result<mir::Statement, ()> {
+    fn statement(&mut self) -> Result<AsmStatement, ()> {
         let token = self.peek();
         let mut loc = token.loc;
         if let TokenType::Opcode(opcode) = token.t {
@@ -361,7 +371,7 @@ impl<'a> Parser<'a> {
                 _ => None,
             };
             self.consume_semi_colon();
-            match opcode_to_mir(opcode, arg) {
+            match opcode_to_asm(opcode, arg) {
                 Ok(stmt) => Ok(stmt),
                 Err(err) => {
                     self.err.report(loc, err);

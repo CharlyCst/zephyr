@@ -1,3 +1,4 @@
+use super::asm_names::*;
 use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
@@ -251,6 +252,8 @@ impl<'a> NameResolver<'a> {
                 })
             }
             ast::Body::Asm(stmts) => {
+                let stmts = self.resolve_asm(stmts, state);
+
                 Some(Function {
                     ident: fun.ident,
                     params: fun_params,
@@ -706,6 +709,35 @@ impl<'a> NameResolver<'a> {
                     return Err(());
                 }
             }
+        }
+    }
+
+    fn resolve_asm(
+        &mut self,
+        stmts: Vec<ast::AsmStatement>,
+        state: &mut State,
+    ) -> Vec<AsmStatement> {
+        let mut resolved_stmts = Vec::with_capacity(stmts.len());
+
+        for stmt in stmts {
+            resolved_stmts.push(self.resolve_asm_statement(stmt, state));
+        }
+
+        resolved_stmts
+    }
+
+    fn resolve_asm_statement(
+        &mut self,
+        stmt: ast::AsmStatement,
+        _state: &mut State,
+    ) -> AsmStatement {
+        match stmt {
+            ast::AsmStatement::Const { val } => AsmStatement::Const { val: val },
+            ast::AsmStatement::Control { cntrl } => match cntrl {
+                ast::AsmControl::Return => AsmStatement::Control {
+                    cntrl: AsmControl::Return,
+                },
+            },
         }
     }
 

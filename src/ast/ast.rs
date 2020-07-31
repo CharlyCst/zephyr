@@ -1,5 +1,5 @@
 use crate::error::Location;
-use crate::mir::Statement as MirStatement;
+use super::asm_statements::AsmStatement;
 use std::fmt;
 
 pub enum Value {
@@ -139,7 +139,7 @@ pub struct Block {
 
 pub enum Body {
     Zephyr(Block),
-    Asm(Vec<MirStatement>),
+    Asm(Vec<AsmStatement>),
 }
 
 impl fmt::Display for Program {

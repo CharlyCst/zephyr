@@ -1,4 +1,5 @@
 use super::asm_tokens::Opcode;
+use super::asm_statements::*;
 use crate::mir;
 
 /// Opcode argument.
@@ -9,18 +10,18 @@ pub enum Argument {
 
 /// Tries to convert an opcode into a MIR statement.
 /// Return an error message in case of failure.
-pub fn opcode_to_mir(op: Opcode, arg: Option<Argument>) -> Result<mir::Statement, String> {
+pub fn opcode_to_asm(op: Opcode, arg: Option<Argument>) -> Result<AsmStatement, String> {
     match op {
         Opcode::Return => {
             no_arg(arg, "return")?;
-            Ok(mir::Statement::Control {
-                cntrl: mir::Control::Return,
+            Ok(AsmStatement::Control {
+                cntrl: AsmControl::Return,
             })
         }
-        Opcode::I32Const => Ok(mir::Statement::Const {
+        Opcode::I32Const => Ok(AsmStatement::Const {
             val: mir::Value::I32(integer(arg, "i32.const")? as i32),
         }),
-        Opcode::I64Const => Ok(mir::Statement::Const {
+        Opcode::I64Const => Ok(AsmStatement::Const {
             val: mir::Value::I32(integer(arg, "i64.const")? as i32),
         }),
     }

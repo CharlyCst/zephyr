@@ -1,5 +1,5 @@
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
-use super::mir::Statement as MirStatement;
+use super::asm_names::AsmStatement;
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
@@ -34,7 +34,7 @@ pub enum Declaration {
 
 pub enum Body {
     Zephyr(Block),
-    Asm(Vec<MirStatement>),
+    Asm(Vec<AsmStatement>),
 }
 
 pub struct Block {
