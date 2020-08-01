@@ -1,5 +1,5 @@
 use super::asm_tokens::Opcode;
-use super::asm_statements::*;
+use super::ast::*;
 use crate::mir;
 
 /// Opcode argument.
@@ -12,6 +12,12 @@ pub enum Argument {
 /// Return an error message in case of failure.
 pub fn opcode_to_asm(op: Opcode, arg: Option<Argument>) -> Result<AsmStatement, String> {
     match op {
+        Opcode::Drop => {
+            no_arg(arg, "drop")?;
+            Ok(AsmStatement::Parametric {
+                param: AsmParametric::Drop,
+            })
+        }
         Opcode::Return => {
             no_arg(arg, "return")?;
             Ok(AsmStatement::Control {

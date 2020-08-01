@@ -249,9 +249,9 @@ impl<'a> Compiler<'a> {
                         .err
                         .report_internal_no_loc(String::from("Indirect call not yet implemented")),
                 },
-                _ => self
-                    .err
-                    .report_internal_no_loc(String::from("Statement not yet implemented")),
+                mir::Statement::Parametric { param } => match param {
+                    mir::Parametric::Drop => code.push(INSTR_DROP),
+                },
             }
         }
     }

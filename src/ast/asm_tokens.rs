@@ -30,6 +30,7 @@ pub enum TokenType {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Opcode {
+    Drop,
     Return,
     I32Const,
     I64Const,
@@ -40,7 +41,7 @@ pub struct Token {
     pub loc: Location,
 }
 
-/// Return an HashMap populated with all fasm keywords and opcodes.
+/// Return an HashMap populated with all Zephyr asm keywords and opcodes.
 pub fn get_keyword_map() -> HashMap<String, TokenType> {
     [
         // Keywords
@@ -50,6 +51,7 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         (String::from("pub"), TokenType::Pub),
         (String::from("package"), TokenType::Package),
         // Opcodes
+        (String::from("drop"), to_token(Opcode::Drop)),
         (String::from("return"), to_token(Opcode::Return)),
         (String::from("i32.const"), to_token(Opcode::I32Const)),
         (String::from("i64.const"), to_token(Opcode::I64Const)),
@@ -93,6 +95,7 @@ impl fmt::Display for Token {
 impl fmt::Display for Opcode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Opcode::Drop => write!(f, "drop"),
             Opcode::Return => write!(f, "return"),
             Opcode::I32Const => write!(f, "i32.const"),
             Opcode::I64Const => write!(f, "i64.const"),

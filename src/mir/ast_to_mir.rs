@@ -1,8 +1,7 @@
 use super::mir::*;
-use super::asm_names::*;
 use super::names::{
-    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun, NameStore,
-    Statement as S, Value as V,
+    AsmControl, AsmParametric, AsmStatement, Block as NameBlock, Body as NameBody,
+    Expression as Expr, Function as NameFun, NameStore, Statement as S, Value as V,
 };
 use super::types::{Type as ASTTypes, TypeId, TypeStore};
 use super::TypedProgram;
@@ -419,8 +418,15 @@ impl<'a> MIRProducer<'a> {
         match stmt {
             AsmStatement::Const { val } => Ok(Statement::Const { val: val }),
             AsmStatement::Control { cntrl } => match cntrl {
-                AsmControl::Return => Ok(Statement::Control { cntrl: Control::Return }),
-            }
+                AsmControl::Return => Ok(Statement::Control {
+                    cntrl: Control::Return,
+                }),
+            },
+            AsmStatement::Parametric { param } => match param {
+                AsmParametric::Drop => Ok(Statement::Parametric {
+                    param: Parametric::Drop,
+                }),
+            },
         }
     }
 }

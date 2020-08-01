@@ -1,5 +1,5 @@
-use super::asm_statements::AsmStatement;
-use super::asm_to_mir::{opcode_to_asm, Argument};
+use super::ast::AsmStatement;
+use super::opcode_to_asm::{opcode_to_asm, Argument};
 use super::asm_tokens::{Token, TokenType};
 use super::ast;
 use crate::error::{ErrorHandler, Location};

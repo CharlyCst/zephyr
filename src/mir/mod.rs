@@ -11,7 +11,6 @@ pub use self::names::{Declaration, NameId};
 pub use self::types::TypeId;
 pub use mir::*;
 
-mod asm_names;
 mod ast_to_mir;
 mod mir;
 mod names;

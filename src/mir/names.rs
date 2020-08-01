@@ -1,8 +1,10 @@
+use super::mir::Value as MirValue;
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
-use super::asm_names::AsmStatement;
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
+
+pub use crate::ast::{AsmControl, AsmParametric};
 
 pub type NameId = usize;
 pub type FunId = u64;
@@ -145,6 +147,22 @@ impl Expression {
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,
             Expression::CallIndirect { loc, .. } => *loc,
+        }
+    }
+}
+
+pub enum AsmStatement {
+    Const { val: MirValue },
+    Control { cntrl: AsmControl },
+    Parametric { param: AsmParametric },
+}
+
+impl fmt::Display for AsmStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmStatement::Const { val } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param } => write!(f, "{}", param),
         }
     }
 }

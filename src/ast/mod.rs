@@ -1,10 +1,9 @@
 use crate::cli::Config;
 use crate::error::ErrorHandler;
 
-mod asm_statements;
 mod asm_parse;
 mod asm_scan;
-mod asm_to_mir;
+mod opcode_to_asm;
 mod asm_tokens;
 mod ast;
 mod parse;
@@ -12,7 +11,6 @@ mod scan;
 mod tokens;
 
 pub use ast::*;
-pub use asm_statements::*;
 pub use tokens::*;
 
 pub enum Kind {

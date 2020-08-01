@@ -1,4 +1,3 @@
-use super::asm_names::*;
 use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
@@ -738,6 +737,11 @@ impl<'a> NameResolver<'a> {
                     cntrl: AsmControl::Return,
                 },
             },
+            ast::AsmStatement::Parametric { param } => match param {
+                ast::AsmParametric::Drop => AsmStatement::Parametric {
+                    param: AsmParametric::Drop,
+                }
+            }
         }
     }
 

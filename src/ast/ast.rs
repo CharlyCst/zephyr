@@ -1,6 +1,8 @@
 use crate::error::Location;
-use super::asm_statements::AsmStatement;
+use crate::mir::Value as MirValue;
 use std::fmt;
+
+////// Zephyr AST nodes //////
 
 pub enum Value {
     Integer { val: u64, loc: Location },
@@ -142,6 +144,24 @@ pub enum Body {
     Asm(Vec<AsmStatement>),
 }
 
+////// Zephyr ASM statements //////
+
+pub enum AsmStatement {
+    Const { val: MirValue },
+    Control { cntrl: AsmControl },
+    Parametric { param: AsmParametric },
+}
+
+pub enum AsmControl {
+    Return,
+}
+
+pub enum AsmParametric {
+    Drop,
+}
+
+////// Display utilities //////
+
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut program = String::from("");
@@ -220,7 +240,7 @@ impl fmt::Display for Body {
                 }
                 body.push_str("}");
                 write!(f, "{}", body)
-            },
+            }
         }
     }
 }
@@ -319,6 +339,32 @@ impl fmt::Display for Statement {
                 Some(e) => write!(f, "return {};", e),
                 None => write!(f, "return;"),
             },
+        }
+    }
+}
+
+impl fmt::Display for AsmStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmStatement::Const { val } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param } => write!(f, "{}", param),
+        }
+    }
+}
+
+impl fmt::Display for AsmControl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmControl::Return => write!(f, "return"),
+        }
+    }
+}
+
+impl fmt::Display for AsmParametric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmParametric::Drop => write!(f, "drop"),
         }
     }
 }
