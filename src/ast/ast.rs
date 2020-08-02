@@ -147,9 +147,15 @@ pub enum Body {
 ////// Zephyr ASM statements //////
 
 pub enum AsmStatement {
-    Const { val: MirValue },
-    Control { cntrl: AsmControl },
-    Parametric { param: AsmParametric },
+    Local { local: AsmLocal, loc: Location },
+    Const { val: MirValue, loc: Location },
+    Control { cntrl: AsmControl, loc: Location },
+    Parametric { param: AsmParametric, loc: Location },
+}
+
+pub enum AsmLocal {
+    Get { ident: String, loc: Location },
+    Set { ident: String, loc: Location },
 }
 
 pub enum AsmControl {
@@ -346,9 +352,19 @@ impl fmt::Display for Statement {
 impl fmt::Display for AsmStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AsmStatement::Const { val } => write!(f, "{}", val),
-            AsmStatement::Control { cntrl } => write!(f, "{}", cntrl),
-            AsmStatement::Parametric { param } => write!(f, "{}", param),
+            AsmStatement::Local { local, .. } => write!(f, "{}", local),
+            AsmStatement::Const { val, .. } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+        }
+    }
+}
+
+impl fmt::Display for AsmLocal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmLocal::Get { ident, .. } => write!(f, "local.get {}", ident),
+            AsmLocal::Set { ident, .. } => write!(f, "local.set {}", ident),
         }
     }
 }

@@ -357,23 +357,27 @@ impl<'a> Parser<'a> {
     /// Parses the 'statement' grammar element
     fn statement(&mut self) -> Result<AsmStatement, ()> {
         let token = self.peek();
-        let mut loc = token.loc;
+        let loc = token.loc;
         if let TokenType::Opcode(opcode) = token.t {
             self.advance();
             let token = self.peek();
             let arg_loc = token.loc;
             let arg = match token.t {
                 TokenType::NumberLit(n) => {
-                    loc = loc.merge(arg_loc);
                     self.advance();
-                    Some(Argument::Integer(n))
+                    Some(Argument::Integer(n, arg_loc))
+                },
+                TokenType::Identifier(ref s) => {
+                    let ident = s.clone();
+                    self.advance();
+                    Some(Argument::Identifier(ident, arg_loc))
                 }
                 _ => None,
             };
             self.consume_semi_colon();
-            match opcode_to_asm(opcode, arg) {
+            match opcode_to_asm(opcode, arg, loc) {
                 Ok(stmt) => Ok(stmt),
-                Err(err) => {
+                Err((err, loc)) => {
                     self.err.report(loc, err);
                     Err(())
                 }

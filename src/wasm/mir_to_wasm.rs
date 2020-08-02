@@ -196,16 +196,18 @@ impl<'a> Compiler<'a> {
     ) {
         for stmt in stmts {
             match stmt {
-                mir::Statement::Set { l_id } => {
-                    let local_idx = s.locals[&l_id];
-                    code.push(INSTR_LOCAL_SET);
-                    code.extend(to_leb(local_idx));
-                }
-                mir::Statement::Get { l_id } => {
-                    let local_idx = s.locals[&l_id];
-                    code.push(INSTR_LOCAL_GET);
-                    code.extend(to_leb(local_idx));
-                }
+                mir::Statement::Local { local } => match local {
+                    mir::Local::Set(l_id) => {
+                        let local_idx = s.locals[&l_id];
+                        code.push(INSTR_LOCAL_SET);
+                        code.extend(to_leb(local_idx));
+                    }
+                    mir::Local::Get(l_id) => {
+                        let local_idx = s.locals[&l_id];
+                        code.push(INSTR_LOCAL_GET);
+                        code.extend(to_leb(local_idx));
+                    }
+                },
                 mir::Statement::Const { val } => match val {
                     mir::Value::I32(x) => {
                         code.push(INSTR_I32_CST);

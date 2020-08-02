@@ -152,17 +152,44 @@ impl Expression {
 }
 
 pub enum AsmStatement {
-    Const { val: MirValue },
-    Control { cntrl: AsmControl },
-    Parametric { param: AsmParametric },
+    Local { local: AsmLocal, loc: Location },
+    Const { val: MirValue, loc: Location },
+    Control { cntrl: AsmControl, loc: Location },
+    Parametric { param: AsmParametric, loc: Location },
+}
+
+pub enum AsmLocal {
+    Get { var: Variable },
+    Set { var: Variable },
+}
+
+impl AsmStatement {
+    pub fn _get_loc(&self) -> Location {
+        match self {
+            AsmStatement::Local { loc, .. } => *loc,
+            AsmStatement::Const { loc, .. } => *loc,
+            AsmStatement::Control { loc, .. } => *loc,
+            AsmStatement::Parametric { loc, .. } => *loc,
+        }
+    }
 }
 
 impl fmt::Display for AsmStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AsmStatement::Const { val } => write!(f, "{}", val),
-            AsmStatement::Control { cntrl } => write!(f, "{}", cntrl),
-            AsmStatement::Parametric { param } => write!(f, "{}", param),
+            AsmStatement::Local { local, .. } => write!(f, "{}", local),
+            AsmStatement::Const { val, .. } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+        }
+    }
+}
+
+impl fmt::Display for AsmLocal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmLocal::Get { var } => write!(f, "local.get {}", var.ident),
+            AsmLocal::Set { var } => write!(f, "local.set {}", var.ident),
         }
     }
 }

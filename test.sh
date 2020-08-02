@@ -46,8 +46,8 @@ fi
 
 # Compile tests
 printf "${BOLD}Compiling tests ...${NC}\n"
-for source in "$TEST_PATH"/*.zph; do
-    output="$TEST_OUTPUT_PATH/$(basename $source .zph).wasm"
+for source in "$TEST_PATH"/*; do
+    output="$TEST_OUTPUT_PATH/$(basename $source).wasm"
 
     printf "> $source"
 

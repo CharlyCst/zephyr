@@ -34,6 +34,8 @@ pub enum Opcode {
     Return,
     I32Const,
     I64Const,
+    LocalGet,
+    LocalSet,
 }
 
 pub struct Token {
@@ -55,6 +57,8 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         (String::from("return"), to_token(Opcode::Return)),
         (String::from("i32.const"), to_token(Opcode::I32Const)),
         (String::from("i64.const"), to_token(Opcode::I64Const)),
+        (String::from("local.get"), to_token(Opcode::LocalGet)),
+        (String::from("local.set"), to_token(Opcode::LocalSet)),
     ]
     .iter()
     .cloned()
@@ -99,6 +103,8 @@ impl fmt::Display for Opcode {
             Opcode::Return => write!(f, "return"),
             Opcode::I32Const => write!(f, "i32.const"),
             Opcode::I64Const => write!(f, "i64.const"),
+            Opcode::LocalGet => write!(f, "local.get"),
+            Opcode::LocalSet => write!(f, "local.set"),
         }
     }
 }

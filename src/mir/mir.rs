@@ -14,7 +14,7 @@ pub struct Function {
     pub params: Vec<LocalId>,
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
-    pub locals: Vec<Local>,
+    pub locals: Vec<LocalVariable>,
     pub body: Block,
     pub is_pub: bool,
     pub exposed: Option<String>,
@@ -24,7 +24,7 @@ pub struct Function {
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type FunctionId = u64;
 
-pub struct Local {
+pub struct LocalVariable {
     pub id: LocalId,
     pub t: Type,
 }
@@ -51,8 +51,7 @@ pub enum Block {
 }
 
 pub enum Statement {
-    Set { l_id: LocalId },
-    Get { l_id: LocalId },
+    Local { local: Local },
     Const { val: Value },
     Block { block: Box<Block> },
     Unop { unop: Unop },
@@ -61,6 +60,11 @@ pub enum Statement {
     Control { cntrl: Control },
     Call { call: Call },
     Parametric { param: Parametric },
+}
+
+pub enum Local {
+    Get(LocalId),
+    Set(LocalId),
 }
 
 pub enum Call {
@@ -254,8 +258,7 @@ impl fmt::Display for Block {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Get { l_id } => write!(f, "get _{}", l_id),
-            Statement::Set { l_id } => write!(f, "set _{}", l_id),
+            Statement::Local { local } => write!(f, "{}", local),
             Statement::Unop { unop } => write!(f, "{}", unop),
             Statement::Binop { binop } => write!(f, "{}", binop),
             Statement::Relop { relop } => write!(f, "{}", relop),
@@ -264,6 +267,15 @@ impl fmt::Display for Statement {
             Statement::Control { cntrl } => write!(f, "{}", cntrl),
             Statement::Call { call } => write!(f, "{}", call),
             Statement::Const { val } => write!(f, "{}", val),
+        }
+    }
+}
+
+impl fmt::Display for Local {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Local::Get(l_id) => write!(f, "local.get {}", l_id),
+            Local::Set(l_id) => write!(f, "local.set {}", l_id),
         }
     }
 }
@@ -378,7 +390,7 @@ impl fmt::Display for Call {
     }
 }
 
-impl fmt::Display for Local {
+impl fmt::Display for LocalVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "    _{}\n", self.id)
     }

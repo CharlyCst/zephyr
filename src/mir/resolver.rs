@@ -719,7 +719,10 @@ impl<'a> NameResolver<'a> {
         let mut resolved_stmts = Vec::with_capacity(stmts.len());
 
         for stmt in stmts {
-            resolved_stmts.push(self.resolve_asm_statement(stmt, state));
+            match self.resolve_asm_statement(stmt, state) {
+                Ok(stmt) => resolved_stmts.push(stmt),
+                Err(_) => (),
+            }
         }
 
         resolved_stmts
@@ -728,20 +731,58 @@ impl<'a> NameResolver<'a> {
     fn resolve_asm_statement(
         &mut self,
         stmt: ast::AsmStatement,
-        _state: &mut State,
-    ) -> AsmStatement {
+        state: &mut State,
+    ) -> Result<AsmStatement, ()> {
         match stmt {
-            ast::AsmStatement::Const { val } => AsmStatement::Const { val: val },
-            ast::AsmStatement::Control { cntrl } => match cntrl {
-                ast::AsmControl::Return => AsmStatement::Control {
-                    cntrl: AsmControl::Return,
+            ast::AsmStatement::Const { val, loc } => Ok(AsmStatement::Const { val: val, loc: loc }),
+            ast::AsmStatement::Local { local, loc } => match local {
+                ast::AsmLocal::Get {
+                    ident,
+                    loc: arg_loc,
+                } => match state.find_in_context(&ident) {
+                    Some(name) => {
+                        let var = Variable {
+                            ident: ident,
+                            loc: arg_loc,
+                            n_id: name.n_id,
+                        };
+                        Ok(AsmStatement::Local {
+                            local: AsmLocal::Get { var: var },
+                            loc: loc,
+                        })
+                    }
+                    None => Err(()),
+                },
+                ast::AsmLocal::Set {
+                    ident,
+                    loc: arg_loc,
+                } => match state.find_in_context(&ident) {
+                    Some(name) => {
+                        let var = Variable {
+                            ident: ident,
+                            loc: arg_loc,
+                            n_id: name.n_id,
+                        };
+                        Ok(AsmStatement::Local {
+                            local: AsmLocal::Set { var: var },
+                            loc: loc,
+                        })
+                    }
+                    None => Err(()),
                 },
             },
-            ast::AsmStatement::Parametric { param } => match param {
-                ast::AsmParametric::Drop => AsmStatement::Parametric {
+            ast::AsmStatement::Control { cntrl, loc } => match cntrl {
+                ast::AsmControl::Return => Ok(AsmStatement::Control {
+                    cntrl: AsmControl::Return,
+                    loc: loc,
+                }),
+            },
+            ast::AsmStatement::Parametric { param, loc } => match param {
+                ast::AsmParametric::Drop => Ok(AsmStatement::Parametric {
                     param: AsmParametric::Drop,
-                }
-            }
+                    loc: loc,
+                }),
+            },
         }
     }
 
