@@ -721,7 +721,7 @@ impl<'a> NameResolver<'a> {
         for stmt in stmts {
             match self.resolve_asm_statement(stmt, state) {
                 Ok(stmt) => resolved_stmts.push(stmt),
-                Err(_) => (),
+                Err(_) => self.err.silent_report(),
             }
         }
 
@@ -751,7 +751,13 @@ impl<'a> NameResolver<'a> {
                             loc: loc,
                         })
                     }
-                    None => Err(()),
+                    None => {
+                        self.err.report(
+                            arg_loc,
+                            format!("No variable '{}' in current scope.", &ident),
+                        );
+                        Err(())
+                    }
                 },
                 ast::AsmLocal::Set {
                     ident,
@@ -768,7 +774,13 @@ impl<'a> NameResolver<'a> {
                             loc: loc,
                         })
                     }
-                    None => Err(()),
+                    None => {
+                        self.err.report(
+                            arg_loc,
+                            format!("No variable '{}' in current scope.", &ident),
+                        );
+                        Err(())
+                    }
                 },
             },
             ast::AsmStatement::Control { cntrl, loc } => match cntrl {
