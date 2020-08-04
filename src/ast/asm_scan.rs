@@ -1,12 +1,12 @@
-use super::tokens::*;
+use super::asm_tokens::*;
 use crate::error::{ErrorHandler, Location};
 use std::collections::HashMap;
 
 const RADIX: u32 = 10;
 
-/// Fork Assembly Scanner, it produces tokens from source code.
-pub struct Scanner<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+/// Zephyr Assembly Scanner, it produces tokens from source code.
+pub struct Scanner<'a> {
+    err: &'a mut ErrorHandler,
     f_id: u16,
     code: Vec<char>,
     start: usize,
@@ -15,14 +15,19 @@ pub struct Scanner<'a, 'b> {
     stmt_ender: bool,
 }
 
-impl<'a, 'b> Scanner<'a, 'b> {
-    pub fn new(code: &str, f_id: u16, error_handler: &'b mut ErrorHandler<'a>) -> Scanner<'a, 'b> {
+impl<'a> Scanner<'a> {
+    // f_id MUST exist, no check performed.
+    pub fn new(f_id: u16, error_handler: &'a mut ErrorHandler) -> Scanner<'a> {
         let keywords = get_keyword_map();
+
+        // f_id MUST exist
+        let code = error_handler.get_file(f_id).unwrap();
+        let code = code.chars().collect(); // TODO: remove this copy
 
         Scanner {
             err: error_handler,
             f_id: f_id,
-            code: code.chars().collect(), // TODO: remove this copy
+            code: code,
             start: 0,
             current: 0,
             keywords: keywords,
@@ -71,7 +76,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
                 // Match literal
                 if c.is_digit(RADIX) {
                     self.number(tokens)
-                } else if c.is_alphabetic() {
+                } else if c.is_alphabetic() || c == '_'{
                     self.identifier(tokens)
                 } else if c == '"' {
                     self.string(tokens)
@@ -173,7 +178,7 @@ impl<'a, 'b> Scanner<'a, 'b> {
 
     /// Parse an identifier
     fn identifier(&mut self, tokens: &mut Vec<Token>) {
-        while !self.is_at_end() && (self.peek().is_alphanumeric() || self.peek() == '.') {
+        while !self.is_at_end() && (self.peek().is_alphanumeric() || self.peek() == '_'|| self.peek() == '.') {
             self.advance();
         }
         let ident = self.code[self.start..self.current]

@@ -227,26 +227,45 @@ impl<'a> NameResolver<'a> {
             }
         }
 
-        let block = self.resolve_block(fun.block, state, &mut locals, fun_t_id);
-        state.exit_scope();
-
         let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
             Some(exposed_name.clone())
         } else {
             None
         };
 
-        return Some(Function {
-            ident: fun.ident,
-            params: fun_params,
-            locals: locals,
-            block: block,
-            is_pub: fun.is_pub,
-            exposed: exposed,
-            loc: fun.loc,
-            n_id: fun_n_id,
-            fun_id: f_id,
-        });
+        match fun.body {
+            ast::Body::Zephyr(block) => {
+                let block = self.resolve_block(block, state, &mut locals, fun_t_id);
+                state.exit_scope();
+
+                Some(Function {
+                    ident: fun.ident,
+                    params: fun_params,
+                    locals: locals,
+                    body: Body::Zephyr(block),
+                    is_pub: fun.is_pub,
+                    exposed: exposed,
+                    loc: fun.loc,
+                    n_id: fun_n_id,
+                    fun_id: f_id,
+                })
+            }
+            ast::Body::Asm(stmts) => {
+                let stmts = self.resolve_asm(stmts, state);
+
+                Some(Function {
+                    ident: fun.ident,
+                    params: fun_params,
+                    locals: locals,
+                    body: Body::Asm(stmts),
+                    is_pub: fun.is_pub,
+                    exposed: exposed,
+                    loc: fun.loc,
+                    n_id: fun_n_id,
+                    fun_id: f_id,
+                })
+            }
+        }
     }
 
     fn resolve_block(
@@ -511,7 +530,11 @@ impl<'a> NameResolver<'a> {
                     }
                     ast::BinaryOperator::And | ast::BinaryOperator::Or => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, T_ID_BOOL, left_expr.get_loc()));
+                        state.new_constraint(TypeConstraint::Equality(
+                            left_t_id,
+                            T_ID_BOOL,
+                            left_expr.get_loc(),
+                        ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
@@ -538,16 +561,16 @@ impl<'a> NameResolver<'a> {
                     Ok((expr, fresh_t_id))
                 }
                 ast::Value::Float { val, loc } => {
-                   let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
-                   let expr = Expression::Literal {
+                    let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
+                    let expr = Expression::Literal {
                         value: Value::Float {
                             val: *val,
                             loc: *loc,
                             t_id: fresh_t_id,
                         },
-                   };
-                   Ok((expr, fresh_t_id))
-                },
+                    };
+                    Ok((expr, fresh_t_id))
+                }
                 ast::Value::Boolean { val, loc } => {
                     let expr = Expression::Literal {
                         value: Value::Boolean {
@@ -685,6 +708,93 @@ impl<'a> NameResolver<'a> {
                     return Err(());
                 }
             }
+        }
+    }
+
+    fn resolve_asm(
+        &mut self,
+        stmts: Vec<ast::AsmStatement>,
+        state: &mut State,
+    ) -> Vec<AsmStatement> {
+        let mut resolved_stmts = Vec::with_capacity(stmts.len());
+
+        for stmt in stmts {
+            match self.resolve_asm_statement(stmt, state) {
+                Ok(stmt) => resolved_stmts.push(stmt),
+                Err(_) => self.err.silent_report(),
+            }
+        }
+
+        resolved_stmts
+    }
+
+    fn resolve_asm_statement(
+        &mut self,
+        stmt: ast::AsmStatement,
+        state: &mut State,
+    ) -> Result<AsmStatement, ()> {
+        match stmt {
+            ast::AsmStatement::Const { val, loc } => Ok(AsmStatement::Const { val: val, loc: loc }),
+            ast::AsmStatement::Local { local, loc } => match local {
+                ast::AsmLocal::Get {
+                    ident,
+                    loc: arg_loc,
+                } => match state.find_in_context(&ident) {
+                    Some(name) => {
+                        let var = Variable {
+                            ident: ident,
+                            loc: arg_loc,
+                            n_id: name.n_id,
+                        };
+                        Ok(AsmStatement::Local {
+                            local: AsmLocal::Get { var: var },
+                            loc: loc,
+                        })
+                    }
+                    None => {
+                        self.err.report(
+                            arg_loc,
+                            format!("No variable '{}' in current scope.", &ident),
+                        );
+                        Err(())
+                    }
+                },
+                ast::AsmLocal::Set {
+                    ident,
+                    loc: arg_loc,
+                } => match state.find_in_context(&ident) {
+                    Some(name) => {
+                        let var = Variable {
+                            ident: ident,
+                            loc: arg_loc,
+                            n_id: name.n_id,
+                        };
+                        Ok(AsmStatement::Local {
+                            local: AsmLocal::Set { var: var },
+                            loc: loc,
+                        })
+                    }
+                    None => {
+                        self.err.report(
+                            arg_loc,
+                            format!("No variable '{}' in current scope.", &ident),
+                        );
+                        Err(())
+                    }
+                },
+            },
+            ast::AsmStatement::Control { cntrl, loc } => match cntrl {
+                ast::AsmControl::Return => Ok(AsmStatement::Control {
+                    cntrl: AsmControl::Return,
+                    loc: loc,
+                }),
+            },
+            ast::AsmStatement::Parametric { param, loc } => match param {
+                ast::AsmParametric::Drop => Ok(AsmStatement::Parametric {
+                    param: AsmParametric::Drop,
+                    loc: loc,
+                }),
+            },
         }
     }
 

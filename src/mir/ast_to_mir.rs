@@ -1,7 +1,7 @@
 use super::mir::*;
 use super::names::{
-    Block as NameBlock, Expression as Expr, Function as NameFun, NameStore, Statement as S,
-    Value as V,
+    AsmControl, AsmLocal, AsmParametric, AsmStatement, Block as NameBlock, Body as NameBody,
+    Expression as Expr, Function as NameFun, NameStore, Statement as S, Value as V,
 };
 use super::types::{Type as ASTTypes, TypeId, TypeStore};
 use super::TypedProgram;
@@ -47,6 +47,7 @@ impl<'a> MIRProducer<'a> {
         MIRProducer { err: error_handler }
     }
 
+    /// Lower a typed program to MIR
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
@@ -82,7 +83,14 @@ impl<'a> MIRProducer<'a> {
 
         let params = fun.params.iter().map(|p| p.n_id).collect();
         let locals = self.get_locals(&fun, s)?;
-        let block = self.reduce_block(fun.block, s)?;
+        let block = match fun.body {
+            NameBody::Zephyr(block) => self.reduce_block(block, s)?,
+            NameBody::Asm(stmts) => Block::Block {
+                id: s.fresh_bb_id(),
+                stmts: self.reduce_asm_statements(stmts, s)?,
+                t: None,
+            },
+        };
 
         Ok(Function {
             ident: fun.ident,
@@ -97,7 +105,7 @@ impl<'a> MIRProducer<'a> {
         })
     }
 
-    fn get_locals(&mut self, fun: &NameFun, s: &State) -> Result<Vec<Local>, String> {
+    fn get_locals(&mut self, fun: &NameFun, s: &State) -> Result<Vec<LocalVariable>, String> {
         let mut locals = Vec::new();
         for local_name in &fun.locals {
             let t_id = s.names.get(*local_name).t_id;
@@ -109,7 +117,7 @@ impl<'a> MIRProducer<'a> {
                 ASTTypes::Bool => Type::I32,
                 _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
             };
-            locals.push(Local {
+            locals.push(LocalVariable {
                 id: *local_name,
                 t: t,
             })
@@ -140,11 +148,15 @@ impl<'a> MIRProducer<'a> {
             match statement {
                 S::AssignStmt { var, expr } => {
                     self.reduce_expr(&expr, stmts, s)?;
-                    stmts.push(Statement::Set { l_id: var.n_id });
+                    stmts.push(Statement::Local {
+                        local: Local::Set(var.n_id),
+                    });
                 }
                 S::LetStmt { var, expr } => {
                     self.reduce_expr(&expr, stmts, s)?;
-                    stmts.push(Statement::Set { l_id: var.n_id });
+                    stmts.push(Statement::Local {
+                        local: Local::Set(var.n_id),
+                    });
                 }
                 S::ExprStmt { expr } => {
                     self.reduce_expr(&expr, stmts, s)?;
@@ -246,21 +258,23 @@ impl<'a> MIRProducer<'a> {
                     stmts.push(Statement::Const { val: val })
                 }
                 V::Float { val, t_id, .. } => {
-                   let t = get_type(*t_id, s)?;
-                   let val = match t {
+                    let t = get_type(*t_id, s)?;
+                    let val = match t {
                         Type::F32 => Value::F32(*val as f32),
                         Type::F64 => Value::F64(*val),
                         _ => {
                             return Err(String::from("Float constant of non float type."));
                         }
-                   };
-                   stmts.push(Statement::Const { val: val })
-                },
+                    };
+                    stmts.push(Statement::Const { val: val })
+                }
                 V::Boolean { val, .. } => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),
             },
-            Expr::Variable { var } => stmts.push(Statement::Get { l_id: var.n_id }),
+            Expr::Variable { var } => stmts.push(Statement::Local {
+                local: Local::Get(var.n_id),
+            }),
             Expr::Function { .. } => {
                 return Err(String::from(
                     "Function as expression are not yet supported.",
@@ -385,6 +399,49 @@ impl<'a> MIRProducer<'a> {
                 .report(*loc, String::from("Indirect call are not yet supported")),
         }
         Ok(())
+    }
+
+    fn reduce_asm_statements(
+        &mut self,
+        stmts: Vec<AsmStatement>,
+        s: &mut State,
+    ) -> Result<Vec<Statement>, String> {
+        let mut reduced_stmts = Vec::with_capacity(stmts.len());
+        for stmt in stmts {
+            match self.reduce_asm_statement(stmt, s) {
+                Ok(stmt) => reduced_stmts.push(stmt),
+                Err(err) => self.err.report_no_loc(err), //TODO: track location
+            }
+        }
+        Ok(reduced_stmts)
+    }
+
+    fn reduce_asm_statement(
+        &mut self,
+        stmt: AsmStatement,
+        _s: &mut State,
+    ) -> Result<Statement, String> {
+        match stmt {
+            AsmStatement::Const { val, .. } => Ok(Statement::Const { val: val }),
+            AsmStatement::Local { local, .. } => match local {
+                AsmLocal::Get { var } => Ok(Statement::Local {
+                    local: Local::Get(var.n_id),
+                }),
+                AsmLocal::Set { var } => Ok(Statement::Local {
+                    local: Local::Set(var.n_id),
+                }),
+            },
+            AsmStatement::Control { cntrl, .. } => match cntrl {
+                AsmControl::Return => Ok(Statement::Control {
+                    cntrl: Control::Return,
+                }),
+            },
+            AsmStatement::Parametric { param, .. } => match param {
+                AsmParametric::Drop => Ok(Statement::Parametric {
+                    param: Parametric::Drop,
+                }),
+            },
+        }
     }
 }
 

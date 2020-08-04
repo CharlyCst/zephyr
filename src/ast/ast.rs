@@ -1,5 +1,8 @@
 use crate::error::Location;
+use crate::mir::Value as MirValue;
 use std::fmt;
+
+////// Zephyr AST nodes //////
 
 pub enum Value {
     Integer { val: u64, loc: Location },
@@ -114,7 +117,7 @@ pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub result: Option<(String, Location)>,
-    pub block: Block,
+    pub body: Body,
     pub is_pub: bool,
     pub loc: Location,
 }
@@ -135,6 +138,35 @@ pub struct Use {
 pub struct Block {
     pub stmts: Vec<Statement>,
 }
+
+pub enum Body {
+    Zephyr(Block),
+    Asm(Vec<AsmStatement>),
+}
+
+////// Zephyr ASM statements //////
+
+pub enum AsmStatement {
+    Local { local: AsmLocal, loc: Location },
+    Const { val: MirValue, loc: Location },
+    Control { cntrl: AsmControl, loc: Location },
+    Parametric { param: AsmParametric, loc: Location },
+}
+
+pub enum AsmLocal {
+    Get { ident: String, loc: Location },
+    Set { ident: String, loc: Location },
+}
+
+pub enum AsmControl {
+    Return,
+}
+
+pub enum AsmParametric {
+    Drop,
+}
+
+////// Display utilities //////
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -198,8 +230,24 @@ impl fmt::Display for Function {
         write!(
             f,
             "{}{}({}) {}{};",
-            prefix, self.ident, params, result_type, self.block
+            prefix, self.ident, params, result_type, self.body
         )
+    }
+}
+
+impl fmt::Display for Body {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Body::Zephyr(block) => write!(f, "{}", block),
+            Body::Asm(stmts) => {
+                let mut body = String::from("{\n");
+                for stmt in stmts {
+                    body.push_str(&format!("    {}\n", stmt));
+                }
+                body.push_str("}");
+                write!(f, "{}", body)
+            }
+        }
     }
 }
 
@@ -297,6 +345,42 @@ impl fmt::Display for Statement {
                 Some(e) => write!(f, "return {};", e),
                 None => write!(f, "return;"),
             },
+        }
+    }
+}
+
+impl fmt::Display for AsmStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmStatement::Local { local, .. } => write!(f, "{}", local),
+            AsmStatement::Const { val, .. } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+        }
+    }
+}
+
+impl fmt::Display for AsmLocal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmLocal::Get { ident, .. } => write!(f, "local.get {}", ident),
+            AsmLocal::Set { ident, .. } => write!(f, "local.set {}", ident),
+        }
+    }
+}
+
+impl fmt::Display for AsmControl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmControl::Return => write!(f, "return"),
+        }
+    }
+}
+
+impl fmt::Display for AsmParametric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmParametric::Drop => write!(f, "drop"),
         }
     }
 }

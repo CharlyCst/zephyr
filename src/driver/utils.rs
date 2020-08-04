@@ -7,8 +7,11 @@ pub enum PackageType {
     OrphanFile { name: String },
 }
 
-/// Returns a list of files pointed by `path` and a flag set to `true` if `path` points at a
-/// file, false otherwise. In case of success, return at least one path.
+pub const ZEPHYR_EXTENSION: &str = "zph";
+pub const ASM_EXTENSION: &str = "zasm";
+
+/// Returns a list of files pointed by `path` and a flag set to `true` if `path` points directly 
+/// at a file, false otherwise. In case of success, return at least one path.
 pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), String> {
     let path = path.as_ref();
     let file_info = if let Ok(f) = fs::metadata(&path) {
@@ -26,8 +29,7 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
                 if let Ok(entry) = entry {
                     let path = entry.path();
                     if let Some(ext) = path.extension() {
-                        // Only support .zph for now
-                        if ext.eq("zph") {
+                        if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
                             paths.push(path);
                         }
                     }
@@ -35,7 +37,8 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
             }
             if paths.len() == 0 {
                 Err(format!(
-                    "Could not find any zephyr file (.zph) in '{}'",
+                    "Could not find any zephyr file (.{}) in '{}'",
+                    ZEPHYR_EXTENSION,
                     path.to_str().unwrap_or("")
                 ))
             } else {
@@ -50,7 +53,7 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
         } else {
             return Err(String::from("Could not read file extension"));
         };
-        if ext.eq("zph") {
+        if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
             Ok((vec![path.to_owned()], true))
         } else {
             Err(format!(
@@ -67,6 +70,7 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
 }
 
 /// Returns the path without the root package.
+/// 'std/math/cryo' becomes 'math/crypto'.
 pub fn strip_root(path: &str) -> &str {
     let mut iter = path.chars();
     loop {

@@ -1,38 +1,50 @@
-use super::fasm::*;
-use super::opcode_to_mir::{opcode_to_mir, Argument};
-use super::tokens::{Token, TokenType};
-use crate::error::ErrorHandler;
-use crate::mir;
+use super::ast::AsmStatement;
+use super::opcode_to_asm::{opcode_to_asm, Argument};
+use super::asm_tokens::{Token, TokenType};
+use super::ast;
+use crate::error::{ErrorHandler, Location};
 
 enum Declaration {
-    Expose(Exposed),
-    Fun(Function),
+    Expose(ast::Expose),
+    Fun(ast::Function),
 }
 
-/// Fork assembly parser, it consumes tokens to produces MIR.
-pub struct Parser<'a, 'b> {
-    err: &'b mut ErrorHandler<'a>,
+/// Zephyr assembly parser, it consumes tokens to produces MIR.
+pub struct Parser<'a> {
+    err: &'a mut ErrorHandler,
     tokens: Vec<Token>,
     current: usize, // current token index
+    package_id: u32,
 }
 
-impl<'a, 'b> Parser<'a, 'b> {
-    pub fn new(tokens: Vec<Token>, error_handler: &'b mut ErrorHandler<'a>) -> Parser<'a, 'b> {
+impl<'a> Parser<'a> {
+    pub fn new(
+        tokens: Vec<Token>,
+        package_id: u32,
+        error_handler: &'a mut ErrorHandler,
+    ) -> Parser<'a> {
         Parser {
             err: error_handler,
             tokens: tokens,
             current: 0,
+            package_id,
         }
     }
 
     /// Convert the list of tokens into MIR
-    pub fn parse(&mut self) -> Program {
+    pub fn parse(&mut self) -> ast::Program {
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
 
         let package = match self.package() {
             Ok(pkg) => pkg,
-            Err(_) => String::from(""),
+            Err(_) => {
+                self.err.silent_report(); // Error message is already emited by self.package.
+                ast::Package {
+                    path: String::from(""),
+                    loc: Location::dummy(),
+                }
+            }
         };
 
         while !self.is_at_end() {
@@ -45,10 +57,12 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         }
 
-        Program {
+        ast::Program {
+            package_id: self.package_id,
             package: package,
             exposed: exposed,
             funs: funs,
+            used: vec![],
         }
     }
 
@@ -127,7 +141,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     /// Parses the 'package' grammar element
-    fn package(&mut self) -> Result<String, ()> {
+    fn package(&mut self) -> Result<ast::Package, ()> {
         if !self.next_match_report(
             TokenType::Package,
             "File must start with a 'package' declaration.",
@@ -135,10 +149,10 @@ impl<'a, 'b> Parser<'a, 'b> {
             return Err(());
         }
         let token = self.advance();
-        let s = match token.t {
+        let loc = token.loc;
+        let path = match token.t {
             TokenType::StringLit(ref s) => s.clone(),
             _ => {
-                let loc = token.loc;
                 self.err.report(
                     loc,
                     String::from("Expected a string after 'package' declaration."),
@@ -147,7 +161,10 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         };
         self.consume_semi_colon();
-        Ok(s)
+        Ok(ast::Package {
+            path: path,
+            loc: loc,
+        })
     }
 
     /// Parse a `declaration`.
@@ -177,14 +194,15 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Parses the 'expose' grammar element
     /// The `Expose` token must have been consumed.
-    fn expose(&mut self) -> Result<Exposed, ()> {
+    fn expose(&mut self) -> Result<ast::Expose, ()> {
         let token = self.peek();
+        let loc = token.loc;
         // First identifier
         if let TokenType::Identifier(ref ident) = token.t {
             let fun_name = ident.clone();
             self.advance();
             // Check for `as` keyword
-            let exposed_as = if self.next_match(TokenType::As) {
+            let alias = if self.next_match(TokenType::As) {
                 let token = self.peek();
                 if let TokenType::Identifier(ref as_ident) = token.t {
                     let as_ident = as_ident.clone();
@@ -203,18 +221,23 @@ impl<'a, 'b> Parser<'a, 'b> {
                 None
             };
             self.consume_semi_colon();
-            return Ok(Exposed {
-                fun_name: fun_name,
-                exposed_as: exposed_as,
+            return Ok(ast::Expose {
+                ident: fun_name,
+                alias: alias,
+                loc: loc,
             });
         }
+        self.err.report(
+            loc,
+            String::from("Expect an identifier after 'expose' keyword."),
+        );
         self.synchronize();
         Err(())
     }
 
     /// Parses the 'function' grammar element
     /// The `Pub` (if any) and `Fun` tokens must have been consumed.
-    fn function(&mut self) -> Result<Function, ()> {
+    fn function(&mut self) -> Result<ast::Function, ()> {
         let loc = self.peek().loc;
         let token = self.advance();
         let ident = match token.t {
@@ -255,18 +278,18 @@ impl<'a, 'b> Parser<'a, 'b> {
         let stmts = self.block()?;
         self.consume_semi_colon();
 
-        Ok(Function {
+        Ok(ast::Function {
             ident: ident,
             params: params,
             result: result,
-            stmts: stmts,
+            body: ast::Body::Asm(stmts),
             is_pub: false, // handled by the called who may have consumed the "pub" keyword
             loc: loc,      // location of the identifier
         })
     }
 
     /// Parses the 'parameters' grammar element
-    fn parameters(&mut self) -> Result<Vec<Variable>, ()> {
+    fn parameters(&mut self) -> Result<Vec<ast::Variable>, ()> {
         let mut params = Vec::new();
         while let Token {
             t: TokenType::Identifier(ref param),
@@ -288,9 +311,9 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
             };
 
-            params.push(Variable {
+            params.push(ast::Variable {
                 ident: ident,
-                t: t,
+                t: Some(t),
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {
@@ -302,7 +325,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     /// Parses the 'block' grammar element
-    fn block(&mut self) -> Result<Vec<mir::Statement>, ()> {
+    fn block(&mut self) -> Result<Vec<AsmStatement>, ()> {
         let mut stmts = Vec::new();
 
         // Left brace
@@ -332,25 +355,29 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     /// Parses the 'statement' grammar element
-    fn statement(&mut self) -> Result<mir::Statement, ()> {
+    fn statement(&mut self) -> Result<AsmStatement, ()> {
         let token = self.peek();
-        let mut loc = token.loc;
+        let loc = token.loc;
         if let TokenType::Opcode(opcode) = token.t {
             self.advance();
             let token = self.peek();
             let arg_loc = token.loc;
             let arg = match token.t {
                 TokenType::NumberLit(n) => {
-                    loc = loc.merge(arg_loc);
                     self.advance();
-                    Some(Argument::Integer(n))
+                    Some(Argument::Integer(n, arg_loc))
+                },
+                TokenType::Identifier(ref s) => {
+                    let ident = s.clone();
+                    self.advance();
+                    Some(Argument::Identifier(ident, arg_loc))
                 }
                 _ => None,
             };
             self.consume_semi_colon();
-            match opcode_to_mir(opcode, arg) {
+            match opcode_to_asm(opcode, arg, loc) {
                 Ok(stmt) => Ok(stmt),
-                Err(err) => {
+                Err((err, loc)) => {
                     self.err.report(loc, err);
                     Err(())
                 }

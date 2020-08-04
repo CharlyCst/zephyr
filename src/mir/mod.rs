@@ -12,6 +12,7 @@ pub use self::types::TypeId;
 pub use mir::*;
 
 mod ast_to_mir;
+mod asm_validate;
 mod mir;
 mod names;
 mod resolver;
@@ -52,6 +53,13 @@ pub fn to_mir<'a>(
     if config.verbose {
         println!("{}", typed_program.types);
     }
+
+    if config.verbose {
+        println!("\n/// Asm Validation ///\n");
+    }
+
+    let mut asm_validator = asm_validate::AsmValidator::new(&typed_program, error_handler);
+    asm_validator.validate_asm();
 
     error_handler.flush_and_exit_if_err();
 

@@ -49,6 +49,8 @@ pub const INSTR_BR_IF: Instr = 0x0d;
 pub const INSTR_RETURN: Instr = 0x0f;
 pub const INSTR_CALL: Instr = 0x10;
 pub const INSTR_CALL_INDIRECT: Instr = 0x11;
+// Parametric
+pub const INSTR_DROP: Instr = 0x1a;
 // Variables
 pub const INSTR_LOCAL_GET: Instr = 0x20;
 pub const INSTR_LOCAL_SET: Instr = 0x21;
