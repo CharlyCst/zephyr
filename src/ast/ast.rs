@@ -151,11 +151,25 @@ pub enum AsmStatement {
     Const { val: MirValue, loc: Location },
     Control { cntrl: AsmControl, loc: Location },
     Parametric { param: AsmParametric, loc: Location },
+    Memory { mem: AsmMemory, loc: Location }
 }
 
 pub enum AsmLocal {
     Get { ident: String, loc: Location },
     Set { ident: String, loc: Location },
+}
+
+pub enum AsmMemory {
+    Size,
+    Grow,
+    I32Load { align: u32, offset: u32 },
+    I64Load { align: u32, offset: u32 },
+    F32Load { align: u32, offset: u32 },
+    F64Load { align: u32, offset: u32 },
+    I32Store { align: u32, offset: u32 },
+    I64Store { align: u32, offset: u32 },
+    F32Store { align: u32, offset: u32 },
+    F64Store { align: u32, offset: u32 },
 }
 
 pub enum AsmControl {
@@ -356,6 +370,7 @@ impl fmt::Display for AsmStatement {
             AsmStatement::Const { val, .. } => write!(f, "{}", val),
             AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
             AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+            AsmStatement::Memory { mem, .. } => write!(f, "{}", mem),
         }
     }
 }
@@ -384,3 +399,21 @@ impl fmt::Display for AsmParametric {
         }
     }
 }
+
+impl fmt::Display for AsmMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmMemory::Size => write!(f, "memory.size"),
+            AsmMemory::Grow => write!(f, "memory.grow"),
+            AsmMemory::I32Load { align, offset } => write!(f, "i32.load {}, {}", align, offset),
+            AsmMemory::I64Load { align, offset } => write!(f, "i64.load {}, {}", align, offset),
+            AsmMemory::F32Load { align, offset } => write!(f, "f32.load {}, {}", align, offset),
+            AsmMemory::F64Load { align, offset } => write!(f, "f64.load {}, {}", align, offset),
+            AsmMemory::I32Store { align, offset } => write!(f, "i32.store {}, {}", align, offset),
+            AsmMemory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
+            AsmMemory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
+            AsmMemory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
+        }
+    }
+}
+

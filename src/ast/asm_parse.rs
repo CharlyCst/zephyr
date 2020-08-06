@@ -1,7 +1,7 @@
-use super::ast::AsmStatement;
-use super::opcode_to_asm::{opcode_to_asm, Argument};
 use super::asm_tokens::{Token, TokenType};
 use super::ast;
+use super::ast::AsmStatement;
+use super::opcode_to_asm::{opcode_to_asm, Argument};
 use crate::error::{ErrorHandler, Location};
 
 enum Declaration {
@@ -360,22 +360,29 @@ impl<'a> Parser<'a> {
         let loc = token.loc;
         if let TokenType::Opcode(opcode) = token.t {
             self.advance();
-            let token = self.peek();
-            let arg_loc = token.loc;
-            let arg = match token.t {
-                TokenType::NumberLit(n) => {
-                    self.advance();
-                    Some(Argument::Integer(n, arg_loc))
-                },
-                TokenType::Identifier(ref s) => {
-                    let ident = s.clone();
-                    self.advance();
-                    Some(Argument::Identifier(ident, arg_loc))
+
+            // Collect arguments
+            let mut args = Vec::new();
+            loop {
+                let token = self.peek();
+                let arg_loc = token.loc;
+                let arg = match token.t {
+                    TokenType::NumberLit(n) => Some(Argument::Integer(n, arg_loc)),
+                    TokenType::Identifier(ref s) => {
+                        let ident = s.clone();
+                        Some(Argument::Identifier(ident, arg_loc))
+                    }
+                    _ => None,
+                };
+                if let Some(arg) = arg {
+                    self.advance(); // Consume the token
+                    args.push(arg);
+                } else {
+                    break;
                 }
-                _ => None,
-            };
+            }
             self.consume_semi_colon();
-            match opcode_to_asm(opcode, arg, loc) {
+            match opcode_to_asm(opcode, args, loc) {
                 Ok(stmt) => Ok(stmt),
                 Err((err, loc)) => {
                     self.err.report(loc, err);

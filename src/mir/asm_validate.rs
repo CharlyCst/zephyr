@@ -1,6 +1,6 @@
 use super::mir::Value as MirValue;
 use super::names::{
-    AsmControl, AsmLocal, AsmParametric, AsmStatement, Body, Function, NameId, NameStore,
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, Function, NameId, NameStore,
 };
 use super::types::{Type as MirType, TypeStore};
 use super::TypedProgram;
@@ -105,6 +105,45 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
                     AsmLocal::Set { var } => match self.get_name_type(var.n_id, loc) {
                         Ok(t) => self.pop_t(&mut stack, t, loc),
                         Err(_) => self.err.silent_report(),
+                    },
+                },
+                AsmStatement::Memory { mem, loc } => match mem {
+                    AsmMemory::Size => stack.push(Type::I32),
+                    AsmMemory::Grow => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        stack.push(Type::I32);
+                    }
+                    AsmMemory::I32Load { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        stack.push(Type::I32);
+                    }
+                    AsmMemory::I64Load { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        stack.push(Type::I64);
+                    }
+                    AsmMemory::F32Load { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        stack.push(Type::F32);
+                    }
+                    AsmMemory::F64Load { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        stack.push(Type::F64);
+                    }
+                    AsmMemory::I32Store { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        self.pop_t(&mut stack, Type::I32, loc);
+                    }
+                    AsmMemory::I64Store { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        self.pop_t(&mut stack, Type::I64, loc);
+                    }
+                    AsmMemory::F32Store { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        self.pop_t(&mut stack, Type::F32, loc);
+                    }
+                    AsmMemory::F64Store { .. } => {
+                        self.pop_t(&mut stack, Type::I32, loc);
+                        self.pop_t(&mut stack, Type::F64, loc);
                     }
                 },
             }

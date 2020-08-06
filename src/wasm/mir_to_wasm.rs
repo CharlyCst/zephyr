@@ -255,6 +255,56 @@ impl<'a> Compiler<'a> {
                 mir::Statement::Parametric { param } => match param {
                     mir::Parametric::Drop => code.push(INSTR_DROP),
                 },
+                mir::Statement::Memory { mem } => match mem {
+                    mir::Memory::Size => {
+                        code.push(INSTR_MEMORY_SIZE);
+                        code.push(0x00);
+                    }
+                    mir::Memory::Grow => {
+                        code.push(INSTR_MEMORY_GROW);
+                        code.push(0x00);
+                    }
+                    mir::Memory::I32Load { align, offset } => {
+                        code.push(INSTR_I32_LOAD);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::I64Load { align, offset } => {
+                        code.push(INSTR_I64_LOAD);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::F32Load { align, offset } => {
+                        code.push(INSTR_F32_LOAD);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::F64Load { align, offset } => {
+                        code.push(INSTR_F64_LOAD);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::I32Store { align, offset } => {
+                        code.push(INSTR_I32_STORE);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::I64Store { align, offset } => {
+                        code.push(INSTR_I64_STORE);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::F32Store { align, offset } => {
+                        code.push(INSTR_F32_STORE);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                    mir::Memory::F64Store { align, offset } => {
+                        code.push(INSTR_F64_STORE);
+                        code.extend(to_leb(align as usize));
+                        code.extend(to_leb(offset as usize));
+                    }
+                },
             }
         }
     }

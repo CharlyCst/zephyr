@@ -4,7 +4,7 @@ use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
 
-pub use crate::ast::{AsmControl, AsmParametric};
+pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
 pub type NameId = usize;
 pub type FunId = u64;
@@ -156,6 +156,7 @@ pub enum AsmStatement {
     Const { val: MirValue, loc: Location },
     Control { cntrl: AsmControl, loc: Location },
     Parametric { param: AsmParametric, loc: Location },
+    Memory { mem: AsmMemory, loc: Location },
 }
 
 pub enum AsmLocal {
@@ -170,6 +171,7 @@ impl AsmStatement {
             AsmStatement::Const { loc, .. } => *loc,
             AsmStatement::Control { loc, .. } => *loc,
             AsmStatement::Parametric { loc, .. } => *loc,
+            AsmStatement::Memory { loc, .. } => *loc,
         }
     }
 }
@@ -181,6 +183,7 @@ impl fmt::Display for AsmStatement {
             AsmStatement::Const { val, .. } => write!(f, "{}", val),
             AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
             AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+            AsmStatement::Memory { mem, .. } => write!(f, "{}", mem),
         }
     }
 }
