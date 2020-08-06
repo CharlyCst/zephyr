@@ -1,6 +1,6 @@
 use super::mir::*;
 use super::names::{
-    AsmControl, AsmLocal, AsmParametric, AsmStatement, Block as NameBlock, Body as NameBody,
+    AsmControl, AsmLocal, AsmParametric, AsmMemory, AsmStatement, Block as NameBlock, Body as NameBody,
     Expression as Expr, Function as NameFun, NameStore, Statement as S, Value as V,
 };
 use super::types::{Type as ASTTypes, TypeId, TypeStore};
@@ -441,6 +441,18 @@ impl<'a> MIRProducer<'a> {
                     param: Parametric::Drop,
                 }),
             },
+            AsmStatement::Memory { mem, .. } => match mem {
+                AsmMemory::Size => Ok(Statement::Memory { mem: Memory::Size }),
+                AsmMemory::Grow => Ok(Statement::Memory { mem: Memory::Grow }),
+                AsmMemory::I32Load { align, offset } => Ok(Statement::Memory { mem: Memory::I32Load { align, offset }}),
+                AsmMemory::I64Load { align, offset } => Ok(Statement::Memory { mem: Memory::I64Load { align, offset }}),
+                AsmMemory::F32Load { align, offset } => Ok(Statement::Memory { mem: Memory::F32Load { align, offset }}),
+                AsmMemory::F64Load { align, offset } => Ok(Statement::Memory { mem: Memory::F64Load { align, offset }}),
+                AsmMemory::I32Store { align, offset } => Ok(Statement::Memory { mem: Memory::I32Store { align, offset }}),
+                AsmMemory::I64Store { align, offset } => Ok(Statement::Memory { mem: Memory::I64Store { align, offset }}),
+                AsmMemory::F32Store { align, offset } => Ok(Statement::Memory { mem: Memory::F32Store { align, offset }}),
+                AsmMemory::F64Store { align, offset } => Ok(Statement::Memory { mem: Memory::F64Store { align, offset }}),
+            }
         }
     }
 }

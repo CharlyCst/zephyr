@@ -54,6 +54,17 @@ pub const INSTR_DROP: Instr = 0x1a;
 // Variables
 pub const INSTR_LOCAL_GET: Instr = 0x20;
 pub const INSTR_LOCAL_SET: Instr = 0x21;
+// Memory
+pub const INSTR_I32_LOAD: Instr = 0x28;
+pub const INSTR_I64_LOAD: Instr = 0x29;
+pub const INSTR_F32_LOAD: Instr = 0x2a;
+pub const INSTR_F64_LOAD: Instr = 0x2b;
+pub const INSTR_I32_STORE: Instr = 0x36;
+pub const INSTR_I64_STORE: Instr = 0x37;
+pub const INSTR_F32_STORE: Instr = 0x38;
+pub const INSTR_F64_STORE: Instr = 0x39;
+pub const INSTR_MEMORY_SIZE: Instr = 0x3f;
+pub const INSTR_MEMORY_GROW: Instr = 0x40;
 // Numerical Constants
 pub const INSTR_I32_CST: Instr = 0x41;
 pub const INSTR_I64_CST: Instr = 0x42;

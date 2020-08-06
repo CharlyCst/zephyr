@@ -734,7 +734,12 @@ impl<'a> NameResolver<'a> {
         state: &mut State,
     ) -> Result<AsmStatement, ()> {
         match stmt {
-            ast::AsmStatement::Const { val, loc } => Ok(AsmStatement::Const { val: val, loc: loc }),
+            ast::AsmStatement::Control { cntrl, loc } => Ok(AsmStatement::Control { cntrl, loc }),
+            ast::AsmStatement::Memory { mem, loc } => Ok(AsmStatement::Memory { mem, loc }),
+            ast::AsmStatement::Const { val, loc } => Ok(AsmStatement::Const { val, loc }),
+            ast::AsmStatement::Parametric { param, loc } => {
+                Ok(AsmStatement::Parametric { param, loc })
+            }
             ast::AsmStatement::Local { local, loc } => match local {
                 ast::AsmLocal::Get {
                     ident,
@@ -782,18 +787,6 @@ impl<'a> NameResolver<'a> {
                         Err(())
                     }
                 },
-            },
-            ast::AsmStatement::Control { cntrl, loc } => match cntrl {
-                ast::AsmControl::Return => Ok(AsmStatement::Control {
-                    cntrl: AsmControl::Return,
-                    loc: loc,
-                }),
-            },
-            ast::AsmStatement::Parametric { param, loc } => match param {
-                ast::AsmParametric::Drop => Ok(AsmStatement::Parametric {
-                    param: AsmParametric::Drop,
-                    loc: loc,
-                }),
             },
         }
     }

@@ -60,6 +60,7 @@ pub enum Statement {
     Control { cntrl: Control },
     Call { call: Call },
     Parametric { param: Parametric },
+    Memory { mem: Memory },
 }
 
 pub enum Local {
@@ -152,6 +153,19 @@ pub enum Logical {
 
 pub enum Parametric {
     Drop,
+}
+
+pub enum Memory {
+    Size,
+    Grow,
+    I32Load { align: u32, offset: u32 },
+    I64Load { align: u32, offset: u32 },
+    F32Load { align: u32, offset: u32 },
+    F64Load { align: u32, offset: u32 },
+    I32Store { align: u32, offset: u32 },
+    I64Store { align: u32, offset: u32 },
+    F32Store { align: u32, offset: u32 },
+    F64Store { align: u32, offset: u32 },
 }
 
 #[derive(Copy, Clone)]
@@ -267,6 +281,7 @@ impl fmt::Display for Statement {
             Statement::Control { cntrl } => write!(f, "{}", cntrl),
             Statement::Call { call } => write!(f, "{}", call),
             Statement::Const { val } => write!(f, "{}", val),
+            Statement::Memory { mem } => write!(f, "{}", mem),
         }
     }
 }
@@ -406,3 +421,21 @@ impl fmt::Display for Type {
         }
     }
 }
+
+impl fmt::Display for Memory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Memory::Size => write!(f, "memory.size"),
+            Memory::Grow => write!(f, "memory.grow"),
+            Memory::I32Load { align, offset } => write!(f, "i32.load {}, {}", align, offset),
+            Memory::I64Load { align, offset } => write!(f, "i64.load {}, {}", align, offset),
+            Memory::F32Load { align, offset } => write!(f, "f32.load {}, {}", align, offset),
+            Memory::F64Load { align, offset } => write!(f, "f64.load {}, {}", align, offset),
+            Memory::I32Store { align, offset } => write!(f, "i32.store {}, {}", align, offset),
+            Memory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
+            Memory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
+            Memory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
+        }
+    }
+}
+
