@@ -125,6 +125,53 @@ impl SectionFunction {
     }
 }
 
+struct SectionMemory {
+    memories: Vec<Instr>,
+    size: Vec<Instr>,
+    count: Vec<Instr>,
+}
+
+impl SectionMemory {
+    fn new(memories: Vec<wasm::Limit>) -> SectionMemory {
+        let mut mem = Vec::new();
+        let count = to_leb(memories.len());
+
+        for memory in memories {
+            match memory {
+                wasm::Limit::Min(min) => {
+                    mem.push(0x00); // No upper limit flag
+                    mem.extend(to_leb(min as usize));
+                }
+                wasm::Limit::MinMax(min, max) => {
+                    mem.push(0x01); // With upper limit flag
+                    mem.extend(to_leb(min as usize));
+                    mem.extend(to_leb(max as usize));
+                }
+            }
+        }
+
+        let size = to_leb(mem.len() + count.len());
+        SectionMemory {
+            memories: mem,
+            count: count,
+            size: size,
+        }
+    }
+
+    fn encode(&self) -> Vec<Instr> {
+        let mut bytecode = Vec::new();
+
+        // Header
+        bytecode.push(SEC_MEMORY);
+        bytecode.extend(self.size.iter());
+        bytecode.extend(self.count.iter());
+
+        // Body
+        bytecode.extend(self.memories.iter());
+        bytecode
+    }
+}
+
 struct SectionCode {
     bodies: Vec<Vec<Instr>>,
     size: Vec<Instr>,
@@ -229,6 +276,7 @@ impl SectionExport {
 pub struct Module {
     types: SectionType,
     functions: SectionFunction,
+    memories: SectionMemory,
     exports: SectionExport,
     code: SectionCode,
 }
@@ -237,11 +285,13 @@ impl Module {
     pub fn new(mut funs: Vec<wasm::Function>) -> Module {
         let types = SectionType::new(&mut funs); // Must be called first because of side effects
         let functions = SectionFunction::new(&funs);
+        let memories = SectionMemory::new(vec![wasm::Limit::Min(1)]);
         let exports = SectionExport::new(&funs);
         let code = SectionCode::new(&funs);
         Module {
             types: types,
             functions: functions,
+            memories: memories,
             code: code,
             exports: exports,
         }
@@ -256,6 +306,7 @@ impl Module {
 
         bytecode.extend(self.types.encode().iter());
         bytecode.extend(self.functions.encode().iter());
+        bytecode.extend(self.memories.encode().iter());
         bytecode.extend(self.exports.encode());
         bytecode.extend(self.code.encode().iter());
 

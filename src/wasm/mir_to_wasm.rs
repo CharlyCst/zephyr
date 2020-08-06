@@ -58,6 +58,7 @@ impl<'a> LocalState<'a> {
     }
 }
 
+/// Convert MIR to the final wasm output.
 pub struct Compiler<'a> {
     err: &'a mut ErrorHandler,
 }
