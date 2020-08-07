@@ -122,7 +122,7 @@ impl<'a> Compiler<'a> {
             locals_map.insert(local.id, idx);
             idx += 1;
         }
-        code.extend(to_leb(fun.locals.len()));
+        code.extend(to_leb(fun.locals.len() as u64));
         code.extend(local_decl);
     }
 
@@ -201,22 +201,22 @@ impl<'a> Compiler<'a> {
                     mir::Local::Set(l_id) => {
                         let local_idx = s.locals[&l_id];
                         code.push(INSTR_LOCAL_SET);
-                        code.extend(to_leb(local_idx));
+                        code.extend(to_leb(local_idx as u64));
                     }
                     mir::Local::Get(l_id) => {
                         let local_idx = s.locals[&l_id];
                         code.push(INSTR_LOCAL_GET);
-                        code.extend(to_leb(local_idx));
+                        code.extend(to_leb(local_idx as u64));
                     }
                 },
                 mir::Statement::Const { val } => match val {
                     mir::Value::I32(x) => {
                         code.push(INSTR_I32_CST);
-                        code.extend(to_leb(x as usize));
+                        code.extend(to_sleb(x as i64));
                     }
                     mir::Value::I64(x) => {
                         code.push(INSTR_I64_CST);
-                        code.extend(to_leb(x as usize));
+                        code.extend(to_sleb(x));
                     }
                     mir::Value::F32(x) => {
                         code.push(INSTR_F32_CST);
@@ -232,11 +232,11 @@ impl<'a> Compiler<'a> {
                     mir::Control::Return => code.push(INSTR_RETURN),
                     mir::Control::Br(label) => {
                         code.push(INSTR_BR);
-                        code.extend(to_leb(s.get_label(label)));
+                        code.extend(to_leb(s.get_label(label) as u64));
                     }
                     mir::Control::BrIf(label) => {
                         code.push(INSTR_BR_IF);
-                        code.extend(to_leb(s.get_label(label)));
+                        code.extend(to_leb(s.get_label(label) as u64));
                     }
                 },
                 mir::Statement::Block { block } => self.block(*block, s, code),
@@ -246,7 +246,7 @@ impl<'a> Compiler<'a> {
                 mir::Statement::Call { call } => match call {
                     mir::Call::Direct(fun_id) => {
                         code.push(INSTR_CALL);
-                        code.extend(to_leb(s.get_fun(fun_id)));
+                        code.extend(to_leb(s.get_fun(fun_id) as u64));
                     }
                     mir::Call::Indirect() => self
                         .err
@@ -266,43 +266,43 @@ impl<'a> Compiler<'a> {
                     }
                     mir::Memory::I32Load { align, offset } => {
                         code.push(INSTR_I32_LOAD);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::I64Load { align, offset } => {
                         code.push(INSTR_I64_LOAD);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::F32Load { align, offset } => {
                         code.push(INSTR_F32_LOAD);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::F64Load { align, offset } => {
                         code.push(INSTR_F64_LOAD);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::I32Store { align, offset } => {
                         code.push(INSTR_I32_STORE);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::I64Store { align, offset } => {
                         code.push(INSTR_I64_STORE);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::F32Store { align, offset } => {
                         code.push(INSTR_F32_STORE);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                     mir::Memory::F64Store { align, offset } => {
                         code.push(INSTR_F64_STORE);
-                        code.extend(to_leb(align as usize));
-                        code.extend(to_leb(offset as usize));
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
                     }
                 },
             }
