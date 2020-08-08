@@ -32,9 +32,9 @@ import textwrap
 
 # Constants
 TEST_DIR = './test'
-ZEPHYR = "./target/debug/zephyr"
+ZEPHYR_PATH = "./target/debug/zephyr"
 
-# ---------------------------------- utils ----------------------------------- #
+# ────────────────────────────────── utils ─────────────────────────────────── #
 # Colors shortcuts through ANSI escape codes
 RED     = "\x1b[31m"
 GREEN   = "\x1b[32m"
@@ -46,13 +46,17 @@ BOLD    = "\x1b[1m"
 ITA     = "\x1b[3m"
 NC      = "\x1b[0m"  # no-color, or reset
 
+# Print small ✓ / ✗
 YES = f"{GREEN}✓{NC}"
 NO = f"{RED}✗{NC}"
 
+# Logging shortcuts
 info = logging.info
 debug = logging.debug
 warn = logging.warning
 
+
+# ─────────────────────────────── dependencies ─────────────────────────────── #
 def check_dependency(command: str, exit: bool=True) -> bool:
     """Checks the dependencies for testing the current version of the
     compiler. The dependency will be checked as a path to a valid executable,
@@ -75,11 +79,32 @@ def check_dependency(command: str, exit: bool=True) -> bool:
             command,
         )
         sys.exit(127)
-
-    debug(f"%s dependency: %s", command, YES)
     return valid
 
+def is_zephyr(path: Path):
+    return path.suffix == '.zph'
 
+def get_zephyr():
+    """Gets the zephyr executable, from the following sources, by priority:
+    - ZEPHYR_PATH: a constant pointing to the relative path of zephyr if built
+      in the repo
+    - zephyr: the command, if zephyr is installed on your system
+
+    If not found, exits with code 127
+    """
+    if check_dependency(ZEPHYR_PATH, exit=False):
+        zephyr = ZEPHYR_PATH
+    elif check_dependency('zephyr', exit=False):
+        zephyr = 'zephyr'
+    else:
+        warn(
+            f"{RED}[ERROR]{NC} both local (%s) and global (zephyr) executable were not found",
+            ZEPHYR_PATH,
+        )
+        exit(127)
+    return zephyr
+
+# ───────────────────────────────── printing ───────────────────────────────── #
 def table(*columns, paddings: List[str] = None):
     """Given columns as separate lists, prints a nice layout, similar to the
     unix tool column(1).
@@ -113,6 +138,7 @@ def table(*columns, paddings: List[str] = None):
     print('\n'.join(format_row(' │ ', r, paddings) for r in rows[1:]))
 
 
+# ────────────────────────────── main functions ────────────────────────────── #
 def build_zephyr():
     """Builds the zephyr language for the current language using a separate
     process.
@@ -138,14 +164,6 @@ def build_zephyr():
         sys.exit(1)
 
 
-    # base = Path(base)
-    # for root, dirs, files in os.walk(base):
-        # proot = Path(root)
-        # depth = len(proot.parents) - len(base.parents)
-        # print("   " * depth, proot.name)
-        # for fpath in files:
-            # print("   " * (depth + 1), fpath)
-
 def gather_tests(base: str) -> list:
     test_files = []
     for root, dirs, files in os.walk(base):
@@ -160,22 +178,14 @@ TestBuild = collections.namedtuple(
 def build_tests(base, tests) -> List[TestBuild]:
     """Recursively walks the test directory to compile every file.
     """
-    # ------------------------- find zephyr executable ------------------------- #
-    if check_dependency(ZEPHYR, exit=False):
-        zephyr = ZEPHYR
-    elif check_dependency('zephyr', exit=False):
-        zephyr = 'zephyr'
-    else:
-        warn(f"{RED}[ERROR]{NC} both local (%s) and global (zephyr) executable were not found", ZEPHYR)
-        exit(127)
-
+    zephyr = get_zephyr()
     # -------------------------- compile each test --------------------------- #
-    n = len(Path(base).parts)  # depth of the base folder
+    depth = len(Path(base).parts)  # depth of the base folder
     out_dir = Path(base) / 'out'
 
     test_builds = []
     for test_file in tests:
-        out_path = reduce(Path.joinpath, test_file.parts[n:], out_dir).with_suffix(".wasm")
+        out_path = reduce(Path.joinpath, test_file.parts[depth:], out_dir).with_suffix(".wasm")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         completed = subprocess.run(
             [zephyr, str(test_file), '-o', out_path],
@@ -224,7 +234,7 @@ def run_tests(tests_built: List[TestBuild]) -> List[TestRun]:
             ))
     return tests_run
 
-
+# ─────────────────────────────────── CLI ──────────────────────────────────── #
 def cli_parser() -> argparse.ArgumentParser:
     """Define the CLI interface of this testing script. Returns an argparse
     parser.
@@ -259,17 +269,20 @@ def cli_parser() -> argparse.ArgumentParser:
     return parser
 
 
-
+# ────────────────────────── CLI parsing + logging ─────────────────────────── #
 if __name__ == "__main__":
+    # Parse arguments, setup the logger accordingly
     args = cli_parser().parse_args()
     logging.basicConfig(level=args.loglevel, format="%(message)s")
+    debug(f"{MAGENTA}Arguments:{NC}\n  %s", args)
 
-    debug(f"{MAGENTA}Arguments:{NC} %s", args)
+    # Build the toolkit if needed
+    debug(f"{MAGENTA}Build:{NC}")
+    build_zephyr() if args.build else debug("  → not building zephyr")
 
-    if args.build:
-        build_zephyr()
-    else:
-        debug("→ not building zephyr")
+    # Log zephyr path/version
+    run = subprocess.run([get_zephyr(), '--version'], stdout=subprocess.PIPE)
+    debug(f"{MAGENTA}Zephyr:{NC}\n  %s", run.stdout.decode('utf-8'))
 
     # tests = build_tests('tests', {})
 
