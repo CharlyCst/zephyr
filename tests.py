@@ -159,12 +159,13 @@ def table(*columns, paddings: List[str] = None, insert_separation = None):
     rows = list(zip(*columns))
     titles = rows.pop(0)
 
-    # Print the headers
-    print(format_row(' │ ', titles, ['center'] * len(columns)))
-    print(format_row('═╪═', ['═' * sizes[i] for i,_ in enumerate(columns)]))
-
-    # Gather full lines as string first, to insert separations conditionally
+    # Gather full lines as string first, to easily return the whole table string
     lines = []
+
+    # Handle titles and the header separation
+    lines.append(format_row(' │ ', titles, ['center'] * len(columns)))
+    lines.append(format_row('═╪═', ['═' * sizes[i] for i,_ in enumerate(columns)]))
+
     for (i, _) in enumerate(rows):
         # Check on consecutive rows if we should insert a separation line
         if i > 0 and insert_separation(rows[i - 1], rows[i]):
@@ -176,7 +177,7 @@ def table(*columns, paddings: List[str] = None, insert_separation = None):
         lines.append(format_row(' │ ', rows[i], ['center'] * len(columns)))
 
     # Print the result lines
-    print('\n'.join(lines))
+    return '\n'.join(lines)
 
 
 # ────────────────────────────── main functions ────────────────────────────── #
@@ -313,6 +314,10 @@ def cli_parser() -> argparse.ArgumentParser:
         action="store_const", dest="loglevel", const=logging.INFO,
     )
     parser.add_argument(
+        '-s', '--silent', help="suppress all outputs from this program",
+        action="store_true",
+    )
+    parser.add_argument(
         "--dir", type=Path, help="path to the test directory",
         default=TEST_DIR, dest="test_dir",
     )
@@ -363,14 +368,17 @@ if __name__ == "__main__":
 
     # If just listing, print the tests and exit
     if args.list:
-        table(
-            ["id"] + [i for i, _ in enumerate(tests_list)],
-            ["folder"] + folders,
-            ["test"] + test_names,
-            paddings=['left', 'left', 'left'],
-            insert_separation=separate_folders,
-        )
-        sys.exit(0)
+        if not args.silent:
+            print(
+                table(
+                    ["id"] + [i for i, _ in enumerate(tests_list)],
+                    ["folder"] + folders,
+                    ["test"] + test_names,
+                    paddings=["left", "left", "left"],
+                    insert_separation=separate_folders,
+                )
+            )
+            exit(0)
 
     # Build the tests, save informations
     tests_built = build_tests(args.test_dir, tests_list)
@@ -384,15 +392,18 @@ if __name__ == "__main__":
 
     # Display the final summary
     # id | folder | test | compiles | passes
-    table(
-        ["id"] + [i for i, _ in enumerate(passed)],
-        ["folder"] + folders,
-        ["test"] + test_names,
-        ["compiles"] + compiled,
-        ["passes  "] + passed,
-        paddings=['left', 'left', 'left', 'center', 'center'],
-        insert_separation=separate_folders,
-    )
+    if not args.silent:
+        print(
+            table(
+                ["id"] + [i for i, _ in enumerate(passed)],
+                ["folder"] + folders,
+                ["test"] + test_names,
+                ["compiles"] + compiled,
+                ["passes  "] + passed,
+                paddings=["left", "left", "left", "center", "center"],
+                insert_separation=separate_folders,
+            )
+        )
 
     tests = list(zip(tests_list, tests_built, tests_ran))
 
@@ -445,3 +456,6 @@ if __name__ == "__main__":
                     f"  {BLUE}stderr{NC}:{std_prefix}%s",
                     run.stderr.strip().replace("\n", std_prefix),
                 )
+
+    if build_failures or run_failures:
+        exit(1)
