@@ -36,15 +36,15 @@ ZEPHYR_PATH = "./target/debug/zephyr"
 
 # ────────────────────────────────── utils ─────────────────────────────────── #
 # Colors shortcuts through ANSI escape codes
-RED     = "\x1b[31m"
-GREEN   = "\x1b[32m"
-YELLOW  = "\x1b[33m"
-CYAN    = "\x1b[36m"
+RED = "\x1b[31m"
+GREEN = "\x1b[32m"
+YELLOW = "\x1b[33m"
+CYAN = "\x1b[36m"
 MAGENTA = "\x1b[35m"
-BLUE    = "\x1b[34m"
-BOLD    = "\x1b[1m"
-ITA     = "\x1b[3m"
-NC      = "\x1b[0m"  # no-color, or reset
+BLUE = "\x1b[34m"
+BOLD = "\x1b[1m"
+ITA = "\x1b[3m"
+NC = "\x1b[0m"  # no-color, or reset
 
 # Print small ✓ / ✗
 YES = f"{GREEN}✓{NC}"
@@ -81,8 +81,8 @@ def check_dependency(command: str, exit: bool=True) -> bool:
         sys.exit(127)
     return valid
 
-def is_zephyr(path: Path):
-    return path.suffix == '.zph'
+def is_zephyr(path: str):
+    return path[-4:] == '.zph'
 
 def get_zephyr():
     """Gets the zephyr executable, from the following sources, by priority:
@@ -165,11 +165,13 @@ def build_zephyr():
 
 
 def gather_tests(base: str) -> list:
+    """Gathers all test file as Path objects"""
+    # To make sure that we'll have a valid parent for each path, 
     test_files = []
     for root, dirs, files in os.walk(base):
-        for filename in files:
-            if filename[-4:] == '.zph':
-                test_files.append(Path(root) / filename)
+        root_path = Path(root).resolve()
+        for filename in filter(is_zephyr, files):
+            test_files.append(root_path / filename)
     return test_files
 
 TestBuild = collections.namedtuple(
@@ -261,6 +263,10 @@ def cli_parser() -> argparse.ArgumentParser:
         action="store_const", dest="loglevel", const=logging.INFO,
     )
     parser.add_argument(
+        "--dir", type=Path, help="path to the test directory",
+        default=TEST_DIR, dest="test_dir",
+    )
+    parser.add_argument(
         "--build", help="build the zephyr compiler", action="store_true"
     )
     parser.add_argument(
@@ -278,26 +284,42 @@ if __name__ == "__main__":
 
     # Build the toolkit if needed
     debug(f"{MAGENTA}Build:{NC}")
-    build_zephyr() if args.build else debug("  → not building zephyr")
+    build_zephyr() if args.build else debug("  → skipped (pass --build)")
 
     # Log zephyr path/version
-    run = subprocess.run([get_zephyr(), '--version'], stdout=subprocess.PIPE)
-    debug(f"{MAGENTA}Zephyr:{NC}\n  %s", run.stdout.decode('utf-8'))
+    run = subprocess.run(
+        [get_zephyr(), "--version"], stdout=subprocess.PIPE, check=True
+    )
+    debug(f"{MAGENTA}Zephyr:{NC}\n  → %s", run.stdout.decode('utf-8'))
 
-    # tests = build_tests('tests', {})
+    # Gather tests and retrieve informations for later display
+    tests_list = gather_tests(args.test_dir)
+    folders = [str(path.parent.name) for path in tests_list]
+    test_names = [str(path.name) for path in tests_list]
 
-    tests_list = gather_tests(TEST_DIR)
+    # If just listing, print the tests and exit
     if args.list:
-        warn(f"→ Gathered {MAGENTA}%d{NC} tests", len(tests_list))
+        warn(f"Gathered {BLUE}%d{NC} tests", len(tests_list))
+        table(
+            ["id"] + [i for i,_ in enumerate(tests_list)],
+            ["folder"] + folders,
+            ["test"] + test_names,
+            paddings=['left', 'left', 'left'],
+        )
+        sys.exit(0)
 
-    tests_built = build_tests(TEST_DIR, tests_list)
+    # Build the tests, save informations
+    tests_built = build_tests(args.test_dir, tests_list)
+
+    # Run the tests, save informations
     tests_ran = run_tests(tests_built)
 
-    folders = [str(path.parent)[6:] for path in tests_list]
-    test_names = [str(path.name) for path in tests_list]
+    # Symbols for each test on 'compiled' and 'passed'
     compiled = [YES if test.success else NO for test in tests_built]
     passed = [YES if run.success else NO for run in tests_ran]
 
+    # Display the final summary
+    # id | folder | test | compiles | passes
     table(
         ["id"] + [i for i,_ in enumerate(passed)],
         ["folder"] + folders,
