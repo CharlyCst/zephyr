@@ -31,6 +31,7 @@ import textwrap
 # ──────────────────────────────────────────────────────────────────────────── #
 
 # Constants
+WORKDIR = Path(__file__).resolve().parent
 TEST_DIR = './test'
 ZEPHYR_PATH = "./target/debug/zephyr"
 
@@ -57,7 +58,7 @@ warn = logging.warning
 
 
 # ─────────────────────────────── dependencies ─────────────────────────────── #
-def check_dependency(command: str, exit: bool=True) -> bool:
+def check_dependency(command: str, exit: bool = True) -> bool:
     """Checks the dependencies for testing the current version of the
     compiler. The dependency will be checked as a path to a valid executable,
     then as a command available in the $PATH.
@@ -105,37 +106,76 @@ def get_zephyr():
     return zephyr
 
 # ───────────────────────────────── printing ───────────────────────────────── #
-def table(*columns, paddings: List[str] = None):
+def table(*columns, paddings: List[str] = None, insert_separation = None):
     """Given columns as separate lists, prints a nice layout, similar to the
     unix tool column(1).
+
+    Args:
+        columns (Tuple[List[str]]):
+            Any number of columns, a column being a list of printable objects
+            (preferably strings). All columns should have the same length.
+            The first element of the column will be used as a title.
+        paddings (List[str], optional):
+            List of padding for the display of each columns. Titles are always
+            centered.
+        insert_separation (optional):
+            This argument should be a callable of the following signature:
+            > Callable(last_row: List[str], current_row: List[str]) -> bool
+
+            For each consecutive rows, decide if a separator should be inserted
+            between them by returning a boolean value.
     """
-    # Deal with string length/padding with ansi escape codes
-    strip_ansi = re.compile(r"\x1b\[[;\d]*[A-Za-z]")
-    # Compute the lenght without escape code (displayed chars)
-    length = lambda string: len(strip_ansi.sub('', str(string)))
     # Padd using the custom length
     pad_functions = {
         "left":   lambda s, n: s.ljust(n + len(s) - length(s)),
         "right":  lambda s, n: s.rjust(n + len(s) - length(s)),
         "center": lambda s, n: s.center(n + len(s) - length(s)),
     }
-    assert paddings is None or all(pad in pad_functions for pad in paddings)
+    # Default padding: all left
+    paddings = paddings or ["left"] * len(columns)
+    assert all([pad in pad_functions for pad in paddings])
+    pads = [pad_functions[p] for p in paddings]
 
-    # Built rows padded with the right size for each col
+    # Default separation insertion: never
+    insert_separation = insert_separation or (lambda r1, r2: False)
+
+    # Deal with string length/padding with ansi escape codes
+    strip_ansi = re.compile(r"\x1b\[[;\d]*[A-Za-z]")
+
+    # Compute the lenght without escape code (displayed chars)
+    length = lambda string: len(strip_ansi.sub('', str(string)))
+
+
+    # Compute the right size for each column (size of the maximal element)
     sizes = [max(map(length, col)) for col in columns]
 
+    # Subfunction formatting a row using
     def format_row(sep: str, row: List[str], paddings: List[str] = None):
-        pad = (
-            [pad_functions[p] for p in paddings]
-            if paddings
-            else [pad_functions["left"]] * len(columns)
-        )
-        return sep.join(pad[i](str(cell), sizes[i]) for (i, cell) in enumerate(row))
+        return sep.join( pads[i](str(cell), sizes[i]) for (i, cell) in enumerate(row) )
 
+
+    # Pack rows together, extract the titles
     rows = list(zip(*columns))
-    print(format_row(' │ ', rows[0], ['center'] * len(columns)))
+    titles = rows.pop(0)
+
+    # Print the headers
+    print(format_row(' │ ', titles, ['center'] * len(columns)))
     print(format_row('═╪═', ['═' * sizes[i] for i,_ in enumerate(columns)]))
-    print('\n'.join(format_row(' │ ', r, paddings) for r in rows[1:]))
+
+    # Gather full lines as string first, to insert separations conditionally
+    lines = []
+    for (i, _) in enumerate(rows):
+        # Check on consecutive rows if we should insert a separation line
+        if i > 0 and insert_separation(rows[i - 1], rows[i]):
+            lines.append(
+                format_row("─┼─", ["─" * sizes[i] for i, _ in enumerate(columns)])
+            )
+
+        # Always add the current row
+        lines.append(format_row(' │ ', rows[i], ['center'] * len(columns)))
+
+    # Print the result lines
+    print('\n'.join(lines))
 
 
 # ────────────────────────────── main functions ────────────────────────────── #
@@ -166,10 +206,10 @@ def build_zephyr():
 
 def gather_tests(base: str) -> list:
     """Gathers all test file as Path objects"""
-    # To make sure that we'll have a valid parent for each path, 
     test_files = []
     for root, dirs, files in os.walk(base):
-        root_path = Path(root).resolve()
+        # We take the root path relative to the working directory
+        root_path = Path(root).resolve().relative_to(WORKDIR)
         for filename in filter(is_zephyr, files):
             test_files.append(root_path / filename)
     return test_files
@@ -284,7 +324,7 @@ if __name__ == "__main__":
 
     # Build the toolkit if needed
     debug(f"{MAGENTA}Build:{NC}")
-    build_zephyr() if args.build else debug("  → skipped (pass --build)")
+    build_zephyr() if args.build else debug("  → skipped (pass --build to build)")
 
     # Log zephyr path/version
     run = subprocess.run(
@@ -297,14 +337,21 @@ if __name__ == "__main__":
     folders = [str(path.parent.name) for path in tests_list]
     test_names = [str(path.name) for path in tests_list]
 
+    # Empty line for prettier separation of log/output
+    debug("")
+
+    # Small funtion to group tables by folders: separate if 2d element (folder)
+    # of the table is different on consecutive rows
+    separate_folders = lambda r1, r2: r1[1] != r2[1]
+
     # If just listing, print the tests and exit
     if args.list:
-        warn(f"Gathered {BLUE}%d{NC} tests", len(tests_list))
         table(
-            ["id"] + [i for i,_ in enumerate(tests_list)],
+            ["id"] + [i for i, _ in enumerate(tests_list)],
             ["folder"] + folders,
             ["test"] + test_names,
             paddings=['left', 'left', 'left'],
+            insert_separation=separate_folders,
         )
         sys.exit(0)
 
@@ -321,10 +368,11 @@ if __name__ == "__main__":
     # Display the final summary
     # id | folder | test | compiles | passes
     table(
-        ["id"] + [i for i,_ in enumerate(passed)],
+        ["id"] + [i for i, _ in enumerate(passed)],
         ["folder"] + folders,
         ["test"] + test_names,
         ["compiles"] + compiled,
         ["passes  "] + passed,
         paddings=['left', 'left', 'left', 'center', 'center'],
+        insert_separation=separate_folders,
     )
