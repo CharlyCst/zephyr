@@ -68,11 +68,12 @@ def check_dependency(command: str, exit: bool = True) -> bool:
     """
     valid = (
         # Check the command as an executable path
-        os.path.exists(command) and os.access(command, os.X_OK)
+        os.path.exists(command)
+        and os.path.isfile(command)
+        and os.access(command, os.X_OK)
         # Check the command in the current environment
         or shutil.which(command)
     )
-
 
     if exit and not valid:
         info(
@@ -215,7 +216,7 @@ def gather_tests(base: str) -> list:
     return test_files
 
 TestBuild = collections.namedtuple(
-    "TestBuild", ["success", "path", "stdout", "stderr"]
+    "TestBuild", ["success", "command", "path", "stdout", "stderr"]
 )
 def build_tests(base, tests) -> List[TestBuild]:
     """Recursively walks the test directory to compile every file.
@@ -229,14 +230,17 @@ def build_tests(base, tests) -> List[TestBuild]:
     for test_file in tests:
         out_path = reduce(Path.joinpath, test_file.parts[depth:], out_dir).with_suffix(".wasm")
         out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        command = [str(zephyr), str(test_file), '-o', str(out_path)]
         completed = subprocess.run(
-            [zephyr, str(test_file), '-o', out_path],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
         )
         test_builds.append(
             TestBuild(
+                command=' '.join(command),
                 success=(completed.returncode == 0),
                 path=out_path,
                 stdout=completed.stdout.decode("utf-8"),
@@ -247,29 +251,35 @@ def build_tests(base, tests) -> List[TestBuild]:
 
 
 TestRun = collections.namedtuple(
-    "TestRun", ["success", "stdout", "stderr"]
+    "TestRun", ["success", "command", "expected", "stdout", "stderr"]
 )
 def run_tests(tests_built: List[TestBuild]) -> List[TestRun]:
     check_dependency('wasmtime', exit=True)
 
     # ---------------------------- run each test ----------------------------- #
     tests_run = []
+    expected = "42"
     for test in tests_built:
+        command = ['wasmtime', str(test.path)]
         if test.success:
             completed = subprocess.run(
-                ['wasmtime', str(test.path)],
+                command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
             )
-            stdout = completed.stdout.decode('utf-8')
+            stdout = completed.stdout.decode('utf-8').strip()
             tests_run.append(TestRun(
-                success=(stdout.strip() == "42"),
-                stdout=completed.stdout.decode('utf-8'),
+                command=' '.join(command),
+                success=(stdout.strip() == expected),
+                expected=expected,
+                stdout=stdout,
                 stderr=completed.stderr.decode('utf-8'),
             ))
         else:
             tests_run.append(TestRun(
+                command=' '.join(command),
+                expected=expected,
                 success=False,
                 stdout='',
                 stderr='',
@@ -307,6 +317,10 @@ def cli_parser() -> argparse.ArgumentParser:
         default=TEST_DIR, dest="test_dir",
     )
     parser.add_argument(
+        "--zephyr", type=Path, help="path to the zephyr executable",
+        default=ZEPHYR_PATH, dest="zephyr_path",
+    )
+    parser.add_argument(
         "--build", help="build the zephyr compiler", action="store_true"
     )
     parser.add_argument(
@@ -321,6 +335,9 @@ if __name__ == "__main__":
     args = cli_parser().parse_args()
     logging.basicConfig(level=args.loglevel, format="%(message)s")
     debug(f"{MAGENTA}Arguments:{NC}\n  %s", args)
+
+    # Get ZEPHYR PATH from user
+    ZEPHYR_PATH = args.zephyr_path
 
     # Build the toolkit if needed
     debug(f"{MAGENTA}Build:{NC}")
@@ -376,3 +393,55 @@ if __name__ == "__main__":
         paddings=['left', 'left', 'left', 'center', 'center'],
         insert_separation=separate_folders,
     )
+
+    tests = list(zip(tests_list, tests_built, tests_ran))
+
+    # Note: info is activated only if -v or -d is passed
+    info("")
+
+    # Log the failures on build step, then run step
+    # (mutually exclusives, as build failure => test not run)
+    build_failures = list(
+        filter(lambda test: not test[1][1].success, enumerate(tests))
+    )
+    if build_failures:
+        info(f"{RED}Build Failures\n--------------{NC}")
+        for i, (path, build, _) in build_failures:
+            info(f"\n  {BOLD}[%d]{NC} %s", i, path)
+            info(f"  {BLUE}command{NC}: %s", build.command)
+
+            std_prefix = '\n   | '
+            if build.stdout:
+                info(
+                    f"  {BLUE}stdout{NC}:{std_prefix}%s",
+                    build.stdout.strip().replace("\n", std_prefix),
+                )
+            if build.stderr:
+                info(
+                    f"  {BLUE}stderr{NC}:{std_prefix}%s",
+                    build.stderr.strip().replace("\n", std_prefix),
+                )
+
+    info("")
+
+    run_failures = list(
+        filter(
+            lambda test: test[1][1].success and not test[1][2].success,
+            enumerate(tests),
+        )
+    )
+    if run_failures:
+        info(f"{RED}Run Failures\n------------{NC}")
+        for i, (path, build, run) in run_failures:
+            info(f"\n  {BOLD}[%d]{NC} %s", i, path)
+            info(f"  {BLUE}command{NC}: %s", run.command)
+
+            info(f"  {BLUE}expected{NC}: '%s'", run.expected)
+            std_prefix = '\n   | '
+            if run.stdout:
+                info(f"  {BLUE}out{NC}: '%s'", run.stdout.strip())
+            if run.stderr:
+                info(
+                    f"  {BLUE}stderr{NC}:{std_prefix}%s",
+                    run.stderr.strip().replace("\n", std_prefix),
+                )
