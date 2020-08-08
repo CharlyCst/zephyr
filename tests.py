@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 """
-Test-suite script for the Fork language (https://github.com/CharlyCst/fork).
-This script provides all capabilities to compile the fork compiler from rust,
-then compile all of the fork test files and execute the tests written in fork.
+Test-suite script for the Zephyr language (https://github.com/CharlyCst/zephyr).
+This script provides all capabilities to compile the zephyr compiler from rust,
+then compile all of the zephyr test files and execute the tests written in
+zephyr.
 """
 # ───────────────────────────────── headers ────────────────────────────────── #
 __author__ = "Simon Lassourreuille (Slyces)"
@@ -14,6 +15,7 @@ __email__ = "slyces.coding@gmail.com"
 __status__ = "Development"
 
 # ───────────────────────────────── imports ────────────────────────────────── #
+# Standard Library
 from typing import List
 from functools import reduce
 from pathlib import Path
@@ -26,10 +28,13 @@ import shutil
 import subprocess
 import sys
 import textwrap
+# ──────────────────────────────────────────────────────────────────────────── #
 
 # Constants
-FORK = "./target/debug/fork"
+TEST_DIR = './test'
+ZEPHYR = "./target/debug/zephyr"
 
+# ---------------------------------- utils ----------------------------------- #
 # Colors shortcuts through ANSI escape codes
 RED     = "\x1b[31m"
 GREEN   = "\x1b[32m"
@@ -108,14 +113,14 @@ def table(*columns, paddings: List[str] = None):
     print('\n'.join(format_row(' │ ', r, paddings) for r in rows[1:]))
 
 
-def build_fork():
-    """Builds the fork language for the current language using a separate
+def build_zephyr():
+    """Builds the zephyr language for the current language using a separate
     process.
     """
     check_dependency('cargo', exit=True)
 
     # Blocking call to cargo
-    warn("→ building fork")
+    warn("→ building zephyr")
     completed = subprocess.run(
         ["cargo", "build", "--verbose"],
         stdout=subprocess.PIPE,
@@ -129,7 +134,7 @@ def build_fork():
     warn(stderr)
 
     if completed.returncode != 0:
-        warn(f"{RED}[ERROR]{NC} Compiling fork failed.")
+        warn(f"{RED}[ERROR]{NC} Compiling zephyr failed.")
         sys.exit(1)
 
 
@@ -145,7 +150,7 @@ def gather_tests(base: str) -> list:
     test_files = []
     for root, dirs, files in os.walk(base):
         for filename in files:
-            if filename[-4:] == '.frk':
+            if filename[-4:] == '.zph':
                 test_files.append(Path(root) / filename)
     return test_files
 
@@ -155,13 +160,13 @@ TestBuild = collections.namedtuple(
 def build_tests(base, tests) -> List[TestBuild]:
     """Recursively walks the test directory to compile every file.
     """
-    # ------------------------- find fork executable ------------------------- #
-    if check_dependency(FORK, exit=False):
-        fork_exec = FORK
-    elif check_dependency('fork', exit=False):
-        fork_exec = 'fork'
+    # ------------------------- find zephyr executable ------------------------- #
+    if check_dependency(ZEPHYR, exit=False):
+        zephyr = ZEPHYR
+    elif check_dependency('zephyr', exit=False):
+        zephyr = 'zephyr'
     else:
-        warn(f"{RED}[ERROR]{NC} both local (%s) and global (fork) executable were not found", FORK)
+        warn(f"{RED}[ERROR]{NC} both local (%s) and global (zephyr) executable were not found", ZEPHYR)
         exit(127)
 
     # -------------------------- compile each test --------------------------- #
@@ -173,7 +178,7 @@ def build_tests(base, tests) -> List[TestBuild]:
         out_path = reduce(Path.joinpath, test_file.parts[n:], out_dir).with_suffix(".wasm")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         completed = subprocess.run(
-            [fork_exec, str(test_file), '-o', out_path],
+            [zephyr, str(test_file), '-o', out_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -227,10 +232,10 @@ def cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=textwrap.dedent(
             """
-            Fork's compilator test-suite. Provides different utilities to test
+            Zephyr's compilator test-suite. Provides different utilities to test
             the language's main functionalities against different runtimes.
-            If the test-suite doesn't find the compiled fork in the current
-            repository, it will try using a system-wide fork command.
+            If the test-suite doesn't find the compiled zephyr in the current
+            repository, it will try using a system-wide zephyr command.
             """
         )
     )
@@ -246,7 +251,7 @@ def cli_parser() -> argparse.ArgumentParser:
         action="store_const", dest="loglevel", const=logging.INFO,
     )
     parser.add_argument(
-        "--build", help="build the fork compiler", action="store_true"
+        "--build", help="build the zephyr compiler", action="store_true"
     )
     parser.add_argument(
         "--list", help="only list the tests", action="store_true"
@@ -262,17 +267,17 @@ if __name__ == "__main__":
     debug(f"{MAGENTA}Arguments:{NC} %s", args)
 
     if args.build:
-        build_fork()
+        build_zephyr()
     else:
-        debug("→ not building fork")
+        debug("→ not building zephyr")
 
     # tests = build_tests('tests', {})
 
-    tests_list = gather_tests('tests')
+    tests_list = gather_tests(TEST_DIR)
     if args.list:
         warn(f"→ Gathered {MAGENTA}%d{NC} tests", len(tests_list))
 
-    tests_built = build_tests('tests', tests_list)
+    tests_built = build_tests(TEST_DIR, tests_list)
     tests_ran = run_tests(tests_built)
 
     folders = [str(path.parent)[6:] for path in tests_list]
