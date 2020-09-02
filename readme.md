@@ -67,7 +67,7 @@ cargo run -- pow.zph pow.wasm
 And run it with your favorite WASM runtime, for instance [Wastime](https://github.com/bytecodealliance/wasmtime)
 
 ```bash
-wasmtime pow.wasm 5 3
+wasmtime pow.wasm --invoke pow 5 3
 125
 ```
 
