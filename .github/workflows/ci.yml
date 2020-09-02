@@ -16,6 +16,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
     - name: Cache Runtimes
       uses: actions/cache@v2
       with:
@@ -48,4 +52,4 @@ jobs:
       shell: bash
       run: |
           export PATH=".runtimes:$PATH"
-          sh test.sh -v
+          python tests.py --debug
