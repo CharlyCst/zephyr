@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-FORK="./target/debug/fork"
+ZEPHYR="./target/debug/zephyr"
 RUNTIME="wasmtime"
 TEST_PATH="test"
 TEST_OUTPUT_PATH="test_out"
@@ -39,15 +39,15 @@ if ! [ -x "$(command -v $RUNTIME)" ]; then
     exit 1
 fi
 
-if [ ! -f "$FORK" ]; then
-    printf "Could not find fork"
+if [ ! -f "$ZEPHYR" ]; then
+    printf "Could not find zephyr"
     exit 1
 fi
 
 # Compile tests
 printf "${BOLD}Compiling tests ...${NC}\n"
-for source in "$TEST_PATH"/*.frk; do
-    output="$TEST_OUTPUT_PATH/$(basename $source .frk).wasm"
+for source in "$TEST_PATH"/*; do
+    output="$TEST_OUTPUT_PATH/$(basename $source).wasm"
 
     printf "> $source"
 
@@ -57,7 +57,7 @@ for source in "$TEST_PATH"/*.frk; do
         flags="-v"
     fi
 
-    trace=$($FORK $flags $source -o $output)
+    trace=$($ZEPHYR $flags $source -o $output)
     if ! [ "$?" = "0" ]; then
         printf " ${RED}✗${NC}\n"
         printf "${RED}Failed to compile $(echo $source)${NC}\n\n"

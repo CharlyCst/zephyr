@@ -1,6 +1,6 @@
 # Type system
 
-Fork currently support the following types:
+Zephyr currently support the following types:
 
 ```
 i64

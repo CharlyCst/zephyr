@@ -34,7 +34,7 @@ wasmtime pow.wasm 2 5
 32
 ```
 
-To declare variables in Fork we use the `let` keyword. We can also use all the basic control flow primitives:
+To declare variables in Zephyr we use the `let` keyword. We can also use all the basic control flow primitives:
 - `if` and `else`.
 - `while` loop, `for` are not yet supported.
 - `return` which does what you expect.

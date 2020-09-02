@@ -362,7 +362,7 @@ impl<'a> Parser<'a> {
             ident: ident,
             params: params,
             result: result,
-            block: block,
+            body: Body::Zephyr(block),
             is_pub: is_pub,
             loc: loc,
         })

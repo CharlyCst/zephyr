@@ -1,8 +1,8 @@
-# The Fork language
+# The Zephyr language
 
-This chapter is about introducing the Fork language. 
+This chapter is about introducing the Zephyr language. 
 
-At the time of writing, Fork is only at version 0.1.0 and does not yet support memory allocation, only numbers and booleans can be manipuled but the language support all other basic features you probably expect, namely:
+At the time of writing, Zephyr is only at version 0.1.0 and does not yet support memory allocation, only numbers and booleans can be manipuled but the language support all other basic features you probably expect, namely:
 
 - Arithmetic, boolean and bit-level manipulation.
 - Functions and control flow.
@@ -10,5 +10,5 @@ At the time of writing, Fork is only at version 0.1.0 and does not yet support m
 - Compiler errors (not yet perfect but hopefully helpul).
 - A package system.
 
-Without further waiting, let's get started writing Fork!
+Without further waiting, let's get started writing Zephyr!
 

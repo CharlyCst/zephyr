@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>A basic program - Compiler Book</title>
+        <title>A basic program - Zephyr Compiler Book</title>
         
 
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
@@ -81,7 +81,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html" class="active"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Zephyr language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html" class="active"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -113,7 +113,7 @@
                         
                     </div>
 
-                    <h1 class="menu-title">Compiler Book</h1>
+                    <h1 class="menu-title">Zephyr Compiler Book</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -148,7 +148,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1><a class="header" href="#a-basic-program" id="a-basic-program">A basic program</a></h1>
-<p>Let's write our first Fork program:</p>
+<p>Let's write our first Zephyr program:</p>
 <pre><pre class="playpen"><code class="language-rust">
 <span class="boring">#![allow(unused_variables)]
 </span><span class="boring">fn main() {
@@ -161,18 +161,18 @@ fun add(a i32, b i32) i32 {
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p>In Fork a file always starts with a <code>package</code> declaration, so here we are defining a <code>main</code> package. There is no name imposed, it could also have been <code>add</code> or anything you like! More on that in a later chapter.</p>
-<p>This package exposes a single declaration, an <code>add</code> function. Remember that Fork targets WebAssembly, which is meant to live inside some runtime, thus we need to expose functions for the runtime to be able tu actually run them.</p>
+<p>In Zephyr a file always starts with a <code>package</code> declaration, so here we are defining a <code>main</code> package. There is no name imposed, it could also have been <code>add</code> or anything you like! More on that in a later chapter.</p>
+<p>This package exposes a single declaration, an <code>add</code> function. Remember that Zephyr targets WebAssembly, which is meant to live inside some runtime, thus we need to expose functions for the runtime to be able tu actually run them.</p>
 <p>Then comes to function itself, it has a name, arguments with their types and a return type. Version 0.1.0 only supports <code>i32</code>, <code>i64</code>, <code>f32</code> and <code>f64</code>, but structs, strings and more are comming!</p>
-<p>Notice that there is no semi-colon <code>;</code> in Fork, as in Go those are inserted automatically at the right places so that you don't need to bother with that yourself.</p>
-<p>Now let's compile our program! For now you will have to compile the compiler yourself, you will need the rust toolchain for that, then run <code>cargo build --release</code> at the root of the directory, this will create the binary at <code>target/release/fork</code>. Then you can compile any fork program you like:</p>
-<pre><code class="language-sh">fork add.frk
+<p>Notice that there is no semi-colon <code>;</code> in Zephyr, as in Go those are inserted automatically at the right places so that you don't need to bother with that yourself.</p>
+<p>Now let's compile our program! For now you will have to compile the compiler yourself, you will need the rust toolchain for that, then run <code>cargo build --release</code> at the root of the directory, this will create the binary at <code>target/release/zephyr</code>. Then you can compile any zephyr program you like:</p>
+<pre><code class="language-sh">zephyr add.frk
 </code></pre>
 <p>This will produce a <code>main.wasm</code> file, because we compiled the <code>main</code> package. You can choose the output name with the <code>-o output_name.wasm</code> option.</p>
 <p>Then you need a runtime to actually run a wasm binary, in this exemple we will use <a href="https://github.com/bytecodealliance/wasmtime">wasmtime</a>, but choose the one that floats your boat. With wasmtime we can invoke a wasm function an pass it arguments:</p>
 <pre><code class="language-sh">wasmtime main.wasm --invoke add 3 4
 </code></pre>
-<p>And that is it! You just wrote your first Fork program!</p>
+<p>And that is it! You just wrote your first Zephyr program!</p>
 
                     </main>
 

@@ -49,9 +49,22 @@ pub const INSTR_BR_IF: Instr = 0x0d;
 pub const INSTR_RETURN: Instr = 0x0f;
 pub const INSTR_CALL: Instr = 0x10;
 pub const INSTR_CALL_INDIRECT: Instr = 0x11;
+// Parametric
+pub const INSTR_DROP: Instr = 0x1a;
 // Variables
 pub const INSTR_LOCAL_GET: Instr = 0x20;
 pub const INSTR_LOCAL_SET: Instr = 0x21;
+// Memory
+pub const INSTR_I32_LOAD: Instr = 0x28;
+pub const INSTR_I64_LOAD: Instr = 0x29;
+pub const INSTR_F32_LOAD: Instr = 0x2a;
+pub const INSTR_F64_LOAD: Instr = 0x2b;
+pub const INSTR_I32_STORE: Instr = 0x36;
+pub const INSTR_I64_STORE: Instr = 0x37;
+pub const INSTR_F32_STORE: Instr = 0x38;
+pub const INSTR_F64_STORE: Instr = 0x39;
+pub const INSTR_MEMORY_SIZE: Instr = 0x3f;
+pub const INSTR_MEMORY_GROW: Instr = 0x40;
 // Numerical Constants
 pub const INSTR_I32_CST: Instr = 0x41;
 pub const INSTR_I64_CST: Instr = 0x42;
@@ -131,24 +144,61 @@ pub const INSTR_F64_SUB: Instr = 0xa1;
 pub const INSTR_F64_MUL: Instr = 0xa2;
 pub const INSTR_F64_DIV: Instr = 0xa3;
 
-const LEB_MASK: usize = 0x0000007f;
+const LEB_MASK: u64 = 0x0000007f;
+const ONE_MASK: u64 = 0xffffffffffffffff;
 
-pub fn to_leb<'a>(val: usize) -> Vec<u8> {
-    // https://en.wikipedia.org/wiki/LEB128
+/// Convert an unsigned integer into its unsigned LEB128 representation.
+///
+/// https://en.wikipedia.org/wiki/LEB128
+pub fn to_leb<'a>(val: u64) -> Vec<u8> {
     let mut remainder = val;
     let mut leb = Vec::new();
-    let mut done = false;
-    while !done {
+    loop {
         let mut byte = (LEB_MASK & remainder) as u8;
         remainder = remainder >> 7;
         if remainder == 0 {
-            done = true;
+            leb.push(byte);
+            break;
         } else {
             byte += 0x80;
+            leb.push(byte);
         }
-        leb.push(byte);
     }
     leb
+}
+
+/// Convert a signed integer into its signed LEB128 representation.
+///
+/// https://en.wikipedia.org/wiki/LEB128
+pub fn to_sleb(val: i64) -> Vec<u8> {
+    let negative = val < 0;
+    let mut sleb = Vec::new();
+    // Work with unsigned integers to avoid sign extension on shifts
+    let mut remainder = if negative { (-val) as u64 } else { val as u64 };
+
+    // Compute the number of significant bits and rounds to the closest
+    // greater multiple of 7
+    let mut n_bits = 64 - remainder.leading_zeros() + 1;
+    n_bits += (7 - n_bits % 7) % 7;
+
+    // Encode negative numbers using two's complement
+    if negative {
+        remainder = (!remainder) + 1;
+    }
+
+    loop {
+        let mut byte = (LEB_MASK & remainder) as u8;
+        remainder = remainder >> 7;
+        n_bits -= 7;
+        if n_bits == 0 {
+            sleb.push(byte);
+            break;
+        } else {
+            byte += 0x80;
+            sleb.push(byte);
+        }
+    }
+    sleb
 }
 
 pub fn type_to_bytes(t: wasm::Type) -> u8 {
@@ -166,9 +216,17 @@ mod tests {
 
     #[test]
     fn test_to_leb() {
-        assert_eq!(vec!(0x0), to_leb(0));
-        assert_eq!(vec!(0x5), to_leb(5));
-        assert_eq!(vec!(0x80, 0x1), to_leb(128));
-        assert_eq!(vec!(0xff, 0x1), to_leb(255));
+        assert_eq!(vec![0x0], to_leb(0));
+        assert_eq!(vec![0x5], to_leb(5));
+        assert_eq!(vec![0x80, 0x1], to_leb(128));
+        assert_eq!(vec![0xff, 0x1], to_leb(255));
+    }
+
+    #[test]
+    fn test_to_sleb() {
+        assert_eq!(vec![0x0], to_sleb(0));
+        assert_eq!(vec![0x5], to_sleb(5));
+        assert_eq!(vec![0x7f], to_sleb(-1));
+        assert_eq!(vec![0xc0, 0xbb, 0x78], to_sleb(-123456));
     }
 }

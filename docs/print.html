@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Compiler Book</title>
+        <title>Zephyr Compiler Book</title>
         
         <meta name="robots" content="noindex" />
         
@@ -83,7 +83,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="language/language.html"><strong aria-hidden="true">1.</strong> The Zephyr language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="overview/build.html"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -115,7 +115,7 @@
                         
                     </div>
 
-                    <h1 class="menu-title">Compiler Book</h1>
+                    <h1 class="menu-title">Zephyr Compiler Book</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -151,12 +151,12 @@
                     <main>
                         <h1><a class="header" href="#introduction" id="introduction">Introduction</a></h1>
 <p>Welcome to the Compiler Book!</p>
-<p>This book describes the inner working of the Fork Compiler, it is a work in progress but hopefully it will help you wrap your head around the compiler anyway!</p>
+<p>This book describes the inner working of the Zephyr compiler, it is a work in progress but hopefully it will help you wrap your head around the compiler anyway!</p>
 <h1><a class="header" href="#installation" id="installation">Installation</a></h1>
 <p>Not available yet, figure it out!</p>
-<h1><a class="header" href="#the-fork-language" id="the-fork-language">The Fork language</a></h1>
-<p>This chapter is about introducing the Fork language. </p>
-<p>At the time of writing, Fork is only at version 0.1.0 and does not yet support memory allocation, only numbers and booleans can be manipuled but the language support all other basic features you probably expect, namely:</p>
+<h1><a class="header" href="#the-zephyr-language" id="the-zephyr-language">The Zephyr language</a></h1>
+<p>This chapter is about introducing the Zephyr language. </p>
+<p>At the time of writing, Zephyr is only at version 0.1.0 and does not yet support memory allocation, only numbers and booleans can be manipuled but the language support all other basic features you probably expect, namely:</p>
 <ul>
 <li>Arithmetic, boolean and bit-level manipulation.</li>
 <li>Functions and control flow.</li>
@@ -164,9 +164,9 @@
 <li>Compiler errors (not yet perfect but hopefully helpul).</li>
 <li>A package system.</li>
 </ul>
-<p>Without further waiting, let's get started writing Fork!</p>
+<p>Without further waiting, let's get started writing Zephyr!</p>
 <h1><a class="header" href="#a-basic-program" id="a-basic-program">A basic program</a></h1>
-<p>Let's write our first Fork program:</p>
+<p>Let's write our first Zephyr program:</p>
 <pre><pre class="playpen"><code class="language-rust">
 <span class="boring">#![allow(unused_variables)]
 </span><span class="boring">fn main() {
@@ -179,18 +179,18 @@ fun add(a i32, b i32) i32 {
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p>In Fork a file always starts with a <code>package</code> declaration, so here we are defining a <code>main</code> package. There is no name imposed, it could also have been <code>add</code> or anything you like! More on that in a later chapter.</p>
-<p>This package exposes a single declaration, an <code>add</code> function. Remember that Fork targets WebAssembly, which is meant to live inside some runtime, thus we need to expose functions for the runtime to be able tu actually run them.</p>
+<p>In Zephyr a file always starts with a <code>package</code> declaration, so here we are defining a <code>main</code> package. There is no name imposed, it could also have been <code>add</code> or anything you like! More on that in a later chapter.</p>
+<p>This package exposes a single declaration, an <code>add</code> function. Remember that Zephyr targets WebAssembly, which is meant to live inside some runtime, thus we need to expose functions for the runtime to be able tu actually run them.</p>
 <p>Then comes to function itself, it has a name, arguments with their types and a return type. Version 0.1.0 only supports <code>i32</code>, <code>i64</code>, <code>f32</code> and <code>f64</code>, but structs, strings and more are comming!</p>
-<p>Notice that there is no semi-colon <code>;</code> in Fork, as in Go those are inserted automatically at the right places so that you don't need to bother with that yourself.</p>
-<p>Now let's compile our program! For now you will have to compile the compiler yourself, you will need the rust toolchain for that, then run <code>cargo build --release</code> at the root of the directory, this will create the binary at <code>target/release/fork</code>. Then you can compile any fork program you like:</p>
-<pre><code class="language-sh">fork add.frk
+<p>Notice that there is no semi-colon <code>;</code> in Zephyr, as in Go those are inserted automatically at the right places so that you don't need to bother with that yourself.</p>
+<p>Now let's compile our program! For now you will have to compile the compiler yourself, you will need the rust toolchain for that, then run <code>cargo build --release</code> at the root of the directory, this will create the binary at <code>target/release/zephyr</code>. Then you can compile any zephyr program you like:</p>
+<pre><code class="language-sh">zephyr add.frk
 </code></pre>
 <p>This will produce a <code>main.wasm</code> file, because we compiled the <code>main</code> package. You can choose the output name with the <code>-o output_name.wasm</code> option.</p>
 <p>Then you need a runtime to actually run a wasm binary, in this exemple we will use <a href="https://github.com/bytecodealliance/wasmtime">wasmtime</a>, but choose the one that floats your boat. With wasmtime we can invoke a wasm function an pass it arguments:</p>
 <pre><code class="language-sh">wasmtime main.wasm --invoke add 3 4
 </code></pre>
-<p>And that is it! You just wrote your first Fork program!</p>
+<p>And that is it! You just wrote your first Zephyr program!</p>
 <h1><a class="header" href="#control-flow" id="control-flow">Control flow</a></h1>
 <p>Let's have a look at a more interesting exemple:</p>
 <pre><pre class="playpen"><code class="language-rust">
@@ -224,14 +224,14 @@ fun pow(a i32, b i32) i32 {
 <pre><code class="language-sh">wasmtime pow.wasm 2 5
 32
 </code></pre>
-<p>To declare variables in Fork we use the <code>let</code> keyword. We can also use all the basic control flow primitives:</p>
+<p>To declare variables in Zephyr we use the <code>let</code> keyword. We can also use all the basic control flow primitives:</p>
 <ul>
 <li><code>if</code> and <code>else</code>.</li>
 <li><code>while</code> loop, <code>for</code> are not yet supported.</li>
 <li><code>return</code> which does what you expect.</li>
 </ul>
 <h1><a class="header" href="#packages" id="packages">Packages</a></h1>
-<p>Fork projects are organised into packages, each package lives in its own folder:</p>
+<p>Zephyr projects are organised into packages, each package lives in its own folder:</p>
 <pre><code class="language-text">src            # package &quot;http&quot;
 ├── main.frk
 ├── cookies.frk
@@ -266,16 +266,16 @@ pub fun send() {
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p><code>pub</code> functions can be used by other Fork packages, but are not <em>exposed</em> in the final <code>.wasm</code> file. They can be if the adequate <code>expose</code> statement is present, though.</p>
+<p><code>pub</code> functions can be used by other Zephyr packages, but are not <em>exposed</em> in the final <code>.wasm</code> file. They can be if the adequate <code>expose</code> statement is present, though.</p>
 <h2><a class="header" href="#single-file-package" id="single-file-package">Single file package</a></h2>
-<p>Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Fork you can create <em>single file packages</em> that lives in the same directory as their parent:</p>
+<p>Sometimes you just want to make a small package to abstract away a few functions, in that case there is no need to create a directory for a single file: in Zephyr you can create <em>single file packages</em> that lives in the same directory as their parent:</p>
 <pre><code class="language-go">package &quot;http/utils&quot;
 
 // Stuff goes here
 </code></pre>
 <p>This file can live in the folder of <code>http</code> but is still a separate single file package. However, the file <strong>must</strong> have the same name as the package, in this case it must be named named  <code>utils.frk</code>, so that the compiler and most importantly other developers can easily find the file if needed.</p>
 <h2><a class="header" href="#orphan-files" id="orphan-files">Orphan files</a></h2>
-<p>Sometimes you just want to write small scripts, testing can be one of such use cases. Fork offers a notion of <em>orphan files</em> for that purpose, it's like a normal Fork file but its package name must start wirh a <code>#</code>:</p>
+<p>Sometimes you just want to write small scripts, testing can be one of such use cases. Zephyr offers a notion of <em>orphan files</em> for that purpose, it's like a normal Zephyr file but its package name must start wirh a <code>#</code>:</p>
 <pre><code class="language-go">package &quot;#test_http&quot;
 </code></pre>
 <p>There are no other constraints on orphan files, they are discarded by the compiler unless they are the target of compilation.</p>
@@ -285,7 +285,7 @@ pub fun send() {
 <p>The compiler's repository has the following structure:</p>
 <pre><code>├── book
 ├── docs
-├── fork
+├── zephyr
 ├── out
 ├── src
 │   ├── ast
@@ -297,8 +297,8 @@ pub fun send() {
 </code></pre>
 <p><strong>src</strong><br />
 The compiler sources can be found in the <code>src</code> directory, in which live multiple crates. You can learn more about those crates in the dedicated chapters.</p>
-<p><strong>fork</strong><br />
-The <code>fork</code> folder hosts fork source files, they are used for testing and showcase purpose but may be removed in the future. Compiled files can be put inside the <code>out</code> folder, <code>.wasm</code> files are ignored there.</p>
+<p><strong>zephyr</strong><br />
+The <code>zephyr</code> folder hosts zephyr source files, they are used for testing and showcase purpose but may be removed in the future. Compiled files can be put inside the <code>out</code> folder, <code>.wasm</code> files are ignored there.</p>
 <p><strong>test</strong><br />
 Tests files lives in <code>test</code> and their outputs are generated in <code>test_out</code>.</p>
 <p><strong>book</strong><br />
@@ -310,10 +310,10 @@ You can find out more information on how to contribute to the book on the <a hre
 <pre><code class="language-bash">make build
 </code></pre>
 <p>It is a simple <code>cargo run</code> for now, but this may change in the future.</p>
-<p>Compiling a fork (<code>.frk</code>) file to wasm is not harder, use <code>cargo run</code> and pass the arguments (input file and output file) to the compiler:</p>
+<p>Compiling a zephyr (<code>.frk</code>) file to wasm is not harder, use <code>cargo run</code> and pass the arguments (input file and output file) to the compiler:</p>
 <pre><code class="language-bash">cargo run -- test.frk test.wasm
 </code></pre>
-<p>To ease development, the main <code>make</code> command compiles <code>fork/hello.frk</code> and output the result to <code>out/hello.wasm</code>. When working on the compiler, one usually just runs:</p>
+<p>To ease development, the main <code>make</code> command compiles <code>zephyr/hello.frk</code> and output the result to <code>out/hello.wasm</code>. When working on the compiler, one usually just runs:</p>
 <pre><code class="language-bash">make
 </code></pre>
 <h2><a class="header" href="#running-a-compiled-file" id="running-a-compiled-file">Running a compiled file</a></h2>
@@ -321,7 +321,7 @@ You can find out more information on how to contribute to the book on the <a hre
 <pre><code class="language-bash">wasmtime my_file.wasm [args]
 </code></pre>
 <h2><a class="header" href="#an-end-to-end-example" id="an-end-to-end-example">An end to end example</a></h2>
-<p>First write some Fork code, for instance:</p>
+<p>First write some Zephyr code, for instance:</p>
 <pre><pre class="playpen"><code class="language-rust">
 <span class="boring">#![allow(unused_variables)]
 </span><span class="boring">fn main() {
@@ -353,7 +353,7 @@ export fun Main(a i32, b i32) i32 {
 <pre><code class="language-bash">wasmtime pow.wasm 5 3
 125
 </code></pre>
-<p>To test even faster, just put your code inside <code>fork/hello.frk</code>, run <code>make</code> and then execute <code>out/hello.wasm</code>, for instance with <code>wasmtime out/hello.wasm</code>, and voilà!</p>
+<p>To test even faster, just put your code inside <code>zephyr/hello.frk</code>, run <code>make</code> and then execute <code>out/hello.wasm</code>, for instance with <code>wasmtime out/hello.wasm</code>, and voilà!</p>
 <h1><a class="header" href="#architecture" id="architecture">Architecture</a></h1>
 <p>For now the compiler is composed of a few crates, namely <code>ast</code>, <code>mir</code>, <code>wasm</code> and <code>error</code>. Others will be created as needed in the future.</p>
 <h2><a class="header" href="#the-compiler-pipeline" id="the-compiler-pipeline">The compiler pipeline</a></h2>
@@ -372,7 +372,7 @@ export fun Main(a i32, b i32) i32 {
 <h1><a class="header" href="#wasm" id="wasm">Wasm</a></h1>
 <h1><a class="header" href="#contributing" id="contributing">Contributing</a></h1>
 <h1><a class="header" href="#documentation" id="documentation">Documentation</a></h1>
-<p>The documentation you are currently reading can be found on the branch <a href="https://github.com/CharlyCst/fork/tree/book">book</a>. This documentation is built using rust's <a href="https://github.com/rust-lang/mdBook">mdbook</a> project. You can find instructions to install it on the project's homepage.</p>
+<p>The documentation you are currently reading can be found on the branch <a href="https://github.com/CharlyCst/zephyr/tree/book">book</a>. This documentation is built using rust's <a href="https://github.com/rust-lang/mdBook">mdbook</a> project. You can find instructions to install it on the project's homepage.</p>
 <p>The documentation can be compiled using our makefile. It will populate the <code>docs/*</code> folder.</p>
 <pre><code class="language-sh">make book
 </code></pre>
@@ -407,12 +407,12 @@ export fun Main(a i32, b i32) i32 {
 </ul>
 <h3><a class="header" href="#documentation-1" id="documentation-1">Documentation</a></h3>
 <h4><a class="header" href="#code-the-language" id="code-the-language">Code the language</a></h4>
-<p>This section aims to provide insights on this repo: how the code is structured, how to contribute to the compiler and help build the Fork language.</p>
+<p>This section aims to provide insights on this repo: how the code is structured, how to contribute to the compiler and help build the Zephyr language.</p>
 <ul>
 <li>...</li>
 </ul>
 <h4><a class="header" href="#code-using-the-language" id="code-using-the-language">Code using the language</a></h4>
-<p>This section aims to provide insights on the Fork language: how to use it to write code</p>
+<p>This section aims to provide insights on the Zephyr language: how to use it to write code</p>
 <ul>
 <li>...</li>
 </ul>

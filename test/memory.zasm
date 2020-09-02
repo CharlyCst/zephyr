@@ -1,0 +1,20 @@
+// Grow memory, lookup its size, store and load a number.
+
+package "#test"
+
+expose f as _start
+
+pub fun f() i32 {
+    i32.const 4
+    memory.grow
+    memory.size
+
+    i32.const 32 // Memory address
+    i32.const 42 // Value
+    i32.store 2 0 // Alignment, offset
+
+    i32.const 32 // Memory address
+    i32.load 2 0 // Alignment, offset
+    return
+}
+

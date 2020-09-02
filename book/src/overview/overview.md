@@ -9,7 +9,7 @@ The compiler's repository has the following structure:
 ```
 ├── book
 ├── docs
-├── fork
+├── zephyr
 ├── out
 ├── src
 │   ├── ast
@@ -23,8 +23,8 @@ The compiler's repository has the following structure:
 **src**  
 The compiler sources can be found in the `src` directory, in which live multiple crates. You can learn more about those crates in the dedicated chapters.
 
-**fork**  
-The `fork` folder hosts fork source files, they are used for testing and showcase purpose but may be removed in the future. Compiled files can be put inside the `out` folder, `.wasm` files are ignored there.
+**zephyr**  
+The `zephyr` folder hosts zephyr source files, they are used for testing and showcase purpose but may be removed in the future. Compiled files can be put inside the `out` folder, `.wasm` files are ignored there.
 
 
 **test**  

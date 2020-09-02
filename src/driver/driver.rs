@@ -110,7 +110,7 @@ impl Driver {
                     ));
                 }
                 package_import.insert(used.path.clone());
-                // In the future we ill check `used_root` against known package such as `std`.
+                // In the future we will check `used_root` against known package such as `std`.
                 // For now we only handle subpackages.
                 // TODO: Should we hide exposed declarations of imported packages?
                 let pub_decls = if let Some(pub_decls) = self.pub_decls.get(&used.path) {
@@ -123,9 +123,16 @@ impl Driver {
                     if !package_path.exists() {
                         // No directory found, look for a single file package.
                         package_path = self.package_root.clone().unwrap();
-                        let mut file_path = strip_root(&used.path).to_owned();
-                        file_path.push_str(".frk");
-                        package_path.push(file_path);
+                        package_path.push(strip_root(&used.path));
+                        package_path.push(".");
+                        // try to find ASM file first
+                        let mut asm_path = package_path.clone();
+                        asm_path.push(ASM_EXTENSION);
+                        if asm_path.exists() {
+                            package_path.push(ASM_EXTENSION);
+                        } else {
+                            package_path.push(ZEPHYR_EXTENSION);
+                        }
                     }
                     let mut imported = imported.clone();
                     imported.insert(used.path.clone());
@@ -206,8 +213,30 @@ impl Driver {
         let mut files = Vec::new();
         let package_id = self.fresh_package_id();
         for path in paths {
+            // Get a fresh f_id
             let f_id = self.file_id;
             self.file_id += 1;
+
+            // Verify the file kind
+            let kind = if let Some(ext) = path.extension() {
+                if ext.eq(ZEPHYR_EXTENSION) {
+                    ast::Kind::Zephyr
+                } else if ext.eq(ASM_EXTENSION) {
+                    ast::Kind::Asm
+                } else {
+                    self.err.report_internal_no_loc(format!(
+                        "Allowed unknown extension at: '{}'.",
+                        path.to_str().unwrap_or("UNWRAP_ERROR")
+                    ));
+                    exit!(self);
+                }
+            } else {
+                self.err.report_internal_no_loc(format!(
+                    "Allowed file without extension: '{}'.",
+                    path.to_str().unwrap_or("UNWRAP_ERROR")
+                ));
+                exit!(self);
+            };
             let code = fs::read_to_string(&path).expect("Internal error: invalid path.");
             let file_name = path
                 .file_stem()
@@ -215,11 +244,12 @@ impl Driver {
                 .to_str()
                 .expect("File name at seems to use non standard characters")
                 .to_string();
-            files.push((code, f_id, file_name));
+            files.push((code, f_id, file_name, kind));
         }
-        for (code, f_id, file_name) in files.into_iter() {
+        for (code, f_id, file_name, kind) in files.into_iter() {
             let mut error_handler = error::ErrorHandler::new(code, f_id);
-            let ast_program = ast::get_ast(f_id, package_id, &mut error_handler, &self.config);
+            let ast_program =
+                ast::get_ast(f_id, package_id, kind, &mut error_handler, &self.config);
             ast_programs.push((ast_program, error_handler, file_name));
         }
 
@@ -230,7 +260,7 @@ impl Driver {
         let mut package: Option<(String, error::ErrorHandler)> = None;
         let mut expected_package_name: Option<String> = None;
 
-        // Iterate over ast_program of all fork files in the folder
+        // Iterate over ast_program of all zephyr files in the folder
         for (ast, err_handler, file_name) in ast_programs {
             let package_name = ast.package.path;
             match get_package_type(&package_name) {

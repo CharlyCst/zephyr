@@ -33,9 +33,9 @@ impl SectionType {
             }
 
             fun_type.push(FUNC);
-            fun_type.append(&mut to_leb(params.len()));
+            fun_type.append(&mut to_leb(params.len() as u64));
             fun_type.extend(params);
-            fun_type.append(&mut to_leb(results.len()));
+            fun_type.append(&mut to_leb(results.len() as u64));
             fun_type.extend(results);
 
             match known_types.get(&fun_type) {
@@ -53,12 +53,12 @@ impl SectionType {
             }
         }
 
-        let count = to_leb(types.len());
+        let count = to_leb(types.len() as u64);
         size += count.len();
 
         SectionType {
             types: types,
-            size: to_leb(size),
+            size: to_leb(size as u64),
             count: count,
         }
     }
@@ -93,17 +93,17 @@ impl SectionFunction {
 
         // The function index corresponds to its index in funs
         for fun in funs {
-            let idx = to_leb(fun.type_idx);
+            let idx = to_leb(fun.type_idx as u64);
             size += idx.len();
             types.push(idx);
         }
 
-        let count = to_leb(types.len());
+        let count = to_leb(types.len() as u64);
         size += count.len();
 
         SectionFunction {
             types: types,
-            size: to_leb(size),
+            size: to_leb(size as u64),
             count: count,
         }
     }
@@ -125,6 +125,53 @@ impl SectionFunction {
     }
 }
 
+struct SectionMemory {
+    memories: Vec<Instr>,
+    size: Vec<Instr>,
+    count: Vec<Instr>,
+}
+
+impl SectionMemory {
+    fn new(memories: Vec<wasm::Limit>) -> SectionMemory {
+        let mut mem = Vec::new();
+        let count = to_leb(memories.len() as u64);
+
+        for memory in memories {
+            match memory {
+                wasm::Limit::Min(min) => {
+                    mem.push(0x00); // No upper limit flag
+                    mem.extend(to_leb(min as u64));
+                }
+                wasm::Limit::MinMax(min, max) => {
+                    mem.push(0x01); // With upper limit flag
+                    mem.extend(to_leb(min as u64));
+                    mem.extend(to_leb(max as u64));
+                }
+            }
+        }
+
+        let size = to_leb((mem.len() + count.len()) as u64);
+        SectionMemory {
+            memories: mem,
+            count: count,
+            size: size,
+        }
+    }
+
+    fn encode(&self) -> Vec<Instr> {
+        let mut bytecode = Vec::new();
+
+        // Header
+        bytecode.push(SEC_MEMORY);
+        bytecode.extend(self.size.iter());
+        bytecode.extend(self.count.iter());
+
+        // Body
+        bytecode.extend(self.memories.iter());
+        bytecode
+    }
+}
+
 struct SectionCode {
     bodies: Vec<Vec<Instr>>,
     size: Vec<Instr>,
@@ -139,19 +186,19 @@ impl SectionCode {
         for fun in funs {
             let body = &fun.body;
 
-            let mut size_body = to_leb(body.len());
+            let mut size_body = to_leb(body.len() as u64);
             size_body.extend(body);
 
             size += size_body.len();
             fun_bodies.push(size_body);
         }
 
-        let count = to_leb(fun_bodies.len());
+        let count = to_leb(fun_bodies.len() as u64);
         size += count.len();
 
         SectionCode {
             count: count,
-            size: to_leb(size),
+            size: to_leb(size as u64),
             bodies: fun_bodies,
         }
     }
@@ -189,22 +236,22 @@ impl SectionExport {
                 let mut data = Vec::new();
                 let encoded_name = name.as_bytes();
 
-                data.extend(to_leb(encoded_name.len()));
+                data.extend(to_leb(encoded_name.len() as u64));
                 data.extend(encoded_name);
                 data.push(KIND_FUNC);
-                data.extend(to_leb(idx));
+                data.extend(to_leb(idx as u64));
 
                 size += data.len();
                 exports.push(data);
             }
         }
 
-        let count = to_leb(exports.len());
+        let count = to_leb(exports.len() as u64);
         size += count.len();
 
         SectionExport {
             exports: exports,
-            size: to_leb(size),
+            size: to_leb(size as u64),
             count: count,
         }
     }
@@ -229,6 +276,7 @@ impl SectionExport {
 pub struct Module {
     types: SectionType,
     functions: SectionFunction,
+    memories: SectionMemory,
     exports: SectionExport,
     code: SectionCode,
 }
@@ -237,11 +285,13 @@ impl Module {
     pub fn new(mut funs: Vec<wasm::Function>) -> Module {
         let types = SectionType::new(&mut funs); // Must be called first because of side effects
         let functions = SectionFunction::new(&funs);
+        let memories = SectionMemory::new(vec![wasm::Limit::Min(1)]);
         let exports = SectionExport::new(&funs);
         let code = SectionCode::new(&funs);
         Module {
             types: types,
             functions: functions,
+            memories: memories,
             code: code,
             exports: exports,
         }
@@ -256,6 +306,7 @@ impl Module {
 
         bytecode.extend(self.types.encode().iter());
         bytecode.extend(self.functions.encode().iter());
+        bytecode.extend(self.memories.encode().iter());
         bytecode.extend(self.exports.encode());
         bytecode.extend(self.code.encode().iter());
 

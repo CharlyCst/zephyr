@@ -1,5 +1,8 @@
 use crate::error::Location;
+use crate::mir::Value as MirValue;
 use std::fmt;
+
+////// Zephyr AST nodes //////
 
 pub enum Value {
     Integer { val: u64, loc: Location },
@@ -114,7 +117,7 @@ pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub result: Option<(String, Location)>,
-    pub block: Block,
+    pub body: Body,
     pub is_pub: bool,
     pub loc: Location,
 }
@@ -135,6 +138,49 @@ pub struct Use {
 pub struct Block {
     pub stmts: Vec<Statement>,
 }
+
+pub enum Body {
+    Zephyr(Block),
+    Asm(Vec<AsmStatement>),
+}
+
+////// Zephyr ASM statements //////
+
+pub enum AsmStatement {
+    Local { local: AsmLocal, loc: Location },
+    Const { val: MirValue, loc: Location },
+    Control { cntrl: AsmControl, loc: Location },
+    Parametric { param: AsmParametric, loc: Location },
+    Memory { mem: AsmMemory, loc: Location }
+}
+
+pub enum AsmLocal {
+    Get { ident: String, loc: Location },
+    Set { ident: String, loc: Location },
+}
+
+pub enum AsmMemory {
+    Size,
+    Grow,
+    I32Load { align: u32, offset: u32 },
+    I64Load { align: u32, offset: u32 },
+    F32Load { align: u32, offset: u32 },
+    F64Load { align: u32, offset: u32 },
+    I32Store { align: u32, offset: u32 },
+    I64Store { align: u32, offset: u32 },
+    F32Store { align: u32, offset: u32 },
+    F64Store { align: u32, offset: u32 },
+}
+
+pub enum AsmControl {
+    Return,
+}
+
+pub enum AsmParametric {
+    Drop,
+}
+
+////// Display utilities //////
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -198,8 +244,24 @@ impl fmt::Display for Function {
         write!(
             f,
             "{}{}({}) {}{};",
-            prefix, self.ident, params, result_type, self.block
+            prefix, self.ident, params, result_type, self.body
         )
+    }
+}
+
+impl fmt::Display for Body {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Body::Zephyr(block) => write!(f, "{}", block),
+            Body::Asm(stmts) => {
+                let mut body = String::from("{\n");
+                for stmt in stmts {
+                    body.push_str(&format!("    {}\n", stmt));
+                }
+                body.push_str("}");
+                write!(f, "{}", body)
+            }
+        }
     }
 }
 
@@ -300,3 +362,58 @@ impl fmt::Display for Statement {
         }
     }
 }
+
+impl fmt::Display for AsmStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmStatement::Local { local, .. } => write!(f, "{}", local),
+            AsmStatement::Const { val, .. } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+            AsmStatement::Memory { mem, .. } => write!(f, "{}", mem),
+        }
+    }
+}
+
+impl fmt::Display for AsmLocal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmLocal::Get { ident, .. } => write!(f, "local.get {}", ident),
+            AsmLocal::Set { ident, .. } => write!(f, "local.set {}", ident),
+        }
+    }
+}
+
+impl fmt::Display for AsmControl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmControl::Return => write!(f, "return"),
+        }
+    }
+}
+
+impl fmt::Display for AsmParametric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmParametric::Drop => write!(f, "drop"),
+        }
+    }
+}
+
+impl fmt::Display for AsmMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmMemory::Size => write!(f, "memory.size"),
+            AsmMemory::Grow => write!(f, "memory.grow"),
+            AsmMemory::I32Load { align, offset } => write!(f, "i32.load {}, {}", align, offset),
+            AsmMemory::I64Load { align, offset } => write!(f, "i64.load {}, {}", align, offset),
+            AsmMemory::F32Load { align, offset } => write!(f, "f32.load {}, {}", align, offset),
+            AsmMemory::F64Load { align, offset } => write!(f, "f64.load {}, {}", align, offset),
+            AsmMemory::I32Store { align, offset } => write!(f, "i32.store {}, {}", align, offset),
+            AsmMemory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
+            AsmMemory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
+            AsmMemory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
+        }
+    }
+}
+

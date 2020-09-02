@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Building the compiler - Compiler Book</title>
+        <title>Building the compiler - Zephyr Compiler Book</title>
         
 
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
@@ -81,7 +81,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Fork language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html" class="active"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../language/language.html"><strong aria-hidden="true">1.</strong> The Zephyr language</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../language/bases.html"><strong aria-hidden="true">1.1.</strong> A basic program</a></li><li class="chapter-item expanded "><a href="../language/control_flow.html"><strong aria-hidden="true">1.2.</strong> Control flow</a></li><li class="chapter-item expanded "><a href="../language/packages.html"><strong aria-hidden="true">1.3.</strong> Packages</a></li></ol></li><li class="chapter-item expanded "><a href="../overview/overview.html"><strong aria-hidden="true">2.</strong> Compiler overview</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../overview/build.html" class="active"><strong aria-hidden="true">2.1.</strong> Building the compiler</a></li><li class="chapter-item expanded "><a href="../overview/architecture.html"><strong aria-hidden="true">2.2.</strong> High level architecture</a></li></ol></li><li class="chapter-item expanded "><a href="../ast/ast.html"><strong aria-hidden="true">3.</strong> AST</a></li><li class="chapter-item expanded "><a href="../mir/mir.html"><strong aria-hidden="true">4.</strong> MIR</a></li><li class="chapter-item expanded "><a href="../wasm/wasm.html"><strong aria-hidden="true">5.</strong> Wasm</a></li><li class="chapter-item expanded "><a href="../contributing/contributing.html"><strong aria-hidden="true">6.</strong> Contributing</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../contributing/documentation.html"><strong aria-hidden="true">6.1.</strong> Documentation</a></li><li class="chapter-item expanded "><a href="../contributing/roadmap.html"><strong aria-hidden="true">6.2.</strong> Roadmap</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -113,7 +113,7 @@
                         
                     </div>
 
-                    <h1 class="menu-title">Compiler Book</h1>
+                    <h1 class="menu-title">Zephyr Compiler Book</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -153,10 +153,10 @@
 <pre><code class="language-bash">make build
 </code></pre>
 <p>It is a simple <code>cargo run</code> for now, but this may change in the future.</p>
-<p>Compiling a fork (<code>.frk</code>) file to wasm is not harder, use <code>cargo run</code> and pass the arguments (input file and output file) to the compiler:</p>
+<p>Compiling a zephyr (<code>.frk</code>) file to wasm is not harder, use <code>cargo run</code> and pass the arguments (input file and output file) to the compiler:</p>
 <pre><code class="language-bash">cargo run -- test.frk test.wasm
 </code></pre>
-<p>To ease development, the main <code>make</code> command compiles <code>fork/hello.frk</code> and output the result to <code>out/hello.wasm</code>. When working on the compiler, one usually just runs:</p>
+<p>To ease development, the main <code>make</code> command compiles <code>zephyr/hello.frk</code> and output the result to <code>out/hello.wasm</code>. When working on the compiler, one usually just runs:</p>
 <pre><code class="language-bash">make
 </code></pre>
 <h2><a class="header" href="#running-a-compiled-file" id="running-a-compiled-file">Running a compiled file</a></h2>
@@ -164,7 +164,7 @@
 <pre><code class="language-bash">wasmtime my_file.wasm [args]
 </code></pre>
 <h2><a class="header" href="#an-end-to-end-example" id="an-end-to-end-example">An end to end example</a></h2>
-<p>First write some Fork code, for instance:</p>
+<p>First write some Zephyr code, for instance:</p>
 <pre><pre class="playpen"><code class="language-rust">
 <span class="boring">#![allow(unused_variables)]
 </span><span class="boring">fn main() {
@@ -196,7 +196,7 @@ export fun Main(a i32, b i32) i32 {
 <pre><code class="language-bash">wasmtime pow.wasm 5 3
 125
 </code></pre>
-<p>To test even faster, just put your code inside <code>fork/hello.frk</code>, run <code>make</code> and then execute <code>out/hello.wasm</code>, for instance with <code>wasmtime out/hello.wasm</code>, and voilà!</p>
+<p>To test even faster, just put your code inside <code>zephyr/hello.frk</code>, run <code>make</code> and then execute <code>out/hello.wasm</code>, for instance with <code>wasmtime out/hello.wasm</code>, and voilà!</p>
 
                     </main>
 

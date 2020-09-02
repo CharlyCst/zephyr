@@ -1,7 +1,10 @@
+use super::mir::Value as MirValue;
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
 use std::fmt;
+
+pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
 pub type NameId = usize;
 pub type FunId = u64;
@@ -18,7 +21,7 @@ pub struct Function {
     pub ident: String,
     pub params: Vec<Variable>,
     pub locals: Vec<NameId>,
-    pub block: Block,
+    pub body: Body,
     pub is_pub: bool,
     pub exposed: Option<String>,
     pub loc: Location,
@@ -29,6 +32,11 @@ pub struct Function {
 #[derive(Clone)]
 pub enum Declaration {
     Function { t: Type, fun_id: FunId },
+}
+
+pub enum Body {
+    Zephyr(Block),
+    Asm(Vec<AsmStatement>),
 }
 
 pub struct Block {
@@ -139,6 +147,52 @@ impl Expression {
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,
             Expression::CallIndirect { loc, .. } => *loc,
+        }
+    }
+}
+
+pub enum AsmStatement {
+    Local { local: AsmLocal, loc: Location },
+    Const { val: MirValue, loc: Location },
+    Control { cntrl: AsmControl, loc: Location },
+    Parametric { param: AsmParametric, loc: Location },
+    Memory { mem: AsmMemory, loc: Location },
+}
+
+pub enum AsmLocal {
+    Get { var: Variable },
+    Set { var: Variable },
+}
+
+impl AsmStatement {
+    pub fn _get_loc(&self) -> Location {
+        match self {
+            AsmStatement::Local { loc, .. } => *loc,
+            AsmStatement::Const { loc, .. } => *loc,
+            AsmStatement::Control { loc, .. } => *loc,
+            AsmStatement::Parametric { loc, .. } => *loc,
+            AsmStatement::Memory { loc, .. } => *loc,
+        }
+    }
+}
+
+impl fmt::Display for AsmStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmStatement::Local { local, .. } => write!(f, "{}", local),
+            AsmStatement::Const { val, .. } => write!(f, "{}", val),
+            AsmStatement::Control { cntrl, .. } => write!(f, "{}", cntrl),
+            AsmStatement::Parametric { param, .. } => write!(f, "{}", param),
+            AsmStatement::Memory { mem, .. } => write!(f, "{}", mem),
+        }
+    }
+}
+
+impl fmt::Display for AsmLocal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmLocal::Get { var } => write!(f, "local.get {}", var.ident),
+            AsmLocal::Set { var } => write!(f, "local.set {}", var.ident),
         }
     }
 }

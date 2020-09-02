@@ -1,0 +1,10 @@
+// This code is written in Zephyr asm
+
+package "#test"
+
+expose main as _start
+
+pub fun main() i32 {
+    i32.const 42
+    return
+}

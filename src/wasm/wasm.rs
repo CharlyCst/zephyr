@@ -15,3 +15,12 @@ pub enum Type {
     F32,
     F64,
 }
+
+/// Describe a range.
+/// Used to specify the initial/maximal size of a memory in pages (64Ki).
+#[allow(dead_code)] // MinMax never used for now.
+pub enum Limit {
+    Min(u32),
+    MinMax(u32, u32),
+}
+
