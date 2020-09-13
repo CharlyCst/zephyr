@@ -1,0 +1,8 @@
+    7 |     return 0
+            [31m^^^^^^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose'[0m
+
+    8 | }
+        [31m^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose'[0m
+

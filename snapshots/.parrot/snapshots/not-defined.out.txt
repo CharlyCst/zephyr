@@ -1,0 +1,4 @@
+    4 |     return x
+                   [31m^[0m
+[31m[1mError:[0m[31m Variable x used but not declared[0m
+
