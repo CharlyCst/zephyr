@@ -28,7 +28,7 @@
     },
     {
       "cmd": "../target/debug/zephyr not_enough_args.zph -o a.wasm",
-      "name": "not_enough_args",
+      "name": "not-enough-args",
       "description": "Calling a function without enough arguments.\n#resolver #fun",
       "tags": [
         "resolver",
