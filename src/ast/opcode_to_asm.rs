@@ -31,13 +31,20 @@ pub fn opcode_to_asm(
                 loc,
             })
         }
+        Opcode::Unreachable => {
+            no_arg(args, "unreachable")?;
+            Ok(AsmStatement::Control {
+                cntrl: AsmControl::Unreachable,
+                loc,
+            })
+        }
         Opcode::I32Const => Ok(AsmStatement::Const {
             val: mir::Value::I32(integer(args, "i32.const", loc)? as i32),
-            loc: loc,
+            loc,
         }),
         Opcode::I64Const => Ok(AsmStatement::Const {
             val: mir::Value::I64(integer(args, "i64.const", loc)?),
-            loc: loc,
+            loc,
         }),
         Opcode::LocalGet => {
             let (ident, arg_loc) = identifier(args, "local.get", loc)?;
@@ -61,11 +68,11 @@ pub fn opcode_to_asm(
         }
         Opcode::MemorySize => Ok(AsmStatement::Memory {
             mem: AsmMemory::Size,
-            loc: loc,
+            loc,
         }),
         Opcode::MemoryGrow => Ok(AsmStatement::Memory {
             mem: AsmMemory::Grow,
-            loc: loc,
+            loc,
         }),
         Opcode::I32Load => {
             let (align, offset) = memarg(args, "i32.load", loc)?;

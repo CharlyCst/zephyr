@@ -75,6 +75,7 @@ pub enum Call {
 
 pub enum Control {
     Return,
+    Unreachable,
     Br(BasicBlockId),
     BrIf(BasicBlockId),
 }
@@ -390,6 +391,7 @@ impl fmt::Display for Control {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Control::Return => write!(f, "return"),
+            Control::Unreachable => write!(f, "unreachable"),
             Control::Br(bb_id) => write!(f, "br {}", bb_id),
             Control::BrIf(bb_id) => write!(f, "br_if {}", bb_id),
         }

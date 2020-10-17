@@ -36,7 +36,7 @@ impl<'a> LocalState<'a> {
         LocalState {
             locals: HashMap::new(),
             blocks: HashMap::new(),
-            global_state: global_state,
+            global_state,
             depth: 0,
         }
     }
@@ -230,6 +230,7 @@ impl<'a> Compiler<'a> {
                 },
                 mir::Statement::Control { cntrl } => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
+                    mir::Control::Unreachable => code.push(INSTR_UNREACHABLE),
                     mir::Control::Br(label) => {
                         code.push(INSTR_BR);
                         code.extend(to_leb(s.get_label(label) as u64));

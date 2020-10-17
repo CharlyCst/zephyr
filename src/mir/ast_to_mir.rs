@@ -1,7 +1,8 @@
 use super::mir::*;
 use super::names::{
-    AsmControl, AsmLocal, AsmParametric, AsmMemory, AsmStatement, Block as NameBlock, Body as NameBody,
-    Expression as Expr, Function as NameFun, NameStore, Statement as S, Value as V,
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Block as NameBlock,
+    Body as NameBody, Expression as Expr, Function as NameFun, NameStore, Statement as S,
+    Value as V,
 };
 use super::types::{Type as ASTTypes, TypeId, TypeStore};
 use super::TypedProgram;
@@ -25,8 +26,8 @@ struct State {
 impl State {
     pub fn new(names: NameStore, types: TypeStore) -> State {
         State {
-            names: names,
-            types: types,
+            names,
+            types,
             bb_id: 0,
         }
     }
@@ -60,7 +61,7 @@ impl<'a> MIRProducer<'a> {
         }
 
         Program {
-            funs: funs,
+            funs,
             pub_decls: prog.pub_decls,
         }
     }
@@ -94,10 +95,10 @@ impl<'a> MIRProducer<'a> {
 
         Ok(Function {
             ident: fun.ident,
-            params: params,
+            params,
             param_types: param_t,
             ret_types: ret_t,
-            locals: locals,
+            locals,
             body: block,
             is_pub: fun.is_pub,
             exposed: fun.exposed,
@@ -117,10 +118,7 @@ impl<'a> MIRProducer<'a> {
                 ASTTypes::Bool => Type::I32,
                 _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
             };
-            locals.push(LocalVariable {
-                id: *local_name,
-                t: t,
-            })
+            locals.push(LocalVariable { id: *local_name, t })
         }
 
         Ok(locals)
@@ -130,11 +128,7 @@ impl<'a> MIRProducer<'a> {
         let id = s.fresh_bb_id();
         let mut stmts = Vec::new();
         self.reduce_block_rec(block, &mut stmts, s)?;
-        let reduced_block = Block::Block {
-            id: id,
-            stmts: stmts,
-            t: None,
-        };
+        let reduced_block = Block::Block { id, stmts, t: None };
         Ok(reduced_block)
     }
 
@@ -223,8 +217,8 @@ impl<'a> MIRProducer<'a> {
                     }
                     let if_block = Block::If {
                         id: if_id,
-                        then_stmts: then_stmts,
-                        else_stmts: else_stmts,
+                        then_stmts,
+                        else_stmts,
                         t: None,
                     };
                     stmts.push(Statement::Block {
@@ -255,7 +249,7 @@ impl<'a> MIRProducer<'a> {
                             return Err(String::from("Integer constant of non integer type."));
                         }
                     };
-                    stmts.push(Statement::Const { val: val })
+                    stmts.push(Statement::Const { val })
                 }
                 V::Float { val, t_id, .. } => {
                     let t = get_type(*t_id, s)?;
@@ -266,7 +260,7 @@ impl<'a> MIRProducer<'a> {
                             return Err(String::from("Float constant of non float type."));
                         }
                     };
-                    stmts.push(Statement::Const { val: val })
+                    stmts.push(Statement::Const { val })
                 }
                 V::Boolean { val, .. } => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
@@ -294,12 +288,12 @@ impl<'a> MIRProducer<'a> {
                     FromBinop::Binop(binop) => {
                         self.reduce_expr(expr_left, stmts, s)?;
                         self.reduce_expr(expr_right, stmts, s)?;
-                        stmts.push(Statement::Binop { binop: binop })
+                        stmts.push(Statement::Binop { binop })
                     }
                     FromBinop::Relop(relop) => {
                         self.reduce_expr(expr_left, stmts, s)?;
                         self.reduce_expr(expr_right, stmts, s)?;
-                        stmts.push(Statement::Relop { relop: relop })
+                        stmts.push(Statement::Relop { relop })
                     }
                     FromBinop::Logical(logical) => match logical {
                         Logical::And => {
@@ -309,8 +303,8 @@ impl<'a> MIRProducer<'a> {
                             let else_stmts = vec![Statement::Const { val: Value::I32(0) }];
                             let if_block = Block::If {
                                 id: if_id,
-                                then_stmts: then_stmts,
-                                else_stmts: else_stmts,
+                                then_stmts,
+                                else_stmts,
                                 t: Some(Type::I32),
                             };
                             self.reduce_expr(expr_left, stmts, s)?;
@@ -325,8 +319,8 @@ impl<'a> MIRProducer<'a> {
                             self.reduce_expr(expr_right, &mut else_stmts, s)?;
                             let if_block = Block::If {
                                 id: if_id,
-                                then_stmts: then_stmts,
-                                else_stmts: else_stmts,
+                                then_stmts,
+                                else_stmts,
                                 t: Some(Type::I32),
                             };
                             self.reduce_expr(expr_left, stmts, s)?;
@@ -422,7 +416,7 @@ impl<'a> MIRProducer<'a> {
         _s: &mut State,
     ) -> Result<Statement, String> {
         match stmt {
-            AsmStatement::Const { val, .. } => Ok(Statement::Const { val: val }),
+            AsmStatement::Const { val, .. } => Ok(Statement::Const { val }),
             AsmStatement::Local { local, .. } => match local {
                 AsmLocal::Get { var } => Ok(Statement::Local {
                     local: Local::Get(var.n_id),
@@ -435,6 +429,9 @@ impl<'a> MIRProducer<'a> {
                 AsmControl::Return => Ok(Statement::Control {
                     cntrl: Control::Return,
                 }),
+                AsmControl::Unreachable => Ok(Statement::Control {
+                    cntrl: Control::Unreachable,
+                }),
             },
             AsmStatement::Parametric { param, .. } => match param {
                 AsmParametric::Drop => Ok(Statement::Parametric {
@@ -444,15 +441,31 @@ impl<'a> MIRProducer<'a> {
             AsmStatement::Memory { mem, .. } => match mem {
                 AsmMemory::Size => Ok(Statement::Memory { mem: Memory::Size }),
                 AsmMemory::Grow => Ok(Statement::Memory { mem: Memory::Grow }),
-                AsmMemory::I32Load { align, offset } => Ok(Statement::Memory { mem: Memory::I32Load { align, offset }}),
-                AsmMemory::I64Load { align, offset } => Ok(Statement::Memory { mem: Memory::I64Load { align, offset }}),
-                AsmMemory::F32Load { align, offset } => Ok(Statement::Memory { mem: Memory::F32Load { align, offset }}),
-                AsmMemory::F64Load { align, offset } => Ok(Statement::Memory { mem: Memory::F64Load { align, offset }}),
-                AsmMemory::I32Store { align, offset } => Ok(Statement::Memory { mem: Memory::I32Store { align, offset }}),
-                AsmMemory::I64Store { align, offset } => Ok(Statement::Memory { mem: Memory::I64Store { align, offset }}),
-                AsmMemory::F32Store { align, offset } => Ok(Statement::Memory { mem: Memory::F32Store { align, offset }}),
-                AsmMemory::F64Store { align, offset } => Ok(Statement::Memory { mem: Memory::F64Store { align, offset }}),
-            }
+                AsmMemory::I32Load { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::I32Load { align, offset },
+                }),
+                AsmMemory::I64Load { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::I64Load { align, offset },
+                }),
+                AsmMemory::F32Load { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::F32Load { align, offset },
+                }),
+                AsmMemory::F64Load { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::F64Load { align, offset },
+                }),
+                AsmMemory::I32Store { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::I32Store { align, offset },
+                }),
+                AsmMemory::I64Store { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::I64Store { align, offset },
+                }),
+                AsmMemory::F32Store { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::F32Store { align, offset },
+                }),
+                AsmMemory::F64Store { align, offset } => Ok(Statement::Memory {
+                    mem: Memory::F64Store { align, offset },
+                }),
+            },
         }
     }
 }

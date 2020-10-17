@@ -123,15 +123,18 @@ impl Driver {
                     if !package_path.exists() {
                         // No directory found, look for a single file package.
                         package_path = self.package_root.clone().unwrap();
-                        package_path.push(strip_root(&used.path));
-                        package_path.push(".");
+                        let mut file_name = strip_root(&used.path).to_string();
+                        file_name.push('.');
                         // try to find ASM file first
+                        let mut asm_file_name = file_name.clone();
+                        asm_file_name.push_str(ASM_EXTENSION);
                         let mut asm_path = package_path.clone();
-                        asm_path.push(ASM_EXTENSION);
+                        asm_path.push(&asm_file_name);
                         if asm_path.exists() {
-                            package_path.push(ASM_EXTENSION);
+                            package_path.push(asm_file_name);
                         } else {
-                            package_path.push(ZEPHYR_EXTENSION);
+                            file_name.push_str(ZEPHYR_EXTENSION);
+                            package_path.push(file_name);
                         }
                     }
                     let mut imported = imported.clone();
@@ -195,17 +198,19 @@ impl Driver {
             // We do not check the directory for root package.
             ""
         } else {
-            if path.is_file() {
-                path.parent()
-                    .expect("Could not retireve directory name.")
-                    .file_name()
+            let path = if path.is_file() {
+                path.parent().expect("Could not retireve directory name.")
             } else {
-                // Already a directory.
+                path
+            };
+            if path.to_str() == Some(".") {
+                "."
+            } else {
                 path.file_name()
+                    .expect("Failed retrieving the directory name.")
+                    .to_str()
+                    .expect("Directory name contains unexpected characters.")
             }
-            .expect("Failed retrieving the directory name.")
-            .to_str()
-            .expect("Directory name contains unexpected characters.")
         };
 
         // Build package ASTs
