@@ -41,12 +41,12 @@ impl State {
         State {
             names: NameStore::new(),
             types: TypeVarStore::new(),
-            contexts: contexts,
+            contexts,
             functions: HashMap::new(),
-            used_namespace: used_namespace,
+            used_namespace,
             constraints: ConstraintStore::new(),
             fun_counter: 0,
-            package_id: package_id,
+            package_id,
         }
     }
 
@@ -67,7 +67,7 @@ impl State {
         f_id
     }
 
-    /// Declare a name, will fail if the name already exists in the current context or correspont
+    /// Declare a name, will fail if the name already exists in the current context or corresponds
     /// to an import alias.
     pub fn declare(
         &mut self,
@@ -217,12 +217,13 @@ impl<'a> NameResolver<'a> {
                 Ok((n_id, _)) => fun_params.push(Variable {
                     ident: param.ident,
                     loc: param.loc,
-                    n_id: n_id,
+                    n_id,
                 }),
-                Err(_decl_loc) => {
-                    // TODO: find a way to indicate line of definition
-                    let error = format!("Name {} already defined in current context", fun.ident);
+                Err(decl_loc) => {
+                    let error = format!("Name {} already defined in current context", param.ident);
                     self.err.report(fun.loc, error);
+                    let error = format!("Name {} already defined in current context", param.ident);
+                    self.err.report(decl_loc, error);
                 }
             }
         }
@@ -241,10 +242,10 @@ impl<'a> NameResolver<'a> {
                 Some(Function {
                     ident: fun.ident,
                     params: fun_params,
-                    locals: locals,
+                    locals,
                     body: Body::Zephyr(block),
                     is_pub: fun.is_pub,
-                    exposed: exposed,
+                    exposed,
                     loc: fun.loc,
                     n_id: fun_n_id,
                     fun_id: f_id,
@@ -252,14 +253,15 @@ impl<'a> NameResolver<'a> {
             }
             ast::Body::Asm(stmts) => {
                 let stmts = self.resolve_asm(stmts, state);
+                state.exit_scope();
 
                 Some(Function {
                     ident: fun.ident,
                     params: fun_params,
-                    locals: locals,
+                    locals,
                     body: Body::Asm(stmts),
                     is_pub: fun.is_pub,
-                    exposed: exposed,
+                    exposed,
                     loc: fun.loc,
                     n_id: fun_n_id,
                     fun_id: f_id,
@@ -354,8 +356,8 @@ impl<'a> NameResolver<'a> {
                     };
                     Statement::IfStmt {
                         expr: Box::new(expr),
-                        block: block,
-                        else_block: else_block,
+                        block,
+                        else_block,
                     }
                 }
                 ast::Statement::WhileStmt { mut expr, block } => {
@@ -369,7 +371,7 @@ impl<'a> NameResolver<'a> {
                     let block = self.resolve_block(block, state, locals, fun_t_id);
                     Statement::WhileStmt {
                         expr: Box::new(expr),
-                        block: block,
+                        block,
                     }
                 }
                 ast::Statement::ReturnStmt { expr, loc } => {
@@ -383,7 +385,7 @@ impl<'a> NameResolver<'a> {
                         ));
                         Statement::ReturnStmt {
                             expr: Some(expr),
-                            loc: loc,
+                            loc,
                         }
                     } else {
                         let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
@@ -392,10 +394,7 @@ impl<'a> NameResolver<'a> {
                             ret_t_id,
                             Location::dummy(), // TODO: how to deal with empty expressions?
                         ));
-                        Statement::ReturnStmt {
-                            expr: None,
-                            loc: loc,
-                        }
+                        Statement::ReturnStmt { expr: None, loc }
                     }
                 }
                 ast::Statement::ExprStmt { mut expr } => {
@@ -409,7 +408,7 @@ impl<'a> NameResolver<'a> {
         }
 
         state.exit_scope();
-        Block { stmts: stmts }
+        Block { stmts }
     }
 
     fn resolve_expression(
@@ -427,8 +426,8 @@ impl<'a> NameResolver<'a> {
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
-                            loc: loc,
-                            t_id: t_id,
+                            loc,
+                            t_id,
                         };
                         Ok((expr, t_id))
                     }
@@ -438,8 +437,8 @@ impl<'a> NameResolver<'a> {
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
-                            loc: loc,
-                            t_id: t_id,
+                            loc,
+                            t_id,
                         };
                         Ok((expr, t_id))
                     }
@@ -465,7 +464,7 @@ impl<'a> NameResolver<'a> {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
-                            loc: loc,
+                            loc,
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
@@ -485,7 +484,7 @@ impl<'a> NameResolver<'a> {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
-                            loc: loc,
+                            loc,
                             t_id: left_t_id,
                             op_t_id: left_t_id,
                         };
@@ -505,7 +504,7 @@ impl<'a> NameResolver<'a> {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
-                            loc: loc,
+                            loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
@@ -522,7 +521,7 @@ impl<'a> NameResolver<'a> {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
-                            loc: loc,
+                            loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
@@ -539,7 +538,7 @@ impl<'a> NameResolver<'a> {
                             expr_left: Box::new(left_expr),
                             binop: *binop,
                             expr_right: Box::new(right_expr),
-                            loc: loc,
+                            loc,
                             t_id: T_ID_BOOL,
                             op_t_id: left_t_id,
                         };
@@ -634,8 +633,8 @@ impl<'a> NameResolver<'a> {
                         ));
                         state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
                         let expr = Expression::CallDirect {
-                            fun_id: fun_id,
-                            loc: loc,
+                            fun_id,
+                            loc,
                             args: resolved_args,
                             t_id: return_t,
                         };
@@ -650,7 +649,7 @@ impl<'a> NameResolver<'a> {
                         state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
 
                         let expr = Expression::CallIndirect {
-                            loc: loc,
+                            loc,
                             fun: Box::new(fun),
                             args: resolved_args,
                             t_id: return_t,
@@ -696,7 +695,7 @@ impl<'a> NameResolver<'a> {
                 if let Some(Declaration::Function { fun_id, t }) = namespace.get(&field) {
                     let expr = Expression::Function {
                         fun_id: *fun_id,
-                        loc: loc,
+                        loc,
                     };
                     let t_id = state.types.fresh(loc, vec![t.clone()]);
                     Ok((expr, t_id))
@@ -747,13 +746,13 @@ impl<'a> NameResolver<'a> {
                 } => match state.find_in_context(&ident) {
                     Some(name) => {
                         let var = Variable {
-                            ident: ident,
+                            ident,
                             loc: arg_loc,
                             n_id: name.n_id,
                         };
                         Ok(AsmStatement::Local {
-                            local: AsmLocal::Get { var: var },
-                            loc: loc,
+                            local: AsmLocal::Get { var },
+                            loc,
                         })
                     }
                     None => {
@@ -770,13 +769,13 @@ impl<'a> NameResolver<'a> {
                 } => match state.find_in_context(&ident) {
                     Some(name) => {
                         let var = Variable {
-                            ident: ident,
+                            ident,
                             loc: arg_loc,
                             n_id: name.n_id,
                         };
                         Ok(AsmStatement::Local {
-                            local: AsmLocal::Set { var: var },
-                            loc: loc,
+                            local: AsmLocal::Set { var },
+                            loc,
                         })
                     }
                     None => {
