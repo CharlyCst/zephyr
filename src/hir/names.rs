@@ -1,4 +1,4 @@
-use super::mir::Value as MirValue;
+use crate::mir::Value as MirValue;
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, UnaryOperator};
 use crate::error::Location;
@@ -222,9 +222,9 @@ impl NameStore {
         let id = self.names.len();
         let n = Name {
             n_id: id,
-            name: name,
-            loc: loc,
-            t_id: t_id,
+            name,
+            loc,
+            t_id,
         };
         self.names.push(n);
         id

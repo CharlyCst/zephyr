@@ -1,4 +1,4 @@
-use super::mir::Value as MirValue;
+use crate::mir::Value as MirValue;
 use super::names::{
     AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, Function, NameId, NameStore,
 };

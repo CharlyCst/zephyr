@@ -28,7 +28,7 @@ pub struct TypedProgram {
 
 pub use hir::Program;
 
-pub fn to_mir<'a>(
+pub fn to_hir<'a>(
     ast_program: ast::Program,
     namespace: HashMap<String, HashMap<String, Declaration>>,
     error_handler: &mut ErrorHandler,
@@ -52,9 +52,6 @@ pub fn to_mir<'a>(
 
     if config.verbose {
         println!("{}", typed_program.types);
-    }
-
-    if config.verbose {
         println!("\n/// Asm Validation ///\n");
     }
 
@@ -67,13 +64,13 @@ pub fn to_mir<'a>(
         println!("\n/// MIR Production ///\n");
     }
 
-    let mut mir_producer = ast_to_mir::MIRProducer::new(error_handler);
-    let mir = mir_producer.reduce(typed_program);
+    let mut hir_producer = ast_to_hir::HirProducer::new(error_handler);
+    let hir = hir_producer.reduce(typed_program);
 
     if config.verbose {
-        println!("{}", mir);
+        println!("{}", hir);
     }
 
     error_handler.flush_and_exit_if_err();
-    mir
+    hir
 }
