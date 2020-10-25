@@ -6,6 +6,7 @@ use super::utils::*;
 use crate::ast;
 use crate::cli::Config;
 use crate::error;
+use crate::hir;
 use crate::mir;
 use crate::wasm;
 
@@ -27,13 +28,13 @@ pub struct Driver {
     file_id: u16,
     package_id: u32,
     err: error::ErrorHandler,
-    pub_decls: HashMap<String, HashMap<String, mir::Declaration>>, // package -> (decl -> type)
+    pub_decls: HashMap<String, HashMap<String, hir::Declaration>>, // package -> (decl -> type)
 }
 
 impl Driver {
     pub fn new(config: Config) -> Driver {
         Driver {
-            config: config,
+            config,
             package_root: None,
             package_name: String::from(""),
             file_id: 0,
@@ -169,7 +170,9 @@ impl Driver {
                 exit!(self);
             }
         }
-        let mut mir_program = mir::to_mir(pkg_ast, namespaces, &mut error_handler, &self.config);
+        let hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
+        let mut mir_program = mir::to_mir(hir_program, &mut error_handler, &self.config);
+        // Insert imported functions
         mir_program.funs.extend(mir_funs);
         Ok((mir_program, error_handler))
     }
@@ -378,11 +381,11 @@ impl Driver {
             };
             Ok((
                 ast::Program {
-                    package: package,
-                    exposed: exposed,
-                    used: used,
-                    funs: funs,
-                    package_id: package_id,
+                    package,
+                    exposed,
+                    used,
+                    funs,
+                    package_id,
                 },
                 error_handler,
             ))

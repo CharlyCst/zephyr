@@ -1,15 +1,13 @@
 use super::mir::*;
-use super::names::{
-    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Block as NameBlock,
-    Body as NameBody, Expression as Expr, Function as NameFun, NameStore, Statement as S,
-    Value as V,
-};
-use super::types::{Type as ASTTypes, TypeId, TypeStore};
-use super::TypedProgram;
 
-use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use crate::error::ErrorHandler;
-use std::convert::TryInto;
+use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
+use crate::hir::{
+    Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, Function as HirFun,
+    IntegerType as HirIntergerType, LocalVariable as HirLocalVariable,
+    NumericType as HirNumericType, Program as HirProgram, ScalarType as HirScalarType,
+    Statement as S, Type as HirType, Unop as HirUnop, Value as V,
+};
 
 enum FromBinop {
     Binop(Binop),
@@ -18,18 +16,12 @@ enum FromBinop {
 }
 
 struct State {
-    pub names: NameStore,
-    pub types: TypeStore,
     bb_id: BasicBlockId,
 }
 
 impl State {
-    pub fn new(names: NameStore, types: TypeStore) -> State {
-        State {
-            names,
-            types,
-            bb_id: 0,
-        }
+    pub fn new() -> State {
+        State { bb_id: 0 }
     }
 
     pub fn fresh_bb_id(&mut self) -> BasicBlockId {
@@ -49,8 +41,8 @@ impl<'a> MIRProducer<'a> {
     }
 
     /// Lower a typed program to MIR
-    pub fn reduce(&mut self, prog: TypedProgram) -> Program {
-        let mut state = State::new(prog.names, prog.types);
+    pub fn reduce(&mut self, prog: HirProgram) -> Program {
+        let mut state = State::new();
         let mut funs = Vec::with_capacity(prog.funs.len());
 
         for fun in prog.funs.into_iter() {
@@ -66,38 +58,35 @@ impl<'a> MIRProducer<'a> {
         }
     }
 
-    fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Result<Function, String> {
-        let fun_name = s.names.get(fun.n_id);
-        let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
-            let param_t: Result<Vec<Type>, String> =
-                param_t.into_iter().map(|t| convert_type(t)).collect();
-            let ret_t: Result<Vec<Type>, String> =
-                ret_t.into_iter().map(|t| convert_type(t)).collect();
-            (param_t?, ret_t?)
-        } else {
-            self.err.report_internal(
-                fun.loc,
-                String::from("Function does not have function type"),
-            );
-            (vec![], vec![])
-        };
-
-        let params = fun.params.iter().map(|p| p.n_id).collect();
-        let locals = self.get_locals(&fun, s)?;
+    fn reduce_fun(&mut self, fun: HirFun, s: &mut State) -> Result<Function, String> {
+        let t = fun.t;
+        let mut param_t = Vec::with_capacity(t.params.len());
+        let mut ret_t = Vec::with_capacity(t.ret.len());
+        let mut locals = Vec::with_capacity(fun.locals.len());
+        let params = fun.params;
         let block = match fun.body {
-            NameBody::Zephyr(block) => self.reduce_block(block, s)?,
-            NameBody::Asm(stmts) => Block::Block {
+            HirBody::Zephyr(block) => self.reduce_block(block, s)?,
+            HirBody::Asm(stmts) => Block::Block {
                 id: s.fresh_bb_id(),
                 stmts: self.reduce_asm_statements(stmts, s)?,
                 t: None,
             },
         };
+        for t in t.params {
+            param_t.push(try_into_mir_t(&t)?);
+        }
+        for t in t.ret {
+            ret_t.push(try_into_mir_t(&t)?);
+        }
+        for l in fun.locals {
+            locals.push(self.reduce_local_variable(l)?);
+        }
 
         Ok(Function {
             ident: fun.ident,
             params,
-            param_types: param_t,
-            ret_types: ret_t,
+            param_t,
+            ret_t,
             locals,
             body: block,
             is_pub: fun.is_pub,
@@ -106,25 +95,7 @@ impl<'a> MIRProducer<'a> {
         })
     }
 
-    fn get_locals(&mut self, fun: &NameFun, s: &State) -> Result<Vec<LocalVariable>, String> {
-        let mut locals = Vec::new();
-        for local_name in &fun.locals {
-            let t_id = s.names.get(*local_name).t_id;
-            let t = match s.types.get(t_id) {
-                ASTTypes::I32 => Type::I32,
-                ASTTypes::I64 => Type::I64,
-                ASTTypes::F32 => Type::F32,
-                ASTTypes::F64 => Type::F64,
-                ASTTypes::Bool => Type::I32,
-                _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
-            };
-            locals.push(LocalVariable { id: *local_name, t })
-        }
-
-        Ok(locals)
-    }
-
-    fn reduce_block(&mut self, block: NameBlock, s: &mut State) -> Result<Block, String> {
+    fn reduce_block(&mut self, block: HirBlock, s: &mut State) -> Result<Block, String> {
         let id = s.fresh_bb_id();
         let mut stmts = Vec::new();
         self.reduce_block_rec(block, &mut stmts, s)?;
@@ -134,7 +105,7 @@ impl<'a> MIRProducer<'a> {
 
     fn reduce_block_rec(
         &mut self,
-        block: NameBlock,
+        block: HirBlock,
         stmts: &mut Vec<Statement>,
         s: &mut State,
     ) -> Result<(), String> {
@@ -240,50 +211,32 @@ impl<'a> MIRProducer<'a> {
     ) -> Result<(), String> {
         match expression {
             Expr::Literal { value } => match value {
-                V::Integer { val, t_id, .. } => {
-                    let t = get_type(*t_id, s)?;
-                    let val = match t {
-                        Type::I32 => Value::I32((*val).try_into().unwrap()),
-                        Type::I64 => Value::I64((*val).try_into().unwrap()),
-                        _ => {
-                            return Err(String::from("Integer constant of non integer type."));
-                        }
-                    };
-                    stmts.push(Statement::Const { val })
-                }
-                V::Float { val, t_id, .. } => {
-                    let t = get_type(*t_id, s)?;
-                    let val = match t {
-                        Type::F32 => Value::F32(*val as f32),
-                        Type::F64 => Value::F64(*val),
-                        _ => {
-                            return Err(String::from("Float constant of non float type."));
-                        }
-                    };
-                    stmts.push(Statement::Const { val })
-                }
-                V::Boolean { val, .. } => stmts.push(Statement::Const {
+                V::I32(val, _) => stmts.push(Statement::Const {
+                    val: Value::I32(*val),
+                }),
+                V::I64(val, _) => stmts.push(Statement::Const {
+                    val: Value::I64(*val),
+                }),
+                V::F32(val, _) => stmts.push(Statement::Const {
+                    val: Value::F32(*val),
+                }),
+                V::F64(val, _) => stmts.push(Statement::Const {
+                    val: Value::F64(*val),
+                }),
+                V::Bool(val, _) => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),
             },
             Expr::Variable { var } => stmts.push(Statement::Local {
                 local: Local::Get(var.n_id),
             }),
-            Expr::Function { .. } => {
-                return Err(String::from(
-                    "Function as expression are not yet supported.",
-                ))
-            }
             Expr::Binary {
                 expr_left,
                 binop,
                 expr_right,
-                t_id: _,
-                op_t_id,
                 ..
             } => {
-                let t = get_type(*op_t_id, s)?;
-                let from_binop = get_binop(*binop, t)?;
+                let from_binop = get_binop(binop);
                 match from_binop {
                     FromBinop::Binop(binop) => {
                         self.reduce_expr(expr_left, stmts, s)?;
@@ -331,55 +284,39 @@ impl<'a> MIRProducer<'a> {
                     },
                 }
             }
-            Expr::Unary {
-                unop,
-                expr,
-                t_id,
-                loc,
-            } => {
-                let t = get_type(*t_id, s)?;
-
-                // corner cases:
-                //  > (integer, minus): push zero first, then binary operator
-                //  > (bool, not):      push one first, then binary operator
-                match unop {
-                    ASTUnop::Minus => match t {
-                        Type::I32 => stmts.push(Statement::Const { val: Value::I32(0) }),
-                        Type::I64 => stmts.push(Statement::Const { val: Value::I64(0) }),
-                        _ => {}
-                    },
-                    ASTUnop::Not => {
-                        match t {
-                            // we should only have I32 for booleans if the typing phase is correct
-                            Type::I32 => stmts.push(Statement::Const { val: Value::I32(1) }),
-                            _ => self.err.report_internal(
-                                *loc,
-                                String::from("Not applied to something else than a boolean (I32) → error in type phase")
-                            ),
-                        }
-                    }
-                }
-                // generic case: push evaluated value
-                self.reduce_expr(expr, stmts, s)?;
-
-                // generic case: push operator (might be unary or binary)
-                let stmt = match unop {
-                    ASTUnop::Minus => match t {
-                        Type::I32 => Statement::Binop {
+            Expr::Unary { unop, expr, .. } => match unop {
+                HirUnop::Neg(t) => match t {
+                    HirNumericType::I32 => {
+                        stmts.push(Statement::Const { val: Value::I32(0) });
+                        self.reduce_expr(expr, stmts, s)?;
+                        stmts.push(Statement::Binop {
                             binop: Binop::I32Sub,
-                        },
-                        Type::I64 => Statement::Binop {
+                        });
+                    }
+                    HirNumericType::I64 => {
+                        stmts.push(Statement::Const { val: Value::I64(0) });
+                        self.reduce_expr(expr, stmts, s)?;
+                        stmts.push(Statement::Binop {
                             binop: Binop::I64Sub,
-                        },
-                        Type::F32 => Statement::Unop { unop: Unop::F32Neg },
-                        Type::F64 => Statement::Unop { unop: Unop::F64Neg },
-                    },
-                    ASTUnop::Not => Statement::Binop {
-                        binop: Binop::I32Xor,
-                    },
-                };
-                stmts.push(stmt);
-            }
+                        });
+                    }
+                    HirNumericType::F32 => {
+                        self.reduce_expr(expr, stmts, s)?;
+                        stmts.push(Statement::Unop { unop: Unop::F32Neg })
+                    }
+                    HirNumericType::F64 => {
+                        self.reduce_expr(expr, stmts, s)?;
+                        stmts.push(Statement::Unop { unop: Unop::F32Neg })
+                    }
+                },
+                HirUnop::Not => {
+                    stmts.push(Statement::Const { val: Value::I32(1) });
+                    self.reduce_expr(expr, stmts, s)?;
+                    stmts.push(Statement::Binop {
+                        binop: Binop::I32Sub,
+                    });
+                }
+            },
             Expr::CallDirect { fun_id, args, .. } => {
                 for arg in args {
                     self.reduce_expr(arg, stmts, s)?;
@@ -393,6 +330,11 @@ impl<'a> MIRProducer<'a> {
                 .report(*loc, String::from("Indirect call are not yet supported")),
         }
         Ok(())
+    }
+
+    fn reduce_local_variable(&mut self, local: HirLocalVariable) -> Result<LocalVariable, String> {
+        let t = try_into_mir_t(&local.t)?;
+        Ok(LocalVariable { id: local.id, t })
     }
 
     fn reduce_asm_statements(
@@ -418,7 +360,7 @@ impl<'a> MIRProducer<'a> {
         match stmt {
             AsmStatement::Const { val, .. } => Ok(Statement::Const { val }),
             AsmStatement::Local { local, .. } => match local {
-                AsmLocal::Get { var } => Ok(Statement::Local {
+                AsmLocal::Get { var, .. } => Ok(Statement::Local {
                     local: Local::Get(var.n_id),
                 }),
                 AsmLocal::Set { var } => Ok(Statement::Local {
@@ -470,102 +412,110 @@ impl<'a> MIRProducer<'a> {
     }
 }
 
-fn get_binop(binop: ASTBinop, t: Type) -> Result<FromBinop, String> {
-    match t {
-        Type::I32 => match binop {
-            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::I32Add)),
-            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::I32Sub)),
-            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::I32Mul)),
-            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::I32Div)),
-            ASTBinop::Remainder => Ok(FromBinop::Binop(Binop::I32Rem)),
-
-            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::I32Eq)),
-            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::I32Ne)),
-            ASTBinop::Less => Ok(FromBinop::Relop(Relop::I32Lt)),
-            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::I32Gt)),
-            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::I32Le)),
-            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::I32Ge)),
-
-            ASTBinop::And => Ok(FromBinop::Logical(Logical::And)),
-            ASTBinop::Or => Ok(FromBinop::Logical(Logical::Or)),
-
-            _ => Err(String::from("Bad binary operator for i32")),
+fn get_binop(binop: &HirBinop) -> FromBinop {
+    match binop {
+        HirBinop::LogicalAnd => FromBinop::Logical(Logical::And),
+        HirBinop::LogicalOr => FromBinop::Logical(Logical::Or),
+        HirBinop::BinaryAnd(t) => match t {
+            HirIntergerType::I32 => FromBinop::Binop(Binop::I32And),
+            HirIntergerType::I64 => FromBinop::Binop(Binop::I64And),
         },
-        Type::I64 => match binop {
-            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::I64Add)),
-            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::I64Sub)),
-            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::I64Mul)),
-            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::I64Div)),
-            ASTBinop::Remainder => Ok(FromBinop::Binop(Binop::I64Rem)),
-
-            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::I64Eq)),
-            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::I64Ne)),
-            ASTBinop::Less => Ok(FromBinop::Relop(Relop::I64Lt)),
-            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::I64Gt)),
-            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::I64Le)),
-            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::I64Ge)),
-
-            _ => Err(String::from("Bad binary operator for i64")),
+        HirBinop::BinaryOr(t) => match t {
+            HirIntergerType::I32 => FromBinop::Binop(Binop::I32Or),
+            HirIntergerType::I64 => FromBinop::Binop(Binop::I64Or),
         },
-        Type::F32 => match binop {
-            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::F32Add)),
-            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::F32Sub)),
-            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::F32Mul)),
-            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::F32Div)),
-
-            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::F32Eq)),
-            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::F32Ne)),
-            ASTBinop::Less => Ok(FromBinop::Relop(Relop::F32Lt)),
-            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::F32Gt)),
-            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::F32Le)),
-            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::F32Ge)),
-
-            _ => Err(String::from("Bad binary operator for f32")),
+        HirBinop::Xor(t) => match t {
+            HirIntergerType::I32 => FromBinop::Binop(Binop::I32Xor),
+            HirIntergerType::I64 => FromBinop::Binop(Binop::I64Xor),
         },
-        Type::F64 => match binop {
-            ASTBinop::Plus => Ok(FromBinop::Binop(Binop::F64Add)),
-            ASTBinop::Minus => Ok(FromBinop::Binop(Binop::F64Sub)),
-            ASTBinop::Multiply => Ok(FromBinop::Binop(Binop::F64Mul)),
-            ASTBinop::Divide => Ok(FromBinop::Binop(Binop::F64Div)),
+        HirBinop::Eq(t) => match t {
+            HirScalarType::I32 => FromBinop::Relop(Relop::I32Eq),
+            HirScalarType::I64 => FromBinop::Relop(Relop::I64Eq),
+            HirScalarType::F32 => FromBinop::Relop(Relop::F32Eq),
+            HirScalarType::F64 => FromBinop::Relop(Relop::F64Eq),
+            HirScalarType::Bool => FromBinop::Relop(Relop::I32Eq),
+        },
+        HirBinop::Ne(t) => match t {
+            HirScalarType::I32 => FromBinop::Relop(Relop::I32Ne),
+            HirScalarType::I64 => FromBinop::Relop(Relop::I64Ne),
+            HirScalarType::F32 => FromBinop::Relop(Relop::F32Ne),
+            HirScalarType::F64 => FromBinop::Relop(Relop::F64Ne),
+            HirScalarType::Bool => FromBinop::Relop(Relop::I32Ne),
+        },
+        HirBinop::Gt(t) => match t {
+            HirNumericType::I32 => FromBinop::Relop(Relop::I32Gt),
+            HirNumericType::I64 => FromBinop::Relop(Relop::I64Gt),
+            HirNumericType::F32 => FromBinop::Relop(Relop::F32Gt),
+            HirNumericType::F64 => FromBinop::Relop(Relop::F64Gt),
+        },
 
-            ASTBinop::Equal => Ok(FromBinop::Relop(Relop::F64Eq)),
-            ASTBinop::NotEqual => Ok(FromBinop::Relop(Relop::F64Ne)),
-            ASTBinop::Less => Ok(FromBinop::Relop(Relop::F64Lt)),
-            ASTBinop::Greater => Ok(FromBinop::Relop(Relop::F64Gt)),
-            ASTBinop::LessEqual => Ok(FromBinop::Relop(Relop::F64Le)),
-            ASTBinop::GreaterEqual => Ok(FromBinop::Relop(Relop::F64Ge)),
+        HirBinop::Ge(t) => match t {
+            HirNumericType::I32 => FromBinop::Relop(Relop::I32Ge),
+            HirNumericType::I64 => FromBinop::Relop(Relop::I64Ge),
+            HirNumericType::F32 => FromBinop::Relop(Relop::F32Ge),
+            HirNumericType::F64 => FromBinop::Relop(Relop::F64Ge),
+        },
+        HirBinop::Lt(t) => match t {
+            HirNumericType::I32 => FromBinop::Relop(Relop::I32Lt),
+            HirNumericType::I64 => FromBinop::Relop(Relop::I64Lt),
+            HirNumericType::F32 => FromBinop::Relop(Relop::F32Lt),
+            HirNumericType::F64 => FromBinop::Relop(Relop::F64Lt),
+        },
 
-            _ => Err(String::from("Bad binary operator for f64")),
+        HirBinop::Le(t) => match t {
+            HirNumericType::I32 => FromBinop::Relop(Relop::I32Le),
+            HirNumericType::I64 => FromBinop::Relop(Relop::I64Le),
+            HirNumericType::F32 => FromBinop::Relop(Relop::F32Le),
+            HirNumericType::F64 => FromBinop::Relop(Relop::F64Le),
+        },
+        HirBinop::Add(t) => match t {
+            HirNumericType::I32 => FromBinop::Binop(Binop::I32Add),
+            HirNumericType::I64 => FromBinop::Binop(Binop::I64Add),
+            HirNumericType::F32 => FromBinop::Binop(Binop::F32Add),
+            HirNumericType::F64 => FromBinop::Binop(Binop::F64Add),
+        },
+        HirBinop::Sub(t) => match t {
+            HirNumericType::I32 => FromBinop::Binop(Binop::I32Sub),
+            HirNumericType::I64 => FromBinop::Binop(Binop::I64Sub),
+            HirNumericType::F32 => FromBinop::Binop(Binop::F32Sub),
+            HirNumericType::F64 => FromBinop::Binop(Binop::F64Sub),
+        },
+        HirBinop::Mul(t) => match t {
+            HirNumericType::I32 => FromBinop::Binop(Binop::I32Mul),
+            HirNumericType::I64 => FromBinop::Binop(Binop::I64Mul),
+            HirNumericType::F32 => FromBinop::Binop(Binop::F32Mul),
+            HirNumericType::F64 => FromBinop::Binop(Binop::F64Mul),
+        },
+        HirBinop::Div(t) => match t {
+            HirNumericType::I32 => FromBinop::Binop(Binop::I32Div),
+            HirNumericType::I64 => FromBinop::Binop(Binop::I64Div),
+            HirNumericType::F32 => FromBinop::Binop(Binop::F32Div),
+            HirNumericType::F64 => FromBinop::Binop(Binop::F64Div),
+        },
+        HirBinop::Rem(t) => match t {
+            HirIntergerType::I32 => FromBinop::Binop(Binop::I32Rem),
+            HirIntergerType::I64 => FromBinop::Binop(Binop::I64Rem),
         },
     }
 }
 
-fn get_type(t_id: TypeId, s: &State) -> Result<Type, String> {
-    let t = s.types.get(t_id);
+/// Convert a scalar value into its MIR representation.
+fn get_mir_t(t: &HirScalarType) -> Type {
     match t {
-        ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => Err(format!(
-            "Invalid type in MIR generation: {} for t_id: {}",
-            t, t_id
-        )),
-        ASTTypes::I32 => Ok(Type::I32),
-        ASTTypes::I64 => Ok(Type::I64),
-        ASTTypes::F32 => Ok(Type::F32),
-        ASTTypes::F64 => Ok(Type::F64),
-        ASTTypes::Bool => Ok(Type::I32),
-        ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
+        HirScalarType::I32 => Type::I32,
+        HirScalarType::I64 => Type::I64,
+        HirScalarType::F32 => Type::F32,
+        HirScalarType::F64 => Type::F64,
+        HirScalarType::Bool => Type::I32,
     }
 }
 
-fn convert_type(t: &ASTTypes) -> Result<Type, String> {
+/// Try to convert an arbitrary HIR type to an MIR type.
+/// For now advanced types such as functions and tuples are not supported.
+fn try_into_mir_t(t: &HirType) -> Result<Type, String> {
     match t {
-        ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
-            Err(format!("Invalid type in MIR generation: {}", t))
-        }
-        ASTTypes::I32 => Ok(Type::I32),
-        ASTTypes::I64 => Ok(Type::I64),
-        ASTTypes::F32 => Ok(Type::F32),
-        ASTTypes::F64 => Ok(Type::F64),
-        ASTTypes::Bool => Ok(Type::I32),
-        ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
+        HirType::Scalar(t) => Ok(get_mir_t(t)),
+        HirType::Fun(_) => Err(String::from("Function as value are not yet supported.")),
+        HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
     }
 }

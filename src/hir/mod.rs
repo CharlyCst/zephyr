@@ -7,7 +7,7 @@ use self::types::TypeStore;
 
 use std::collections::HashMap;
 
-pub use self::names::{Declaration, NameId};
+pub use self::names::{Declaration, NameId, AsmStatement, AsmLocal, AsmMemory, AsmControl, AsmParametric};
 pub use self::types::TypeId;
 pub use hir::*;
 

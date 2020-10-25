@@ -1,5 +1,5 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, Declaration, FunId, NameId};
+use super::names::{AsmStatement, Declaration, NameId};
 use crate::error::Location;
 
 use std::collections::HashMap;
@@ -11,6 +11,7 @@ const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
 const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
 const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
+pub use super::names::FunId;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
@@ -28,6 +29,20 @@ pub enum ScalarType {
     F32,
     F64,
     Bool,
+}
+
+#[derive(Clone, Copy)]
+pub enum IntegerType {
+    I32,
+    I64,
+}
+
+#[derive(Clone, Copy)]
+pub enum NumericType {
+    I32,
+    I64,
+    F32,
+    F64,
 }
 
 pub type TupleType = Vec<Type>;
@@ -182,31 +197,36 @@ pub enum Value {
     Bool(bool, Location),
 }
 
+/// The available unary operations, type represents operant type.
 pub enum Unop {
-    Neg(ScalarType),
-    Not(ScalarType),
+    Neg(NumericType),
+    
+    // Boolean
+    Not,
 }
 
+/// The available binary operations, type represents operands type.
 pub enum Binop {
-    Add(ScalarType),
-    Sub(ScalarType),
-    Mul(ScalarType),
-    Div(ScalarType),
-    Rem(ScalarType),
-    Xor(ScalarType),
-    BinaryAnd(ScalarType),
-    BinaryOr(ScalarType),
+    Add(NumericType),
+    Sub(NumericType),
+    Mul(NumericType),
+    Div(NumericType),
 
-    // Booleans
+    Rem(IntegerType),
+    Xor(IntegerType),
+    BinaryAnd(IntegerType),
+    BinaryOr(IntegerType),
+
     Eq(ScalarType),
     Ne(ScalarType),
-    Lt(ScalarType),
-    Gt(ScalarType),
-    Le(ScalarType),
-    Ge(ScalarType),
+    Lt(NumericType),
+    Gt(NumericType),
+    Le(NumericType),
+    Ge(NumericType),
 
-    LogicalAnd(ScalarType),
-    LogicalOr(ScalarType),
+    // Boolean
+    LogicalAnd,
+    LogicalOr,
 }
 
 pub enum Parametric {
@@ -248,8 +268,8 @@ impl Expression {
 impl Unop {
     pub fn get_t(&self) -> ScalarType {
         match self {
-            Unop::Not(t) => *t,
-            Unop::Neg(t) => *t,
+            Unop::Not => ScalarType::Bool,
+            Unop::Neg(t) => t.get_t(),
         }
     }
 }
@@ -257,22 +277,42 @@ impl Unop {
 impl Binop {
     pub fn get_t(&self) -> ScalarType {
         match self {
-            Binop::LogicalAnd(t) => *t,
-            Binop::LogicalOr(t) => *t,
-            Binop::BinaryAnd(t) => *t,
-            Binop::BinaryOr(t) => *t,
-            Binop::Ge(t) => *t,
-            Binop::Gt(t) => *t,
-            Binop::Le(t) => *t,
-            Binop::Lt(t) => *t,
+            Binop::LogicalAnd => ScalarType::Bool,
+            Binop::LogicalOr => ScalarType::Bool,
+            Binop::BinaryAnd(t) => t.get_t(),
+            Binop::BinaryOr(t) => t.get_t(),
+            Binop::Xor(t) => t.get_t(),
+            Binop::Rem(t) => t.get_t(),
+            Binop::Ge(t) => t.get_t(),
+            Binop::Gt(t) => t.get_t(),
+            Binop::Le(t) => t.get_t(),
+            Binop::Lt(t) => t.get_t(),
             Binop::Ne(t) => *t,
             Binop::Eq(t) => *t,
-            Binop::Xor(t) => *t,
-            Binop::Rem(t) => *t,
-            Binop::Div(t) => *t,
-            Binop::Mul(t) => *t,
-            Binop::Sub(t) => *t,
-            Binop::Add(t) => *t,
+            Binop::Div(t) => t.get_t(),
+            Binop::Mul(t) => t.get_t(),
+            Binop::Sub(t) => t.get_t(),
+            Binop::Add(t) => t.get_t(),
+        }
+    }
+}
+
+impl IntegerType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            IntegerType::I32 => ScalarType::I32,
+            IntegerType::I64 => ScalarType::I64,
+        }
+    }
+}
+
+impl NumericType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            NumericType::I32 => ScalarType::I32,
+            NumericType::I64 => ScalarType::I64,
+            NumericType::F32 => ScalarType::F32,
+            NumericType::F64 => ScalarType::F64,
         }
     }
 }
@@ -439,7 +479,7 @@ impl fmt::Display for Expression {
                     .join(", ")
             ),
             Expression::Unary { unop, expr, .. } => match unop {
-                Unop::Not(_) => write!(f, "!{}", expr),
+                Unop::Not => write!(f, "!{}", expr),
                 Unop::Neg(_) => write!(f, "-{}", expr),
             },
             Expression::Binary {
@@ -508,7 +548,7 @@ impl fmt::Display for Value {
 impl fmt::Display for Unop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Unop::Not(_) => write!(f, "!"),
+            Unop::Not => write!(f, "!"),
             Unop::Neg(_) => write!(f, "-"),
         }
     }
@@ -517,8 +557,8 @@ impl fmt::Display for Unop {
 impl fmt::Display for Binop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let repr = match self {
-            Binop::LogicalAnd(_) => "&&",
-            Binop::LogicalOr(_) => "||",
+            Binop::LogicalAnd => "&&",
+            Binop::LogicalOr => "||",
             Binop::BinaryAnd(_) => "&",
             Binop::BinaryOr(_) => "|",
             Binop::Xor(_) => "^",

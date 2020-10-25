@@ -1,28 +1,25 @@
 #![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
-use super::names::Declaration;
+use crate::hir::{Declaration as HirDeclaration, FunId, LocalId};
 
 use std::collections::HashMap;
 use std::fmt;
 
 pub struct Program {
     pub funs: Vec<Function>,
-    pub pub_decls: HashMap<String, Declaration>,
+    pub pub_decls: HashMap<String, HirDeclaration>,
 }
 
 pub struct Function {
     pub ident: String,
     pub params: Vec<LocalId>,
-    pub param_types: Vec<Type>,
-    pub ret_types: Vec<Type>,
+    pub param_t: Vec<Type>,
+    pub ret_t: Vec<Type>,
     pub locals: Vec<LocalVariable>,
     pub body: Block,
     pub is_pub: bool,
     pub exposed: Option<String>,
-    pub fun_id: FunctionId,
+    pub fun_id: FunId,
 }
-
-pub type LocalId = usize; // For now NameId are used as LocalId
-pub type FunctionId = u64;
 
 pub struct LocalVariable {
     pub id: LocalId,
@@ -69,7 +66,7 @@ pub enum Local {
 }
 
 pub enum Call {
-    Direct(FunctionId),
+    Direct(FunId),
     Indirect(),
 }
 
@@ -94,12 +91,17 @@ pub enum Unop {
 
 pub enum Binop {
     I32Xor,
+    I32Or,
+    I32And,
     I32Add,
     I32Sub,
     I32Mul,
     I32Div,
     I32Rem,
 
+    I64Xor,
+    I64Or,
+    I64And,
     I64Add,
     I64Sub,
     I64Mul,
@@ -192,13 +194,13 @@ impl fmt::Display for Program {
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let params = self
-            .param_types
+            .param_t
             .iter()
             .map(|t| format!("{}", t))
             .collect::<Vec<String>>()
             .join(", ");
         let ret = self
-            .ret_types
+            .ret_t
             .iter()
             .map(|t| format!("{}", t))
             .collect::<Vec<String>>()
@@ -320,12 +322,17 @@ impl fmt::Display for Binop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Binop::I32Xor => write!(f, "i32.xor"),
+            Binop::I32Or => write!(f, "i32.or"),
+            Binop::I32And => write!(f, "i32.and"),
             Binop::I32Add => write!(f, "i32.add"),
             Binop::I32Sub => write!(f, "i32.sub"),
             Binop::I32Mul => write!(f, "i32.mul"),
             Binop::I32Div => write!(f, "i32.div"),
             Binop::I32Rem => write!(f, "i32.rem"),
 
+            Binop::I64Xor => write!(f, "i64.xor"),
+            Binop::I64Or => write!(f, "i64.or"),
+            Binop::I64And => write!(f, "i64.and"),
             Binop::I64Add => write!(f, "i64.add"),
             Binop::I64Sub => write!(f, "i64.sub"),
             Binop::I64Mul => write!(f, "i64.mul"),
@@ -440,4 +447,3 @@ impl fmt::Display for Memory {
         }
     }
 }
-

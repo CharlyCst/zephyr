@@ -7,7 +7,7 @@ use super::types::{Type as ASTTypes, TypeStore};
 use super::TypedProgram;
 
 use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
-use crate::error::ErrorHandler;
+use crate::error::{ErrorHandler, Location};
 
 struct State {
     pub names: NameStore,
@@ -205,11 +205,11 @@ impl<'a> HirProducer<'a> {
                 expr_left,
                 binop,
                 expr_right,
-                t_id,
+                op_t_id,
                 loc,
                 ..
             } => {
-                let t = s.types.get(t_id);
+                let t = s.types.get(op_t_id);
                 let t = to_hir_scalar(t)?;
                 let expr_left = Box::new(self.reduce_expr(*expr_left, s)?);
                 let expr_right = Box::new(self.reduce_expr(*expr_right, s)?);
@@ -218,49 +218,59 @@ impl<'a> HirProducer<'a> {
                     expr_left,
                     loc,
                     binop: match binop {
-                        ASTBinop::Plus => Binop::Add(t),
-                        ASTBinop::Minus => Binop::Sub(t),
-                        ASTBinop::Multiply => Binop::Mul(t),
-                        ASTBinop::Divide => Binop::Div(t),
-                        ASTBinop::Remainder => Binop::Rem(t),
-                        ASTBinop::Or => Binop::LogicalOr(t),
-                        ASTBinop::And => Binop::LogicalAnd(t),
-                        ASTBinop::BitwiseOr => Binop::BinaryOr(t),
-                        ASTBinop::BitwiseAnd => Binop::BinaryAnd(t),
+                        ASTBinop::Plus => Binop::Add(self.t_as_numeric(&t, loc)),
+                        ASTBinop::Minus => Binop::Sub(self.t_as_numeric(&t, loc)),
+                        ASTBinop::Multiply => Binop::Mul(self.t_as_numeric(&t, loc)),
+                        ASTBinop::Divide => Binop::Div(self.t_as_numeric(&t, loc)),
                         ASTBinop::Equal => Binop::Eq(t),
                         ASTBinop::NotEqual => Binop::Ne(t),
-                        ASTBinop::Greater => Binop::Gt(t),
-                        ASTBinop::GreaterEqual => Binop::Ge(t),
-                        ASTBinop::Less => Binop::Lt(t),
-                        ASTBinop::LessEqual => Binop::Le(t),
+                        ASTBinop::Greater => Binop::Gt(self.t_as_numeric(&t, loc)),
+                        ASTBinop::GreaterEqual => Binop::Ge(self.t_as_numeric(&t, loc)),
+                        ASTBinop::Less => Binop::Lt(self.t_as_numeric(&t, loc)),
+                        ASTBinop::LessEqual => Binop::Le(self.t_as_numeric(&t, loc)),
+                        ASTBinop::Remainder => Binop::Rem(self.t_as_integer(&t, loc)),
+                        ASTBinop::BitwiseOr => Binop::BinaryOr(self.t_as_integer(&t, loc)),
+                        ASTBinop::BitwiseAnd => Binop::BinaryAnd(self.t_as_integer(&t, loc)),
+                        ASTBinop::Or => {
+                            self.t_is_bool(&t, loc);
+                            Binop::LogicalOr
+                        }
+                        ASTBinop::And => {
+                            self.t_is_bool(&t, loc);
+                            Binop::LogicalAnd
+                        }
                     },
                 })
             }
             Expr::Unary {
                 unop,
                 expr,
-                t_id,
+                op_t_id,
                 loc,
             } => {
-                let t = s.types.get(t_id);
+                let t = s.types.get(op_t_id);
                 let t = to_hir_scalar(t)?;
                 let expr = Box::new(self.reduce_expr(*expr, s)?);
                 Ok(Expression::Unary {
                     expr,
-                    loc,
                     unop: match unop {
-                        ASTUnop::Not => Unop::Not(t),
-                        ASTUnop::Minus => Unop::Neg(t),
+                        ASTUnop::Not => {
+                            self.t_is_bool(&t, loc);
+                            Unop::Not
+                        }
+                        ASTUnop::Minus => Unop::Neg(self.t_as_numeric(&t, loc)),
                     },
+                    loc,
                 })
             }
             Expr::CallDirect {
                 fun_id,
                 args,
-                t_id,
                 loc,
+                fun_t_id,
+                ..
             } => {
-                let t = s.types.get(t_id);
+                let t = s.types.get(fun_t_id);
                 let t = to_hir_fun(t)?;
                 let mut hir_args = Vec::new();
                 for arg in args {
@@ -273,7 +283,7 @@ impl<'a> HirProducer<'a> {
                     args: hir_args,
                 })
             }
-            Expr::CallIndirect {  .. } => {
+            Expr::CallIndirect { .. } => {
                 Err(String::from("Indirect calls are not yet implemented."))
             }
         }
@@ -289,6 +299,46 @@ impl<'a> HirProducer<'a> {
             n_id: var.n_id,
             t,
         })
+    }
+
+    /// Verify that t is a boolean type, raises an error otherwhise.
+    fn t_is_bool(&mut self, t: &ScalarType, loc: Location) {
+        match t {
+            ScalarType::Bool => (),
+            _ => self
+                .err
+                .report_internal(loc, format!("Expected boolean, got {}.", t)),
+        }
+    }
+
+    /// Verify that t is an integer type, raises an error otherwhise and
+    /// return an arbitrary integer type.
+    fn t_as_integer(&mut self, t: &ScalarType, loc: Location) -> IntegerType {
+        match t {
+            ScalarType::I32 => IntegerType::I32,
+            ScalarType::I64 => IntegerType::I64,
+            _ => {
+                self.err
+                    .report_internal(loc, format!("Expected an integer, got {}.", t));
+                IntegerType::I32
+            }
+        }
+    }
+
+    /// Verify that t is a numeric type, raises an error otherwhise and
+    /// return an arbitrary numeric type.
+    fn t_as_numeric(&mut self, t: &ScalarType, loc: Location) -> NumericType {
+        match t {
+            ScalarType::I32 => NumericType::I32,
+            ScalarType::I64 => NumericType::I64,
+            ScalarType::F32 => NumericType::F32,
+            ScalarType::F64 => NumericType::F64,
+            _ => {
+                self.err
+                    .report_internal(loc, format!("Expected a number, got {}.", t));
+                NumericType::I32
+            }
+        }
     }
 }
 

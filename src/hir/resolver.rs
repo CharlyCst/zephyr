@@ -418,29 +418,29 @@ impl<'a> NameResolver<'a> {
     ) -> Result<(Expression, TypeId), ()> {
         match expr {
             ast::Expression::Unary { unop, expr } => {
-                let (expr, t_id) = self.resolve_expression(expr, state)?;
+                let (expr, op_t_id) = self.resolve_expression(expr, state)?;
                 match unop {
                     ast::UnaryOperator::Minus => {
                         let loc = expr.get_loc();
-                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_NUMERIC, loc));
+                        state.new_constraint(TypeConstraint::Included(op_t_id, T_ID_NUMERIC, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
                             loc,
-                            t_id,
+                            op_t_id,
                         };
-                        Ok((expr, t_id))
+                        Ok((expr, op_t_id))
                     }
                     ast::UnaryOperator::Not => {
                         let loc = expr.get_loc();
-                        state.new_constraint(TypeConstraint::Included(t_id, T_ID_BOOL, loc));
+                        state.new_constraint(TypeConstraint::Included(op_t_id, T_ID_BOOL, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop: *unop,
                             loc,
-                            t_id,
+                            op_t_id,
                         };
-                        Ok((expr, t_id))
+                        Ok((expr, op_t_id))
                     }
                 }
             }
@@ -617,44 +617,44 @@ impl<'a> NameResolver<'a> {
                     resolved_args.push(arg);
                     args_t.push(arg_t);
                 }
-                let (fun, fun_t) = self.resolve_expression(fun, state)?;
+                let (fun, fun_t_id) = self.resolve_expression(fun, state)?;
                 let loc = if n > 0 {
                     fun.get_loc().merge(resolved_args[n - 1].get_loc())
                 } else {
                     fun.get_loc()
                 };
-
                 match fun {
                     Expression::Function { fun_id, .. } => {
                         // Direct call
-                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                        let ret_t_id = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Arguments(
-                            args_t, fun_t, args_loc, loc,
+                            args_t, fun_t_id, args_loc, loc,
                         ));
-                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
+                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id, loc));
                         let expr = Expression::CallDirect {
                             fun_id,
                             loc,
                             args: resolved_args,
-                            t_id: return_t,
+                            fun_t_id,
+                            ret_t_id,
                         };
-                        Ok((expr, return_t))
+                        Ok((expr, ret_t_id))
                     }
                     _ => {
                         // Indirect call
-                        let return_t = state.types.fresh(fun.get_loc(), vec![Type::Any]);
+                        let ret_t_id = state.types.fresh(fun.get_loc(), vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Arguments(
-                            args_t, fun_t, args_loc, loc,
+                            args_t, fun_t_id, args_loc, loc,
                         ));
-                        state.new_constraint(TypeConstraint::Return(fun_t, return_t, loc));
-
+                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id, loc));
                         let expr = Expression::CallIndirect {
                             loc,
                             fun: Box::new(fun),
                             args: resolved_args,
-                            t_id: return_t,
+                            fun_t_id,
+                            ret_t_id,
                         };
-                        Ok((expr, return_t))
+                        Ok((expr, ret_t_id))
                     }
                 }
             }

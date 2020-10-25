@@ -117,19 +117,21 @@ pub enum Expression {
         unop: UnaryOperator,
         expr: Box<Expression>,
         loc: Location,
-        t_id: TypeId,
+        op_t_id: TypeId,
     },
     CallDirect {
         fun_id: FunId,
         args: Vec<Expression>,
         loc: Location,
-        t_id: TypeId,
+        fun_t_id: TypeId,
+        ret_t_id: TypeId,
     },
     CallIndirect {
         fun: Box<Expression>,
         args: Vec<Expression>,
         loc: Location,
-        t_id: TypeId,
+        fun_t_id: TypeId,
+        ret_t_id: TypeId,
     },
 }
 
