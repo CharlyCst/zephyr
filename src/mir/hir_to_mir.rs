@@ -125,10 +125,8 @@ impl<'a> MIRProducer<'a> {
                 }
                 S::ExprStmt { expr } => {
                     self.reduce_expr(&expr, stmts, s)?;
-                    // Drop the result to conserve stack height
-                    stmts.push(Statement::Parametric {
-                        param: Parametric::Drop,
-                    });
+                    // We may want to control the size of the stack here,
+                    // by dropping unused values for instance.
                 }
                 S::ReturnStmt { expr, .. } => {
                     if let Some(e) = expr {

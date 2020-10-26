@@ -57,9 +57,9 @@ impl SectionType {
         size += count.len();
 
         SectionType {
-            types: types,
+            types,
             size: to_leb(size as u64),
-            count: count,
+            count,
         }
     }
 
@@ -102,9 +102,9 @@ impl SectionFunction {
         size += count.len();
 
         SectionFunction {
-            types: types,
+            types,
             size: to_leb(size as u64),
-            count: count,
+            count,
         }
     }
 
@@ -153,8 +153,8 @@ impl SectionMemory {
         let size = to_leb((mem.len() + count.len()) as u64);
         SectionMemory {
             memories: mem,
-            count: count,
-            size: size,
+            count,
+            size,
         }
     }
 
@@ -197,7 +197,7 @@ impl SectionCode {
         size += count.len();
 
         SectionCode {
-            count: count,
+            count,
             size: to_leb(size as u64),
             bodies: fun_bodies,
         }
@@ -231,6 +231,7 @@ impl SectionExport {
         let mut exports = Vec::new();
         let mut size = 0;
 
+        // Export functions
         for (idx, fun) in funs.iter().enumerate() {
             if let Some(name) = &fun.exposed {
                 let mut data = Vec::new();
@@ -246,13 +247,23 @@ impl SectionExport {
             }
         }
 
+        // Export memory
+        let mem_name = "memory".as_bytes();
+        let mut data = Vec::new();
+        data.extend(to_leb(mem_name.len() as u64));
+        data.extend(mem_name);
+        data.push(KIND_MEM);
+        data.push(0);
+        size += data.len();
+        exports.push(data);
+
         let count = to_leb(exports.len() as u64);
         size += count.len();
 
         SectionExport {
-            exports: exports,
+            exports,
             size: to_leb(size as u64),
-            count: count,
+            count,
         }
     }
 
@@ -289,11 +300,11 @@ impl Module {
         let exports = SectionExport::new(&funs);
         let code = SectionCode::new(&funs);
         Module {
-            types: types,
-            functions: functions,
-            memories: memories,
-            code: code,
-            exports: exports,
+            types,
+            functions,
+            memories,
+            code,
+            exports,
         }
     }
 
