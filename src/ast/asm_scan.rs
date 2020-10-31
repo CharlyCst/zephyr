@@ -76,7 +76,7 @@ impl<'a> Scanner<'a> {
                 // Match literal
                 if c.is_digit(RADIX) {
                     self.number(tokens)
-                } else if c.is_alphabetic() || c == '_'{
+                } else if c.is_alphabetic() || c == '_' {
                     self.identifier(tokens)
                 } else if c == '"' {
                     self.string(tokens)
@@ -147,6 +147,17 @@ impl<'a> Scanner<'a> {
 
     /// Parse a number
     fn number(&mut self, tokens: &mut Vec<Token>) {
+        let mut radix = RADIX;
+        if self.peek() == 'x' {
+            radix = 16;
+            self.advance();
+            self.start = self.current;
+            println!("Ok");
+        } else if self.peek() == 'b' {
+            radix = 2;
+            self.advance();
+            self.start = self.current;
+        }
         while !self.is_at_end() && self.peek().is_digit(RADIX) {
             self.advance();
         }
@@ -154,7 +165,7 @@ impl<'a> Scanner<'a> {
             .iter()
             .cloned()
             .collect::<String>();
-        match str_val.parse::<u64>() {
+        match u64::from_str_radix(&str_val, radix) {
             Ok(n) => self.add_token(tokens, TokenType::NumberLit(n)),
             Err(_) => self.err.report(
                 self.get_loc(),
@@ -178,7 +189,9 @@ impl<'a> Scanner<'a> {
 
     /// Parse an identifier
     fn identifier(&mut self, tokens: &mut Vec<Token>) {
-        while !self.is_at_end() && (self.peek().is_alphanumeric() || self.peek() == '_'|| self.peek() == '.') {
+        while !self.is_at_end()
+            && (self.peek().is_alphanumeric() || self.peek() == '_' || self.peek() == '.')
+        {
             self.advance();
         }
         let ident = self.code[self.start..self.current]
