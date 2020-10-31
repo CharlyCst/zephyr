@@ -453,7 +453,9 @@ impl<'a> NameResolver<'a> {
                 let (right_expr, right_t_id) = self.resolve_expression(expr_right, state)?;
                 let loc = left_expr.get_loc().merge(right_expr.get_loc());
                 match binop {
-                    ast::BinaryOperator::Remainder => {
+                    ast::BinaryOperator::Remainder
+                    | ast::BinaryOperator::BitwiseOr
+                    | ast::BinaryOperator::BitwiseAnd => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -544,7 +546,6 @@ impl<'a> NameResolver<'a> {
                         };
                         Ok((expr, T_ID_BOOL))
                     }
-                    _ => panic!("Binop not implemented yet"), // TODO
                 }
             }
             ast::Expression::Literal { value } => match value {
