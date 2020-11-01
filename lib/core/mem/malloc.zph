@@ -1,0 +1,119 @@
+/// The malloc package handles memory management, it exposes a malloc and free
+/// implementation.
+package "mem"
+
+use "core/utils"
+
+//////// Test ////////
+// expose get_final_block_size
+// expose is_free
+// expose split_block
+// expose remove_block
+expose malloc
+expose free
+// expose set_i32
+// expose read_i32
+//////////////////////
+
+/// Returns a fresh block of memory, guaranted with an alignment of at least 8.
+///
+/// This malloc implementation uses a single free list with a first-fit strategy.
+/// Coalescence is done while iterating over the free list while looking for new blocks.
+/// Assumption: The compiler ensures that at initialization read_i32(0) returns the
+/// address of the first (and unique) free block.
+pub fun malloc(size i32) i32 {
+    let addr = read_i32(0)
+    let final_size = get_final_block_size(size)
+    while true {
+        // TODO: coalesce blocks
+        if read_i32(addr) >= final_size {
+            split_block(addr, final_size)
+            remove_block(addr)
+            // the application can't see the header
+            return addr + 4
+        }
+        // go to next block
+        addr = read_i32(addr + 4)
+        if addr == 0 {
+            // TODO: out of memory
+            utils.panic()
+        }
+    }
+    // needed for wasm stack type check...
+    // TODO: find a (compiler) solution
+    return 0
+}
+
+/// Marks the memory as free.
+///
+/// This operation is the inverse of malloc, blocks freed can be re-allocated later.
+pub fun free(ptr i32) {
+    let addr = ptr - 4
+    let old_root = read_i32(0)
+    set_i32(0, addr)
+    set_i32(old_root + 8, addr)
+    set_i32(addr + 4, old_root)
+    set_i32(addr + 8, 0)
+    // Mark the block as free
+    set_i32(addr, read_i32(addr) ^ 0x80000000)
+}
+
+/// Computes the final size of a block, so that the next block is aligned to 8.
+///
+/// ! This function does not check for a minimal size: 4 has the right alignment
+/// but block should be at least 8 bytes long.
+fun get_final_block_size(size i32) i32 {
+    if size & 0b111 == 0b100 { // Already align
+        return size
+    }
+    return size + 0b100 - (size & 0b11) + (0b100 & size)
+}
+
+/// Check if a block is free or not by inspecting its header.
+///
+/// A block header is composed of 31 bits for its size, while the highest bit
+/// is a flag indicating if the block is free (0) or allocated (1).
+fun is_free(addr i32) bool {
+    let flag = read_i32(addr) & 0x80000000
+    return flag == 0
+}
+
+/// Split a (free) block, if possible.
+///
+/// This function ensures that the blocks have at least the minimal size of 12,
+/// but it does not check that the size has been carefully choosen to ensure alignment.
+fun split_block(addr i32, size i32) {
+    let block_size = size
+    if block_size < 12 {
+        // Blocks can not be smaller than 12, they need 8 bytes for pointers
+        // while the 4 extra bytes are required to ensure an alignment of 8.
+        block_size = 12
+    }
+    let available_size = read_i32(addr)
+    if available_size - block_size > 16 {               // 4 bytes header + 12
+        let new_block_addr = addr + 4 + block_size
+        // update pointers
+        set_i32(new_block_addr + 8, addr)               // prev points to addr
+        set_i32(new_block_addr + 4, read_i32(addr + 4)) // next points to block.next
+        set_i32(addr + 4, new_block_addr)               // block.next points to new_block
+        // update sizes
+        set_i32(addr, block_size)
+        set_i32(new_block_addr, available_size - block_size - 4)
+    }
+}
+
+/// Removes a block from the free list. Mark the block as allocated.
+fun remove_block(addr i32) {
+    let next = read_i32(addr + 4)
+    let prev = read_i32(addr + 8)
+    if next != 0 {
+        set_i32(next + 8, prev)
+    }
+    if prev != 0 {
+        set_i32(prev + 4, next)
+    } else {
+        set_i32(0, next)
+    }
+    set_i32(addr, read_i32(addr) | 0x80000000) // mark the block as allocated
+}
+
