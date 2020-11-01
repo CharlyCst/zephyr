@@ -217,7 +217,7 @@ impl SectionData {
         // so that data will be aligned (see allocator).
         let mut hardcoded_data = WasmVec::new();
         // mem[0..4]
-        hardcoded_data.push_item(32);
+        hardcoded_data.push_item(4);
         hardcoded_data.push_item(0);
         hardcoded_data.push_item(0);
         hardcoded_data.push_item(0);

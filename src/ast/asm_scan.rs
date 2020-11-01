@@ -26,11 +26,11 @@ impl<'a> Scanner<'a> {
 
         Scanner {
             err: error_handler,
-            f_id: f_id,
-            code: code,
+            f_id,
+            code,
             start: 0,
             current: 0,
-            keywords: keywords,
+            keywords,
             stmt_ender: false,
         }
     }
@@ -135,7 +135,7 @@ impl<'a> Scanner<'a> {
             _ => self.stmt_ender = true,
         }
         let token = Token {
-            t: t,
+            t,
             loc: Location {
                 pos: self.start as u32,
                 len: (self.current - self.start) as u32,
@@ -152,7 +152,6 @@ impl<'a> Scanner<'a> {
             radix = 16;
             self.advance();
             self.start = self.current;
-            println!("Ok");
         } else if self.peek() == 'b' {
             radix = 2;
             self.advance();

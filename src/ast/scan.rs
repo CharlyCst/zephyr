@@ -84,6 +84,7 @@ impl<'a> Scanner<'a> {
             '+' => self.add_token(tokens, TokenType::Plus),
             '*' => self.add_token(tokens, TokenType::Star),
             '%' => self.add_token(tokens, TokenType::Percent),
+            '^' => self.add_token(tokens, TokenType::Hat),
             '!' => {
                 if self.next_match('=') {
                     self.add_token(tokens, TokenType::BangEqual)
@@ -242,7 +243,6 @@ impl<'a> Scanner<'a> {
             radix = 16;
             self.advance();
             self.start = self.current;
-            println!("Ok");
         } else if self.peek() == 'b' {
             radix = 2;
             self.advance();

@@ -15,9 +15,9 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &mut ErrorHandler) -> Parser {
         Parser {
             err: error_handler,
-            tokens: tokens,
+            tokens,
             current: 0,
-            package_id: package_id,
+            package_id,
         }
     }
 
@@ -57,10 +57,10 @@ impl<'a> Parser<'a> {
         }
 
         Program {
-            package: package,
-            funs: funs,
-            exposed: exposed,
-            used: used,
+            package,
+            funs,
+            exposed,
+            used,
             package_id: self.package_id,
         }
     }
@@ -256,7 +256,7 @@ impl<'a> Parser<'a> {
             Ok(Use {
                 loc: start.merge(end),
                 path: string,
-                alias: alias,
+                alias,
             })
         } else {
             let loc = token.loc;
@@ -300,8 +300,8 @@ impl<'a> Parser<'a> {
             self.consume_semi_colon();
             Ok(Expose {
                 loc: start.merge(end),
-                ident: ident,
-                alias: alias,
+                ident,
+                alias,
             })
         } else {
             let loc = token.loc;
@@ -359,12 +359,12 @@ impl<'a> Parser<'a> {
         let block = self.block()?;
         self.consume_semi_colon();
         Ok(Function {
-            ident: ident,
-            params: params,
-            result: result,
+            ident,
+            params,
+            result,
             body: Body::Zephyr(block),
-            is_pub: is_pub,
-            loc: loc,
+            is_pub,
+            loc,
         })
     }
 
@@ -394,8 +394,8 @@ impl<'a> Parser<'a> {
             };
 
             params.push(Variable {
-                ident: ident,
-                t: t,
+                ident,
+                t,
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {
@@ -483,9 +483,9 @@ impl<'a> Parser<'a> {
         self.consume_semi_colon();
         Ok(Statement::AssignStmt {
             var: Box::new(Variable {
-                ident: ident,
+                ident,
                 t: None,
-                loc: loc,
+                loc,
             }),
             expr: Box::new(expr),
         })
@@ -521,9 +521,9 @@ impl<'a> Parser<'a> {
         self.consume_semi_colon();
         Ok(Statement::LetStmt {
             var: Box::new(Variable {
-                ident: ident,
+                ident,
                 t: None,
-                loc: loc,
+                loc,
             }),
             expr: Box::new(expr),
         })
@@ -555,14 +555,14 @@ impl<'a> Parser<'a> {
             self.consume_semi_colon();
             Ok(Statement::IfStmt {
                 expr: Box::new(expr),
-                block: block,
+                block,
                 else_block: Some(else_block),
             })
         } else {
             self.consume_semi_colon();
             Ok(Statement::IfStmt {
                 expr: Box::new(expr),
-                block: block,
+                block,
                 else_block: None,
             })
         }
@@ -583,7 +583,7 @@ impl<'a> Parser<'a> {
         self.consume_semi_colon();
         Ok(Statement::WhileStmt {
             expr: Box::new(expr),
-            block: block,
+            block,
         })
     }
 
@@ -598,7 +598,7 @@ impl<'a> Parser<'a> {
                 self.consume_semi_colon();
                 Ok(Statement::ReturnStmt {
                     expr: Some(e),
-                    loc: loc,
+                    loc,
                 })
             }
             Err(()) => {
@@ -606,7 +606,7 @@ impl<'a> Parser<'a> {
                 self.consume_semi_colon();
                 Ok(Statement::ReturnStmt {
                     expr: None,
-                    loc: loc,
+                    loc,
                 })
             }
         }
@@ -624,7 +624,7 @@ impl<'a> Parser<'a> {
                 Err(()) => (),
             }
         }
-        Ok(Block { stmts: stmts })
+        Ok(Block { stmts })
     }
 
     /// Parses the 'expression' grammar element. As the grammar is unambiguous,
@@ -676,7 +676,7 @@ impl<'a> Parser<'a> {
             let right_comp = self.comparison()?;
             left_comp = Expression::Binary {
                 expr_left: Box::new(left_comp),
-                binop: binop,
+                binop,
                 expr_right: Box::new(right_comp),
             }
         }
@@ -698,7 +698,7 @@ impl<'a> Parser<'a> {
             let right_b_or = self.bitwise_or()?;
             left_b_or = Expression::Binary {
                 expr_left: Box::new(left_b_or),
-                binop: binop,
+                binop,
                 expr_right: Box::new(right_b_or),
             }
         }
@@ -706,13 +706,27 @@ impl<'a> Parser<'a> {
     }
 
     fn bitwise_or(&mut self) -> Result<Expression, ()> {
-        let mut left_b_and = self.bitwise_and()?;
+        let mut left_b_and = self.bitwise_xor()?;
 
         while self.next_match(TokenType::Or) {
-            let right_b_and = self.bitwise_and()?;
+            let right_b_and = self.bitwise_xor()?;
             left_b_and = Expression::Binary {
                 expr_left: Box::new(left_b_and),
                 binop: BinaryOperator::BitwiseOr,
+                expr_right: Box::new(right_b_and),
+            }
+        }
+        Ok(left_b_and)
+    }
+
+    fn bitwise_xor(&mut self) -> Result<Expression, ()> {
+        let mut left_b_and = self.bitwise_and()?;
+
+        while self.next_match(TokenType::Hat) {
+            let right_b_and = self.bitwise_and()?;
+            left_b_and = Expression::Binary {
+                expr_left: Box::new(left_b_and),
+                binop: BinaryOperator::BitwiseXor,
                 expr_right: Box::new(right_b_and),
             }
         }
@@ -746,7 +760,7 @@ impl<'a> Parser<'a> {
             let right_mult = self.multiplication()?;
             left_mult = Expression::Binary {
                 expr_left: Box::new(left_mult),
-                binop: binop,
+                binop,
                 expr_right: Box::new(right_mult),
             }
         }
@@ -767,7 +781,7 @@ impl<'a> Parser<'a> {
             let right_unary = self.unary()?;
             left_unary = Expression::Binary {
                 expr_left: Box::new(left_unary),
-                binop: binop,
+                binop,
                 expr_right: Box::new(right_unary),
             }
         }
@@ -809,7 +823,7 @@ impl<'a> Parser<'a> {
             }
             expr = Expression::Call {
                 fun: Box::new(expr),
-                args: args,
+                args,
             };
         }
         Ok(expr)

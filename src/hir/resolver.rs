@@ -455,7 +455,8 @@ impl<'a> NameResolver<'a> {
                 match binop {
                     ast::BinaryOperator::Remainder
                     | ast::BinaryOperator::BitwiseOr
-                    | ast::BinaryOperator::BitwiseAnd => {
+                    | ast::BinaryOperator::BitwiseAnd
+                    | ast::BinaryOperator::BitwiseXor => {
                         state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
                         state.new_constraint(TypeConstraint::Included(
                             left_t_id,
@@ -851,6 +852,7 @@ fn check_built_in_type(t: &str) -> Option<Type> {
         "i64" => Some(Type::I64),
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
+        "bool" => Some(Type::Bool),
         _ => None,
     }
 }

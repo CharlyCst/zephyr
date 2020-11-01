@@ -231,6 +231,7 @@ impl<'a> HirProducer<'a> {
                         ASTBinop::Remainder => Binop::Rem(self.t_as_integer(&t, loc)),
                         ASTBinop::BitwiseOr => Binop::BinaryOr(self.t_as_integer(&t, loc)),
                         ASTBinop::BitwiseAnd => Binop::BinaryAnd(self.t_as_integer(&t, loc)),
+                        ASTBinop::BitwiseXor => Binop::Xor(self.t_as_integer(&t, loc)),
                         ASTBinop::Or => {
                             self.t_is_bool(&t, loc);
                             Binop::LogicalOr

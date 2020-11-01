@@ -25,6 +25,7 @@ pub enum BinaryOperator {
     Divide,
     BitwiseOr,
     BitwiseAnd,
+    BitwiseXor,
     Or,
     And,
 }
@@ -318,6 +319,7 @@ impl fmt::Display for Expression {
                 let op = match binop {
                     BinaryOperator::And => "&&",
                     BinaryOperator::BitwiseAnd => "&",
+                    BinaryOperator::BitwiseXor => "^",
                     BinaryOperator::BitwiseOr => "|",
                     BinaryOperator::Divide => "/",
                     BinaryOperator::Equal => "==",
