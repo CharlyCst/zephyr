@@ -25,6 +25,7 @@ pub enum BinaryOperator {
     Divide,
     BitwiseOr,
     BitwiseAnd,
+    BitwiseXor,
     Or,
     And,
 }
@@ -151,7 +152,7 @@ pub enum AsmStatement {
     Const { val: MirValue, loc: Location },
     Control { cntrl: AsmControl, loc: Location },
     Parametric { param: AsmParametric, loc: Location },
-    Memory { mem: AsmMemory, loc: Location }
+    Memory { mem: AsmMemory, loc: Location },
 }
 
 pub enum AsmLocal {
@@ -174,6 +175,7 @@ pub enum AsmMemory {
 
 pub enum AsmControl {
     Return,
+    Unreachable,
 }
 
 pub enum AsmParametric {
@@ -317,6 +319,7 @@ impl fmt::Display for Expression {
                 let op = match binop {
                     BinaryOperator::And => "&&",
                     BinaryOperator::BitwiseAnd => "&",
+                    BinaryOperator::BitwiseXor => "^",
                     BinaryOperator::BitwiseOr => "|",
                     BinaryOperator::Divide => "/",
                     BinaryOperator::Equal => "==",
@@ -388,6 +391,7 @@ impl fmt::Display for AsmControl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AsmControl::Return => write!(f, "return"),
+            AsmControl::Unreachable => write!(f, "unreachable"),
         }
     }
 }
@@ -416,4 +420,3 @@ impl fmt::Display for AsmMemory {
         }
     }
 }
-

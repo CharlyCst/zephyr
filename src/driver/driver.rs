@@ -6,6 +6,7 @@ use super::utils::*;
 use crate::ast;
 use crate::cli::Config;
 use crate::error;
+use crate::hir;
 use crate::mir;
 use crate::wasm;
 
@@ -27,13 +28,13 @@ pub struct Driver {
     file_id: u16,
     package_id: u32,
     err: error::ErrorHandler,
-    pub_decls: HashMap<String, HashMap<String, mir::Declaration>>, // package -> (decl -> type)
+    pub_decls: HashMap<String, HashMap<String, hir::Declaration>>, // package -> (decl -> type)
 }
 
 impl Driver {
     pub fn new(config: Config) -> Driver {
         Driver {
-            config: config,
+            config,
             package_root: None,
             package_name: String::from(""),
             file_id: 0,
@@ -123,15 +124,18 @@ impl Driver {
                     if !package_path.exists() {
                         // No directory found, look for a single file package.
                         package_path = self.package_root.clone().unwrap();
-                        package_path.push(strip_root(&used.path));
-                        package_path.push(".");
+                        let mut file_name = strip_root(&used.path).to_string();
+                        file_name.push('.');
                         // try to find ASM file first
+                        let mut asm_file_name = file_name.clone();
+                        asm_file_name.push_str(ASM_EXTENSION);
                         let mut asm_path = package_path.clone();
-                        asm_path.push(ASM_EXTENSION);
+                        asm_path.push(&asm_file_name);
                         if asm_path.exists() {
-                            package_path.push(ASM_EXTENSION);
+                            package_path.push(asm_file_name);
                         } else {
-                            package_path.push(ZEPHYR_EXTENSION);
+                            file_name.push_str(ZEPHYR_EXTENSION);
+                            package_path.push(file_name);
                         }
                     }
                     let mut imported = imported.clone();
@@ -166,7 +170,9 @@ impl Driver {
                 exit!(self);
             }
         }
-        let mut mir_program = mir::to_mir(pkg_ast, namespaces, &mut error_handler, &self.config);
+        let hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
+        let mut mir_program = mir::to_mir(hir_program, &mut error_handler, &self.config);
+        // Insert imported functions
         mir_program.funs.extend(mir_funs);
         Ok((mir_program, error_handler))
     }
@@ -195,17 +201,19 @@ impl Driver {
             // We do not check the directory for root package.
             ""
         } else {
-            if path.is_file() {
-                path.parent()
-                    .expect("Could not retireve directory name.")
-                    .file_name()
+            let path = if path.is_file() {
+                path.parent().expect("Could not retireve directory name.")
             } else {
-                // Already a directory.
+                path
+            };
+            if path.to_str() == Some(".") {
+                "."
+            } else {
                 path.file_name()
+                    .expect("Failed retrieving the directory name.")
+                    .to_str()
+                    .expect("Directory name contains unexpected characters.")
             }
-            .expect("Failed retrieving the directory name.")
-            .to_str()
-            .expect("Directory name contains unexpected characters.")
         };
 
         // Build package ASTs
@@ -373,11 +381,11 @@ impl Driver {
             };
             Ok((
                 ast::Program {
-                    package: package,
-                    exposed: exposed,
-                    used: used,
-                    funs: funs,
-                    package_id: package_id,
+                    package,
+                    exposed,
+                    used,
+                    funs,
+                    package_id,
                 },
                 error_handler,
             ))

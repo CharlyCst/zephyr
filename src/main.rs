@@ -1,6 +1,7 @@
 mod ast;
 mod error;
 mod mir;
+mod hir;
 mod wasm;
 mod driver;
 mod cli;

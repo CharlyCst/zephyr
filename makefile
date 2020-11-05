@@ -18,7 +18,7 @@ clean:
 
 .PHONY: test
 test: build
-	./test.sh
+	python3 tests.py
 
 .PHONY: book
 book: book/book.toml

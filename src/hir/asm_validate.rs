@@ -1,4 +1,4 @@
-use super::mir::Value as MirValue;
+use crate::mir::Value as MirValue;
 use super::names::{
     AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, Function, NameId, NameStore,
 };
@@ -52,6 +52,7 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
             Body::Asm(ref stmts) => stmts,
             _ => return Ok(()),
         };
+        // TODO: skip type checking if 'unreachable' is found.
         let stack = self.interprete(stmts)?;
         let return_type = self.get_fun_type(fun)?;
 
@@ -93,6 +94,7 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
                 },
                 AsmStatement::Control { cntrl, .. } => match cntrl {
                     AsmControl::Return => return Ok(stack),
+                    AsmControl::Unreachable => return Ok(stack), // TODO: add an "unreachable" flag
                 },
                 AsmStatement::Parametric { param, loc } => match param {
                     AsmParametric::Drop => self.drop(&mut stack, loc),

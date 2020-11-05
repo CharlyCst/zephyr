@@ -23,6 +23,9 @@ pub const SEC_DATA: SecTyp = 11;
 // Kind
 type Kind = u8;
 pub const KIND_FUNC: Kind = 0;
+pub const KIND_TABLE: Kind = 1;
+pub const KIND_MEM: Kind = 2;
+pub const KIND_GLOBAL: Kind = 3;
 
 // Types
 type Type = u8;

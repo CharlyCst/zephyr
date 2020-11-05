@@ -33,6 +33,7 @@ pub enum Opcode {
     // Parametric
     Drop,
     // Control
+    Unreachable,
     Return,
     // Numeric
     I32Const,
@@ -70,6 +71,7 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         // Opcodes
         (String::from("drop"), to_token(Opcode::Drop)),
         (String::from("return"), to_token(Opcode::Return)),
+        (String::from("unreachable"), to_token(Opcode::Unreachable)),
         (String::from("i32.const"), to_token(Opcode::I32Const)),
         (String::from("i64.const"), to_token(Opcode::I64Const)),
         (String::from("local.get"), to_token(Opcode::LocalGet)),
@@ -84,13 +86,13 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         (String::from("f32.store"), to_token(Opcode::F32Store)),
         (String::from("f64.load"), to_token(Opcode::F64Load)),
         (String::from("f64.store"), to_token(Opcode::F64Store)),
-
     ]
     .iter()
     .cloned()
     .collect()
 }
 
+/// Transforms an opcode into a token.
 fn to_token(op: Opcode) -> TokenType {
     TokenType::Opcode(op)
 }
@@ -127,20 +129,21 @@ impl fmt::Display for Opcode {
         match self {
             Opcode::Drop => write!(f, "drop"),
             Opcode::Return => write!(f, "return"),
+            Opcode::Unreachable => write!(f, "unreachable"),
             Opcode::I32Const => write!(f, "i32.const"),
             Opcode::I64Const => write!(f, "i64.const"),
             Opcode::LocalGet => write!(f, "local.get"),
             Opcode::LocalSet => write!(f, "local.set"),
             Opcode::MemorySize => write!(f, "memory.size"),
-            Opcode::MemoryGrow=> write!(f, "memory.grow"),
-            Opcode::I32Load=> write!(f, "i32.load"),
-            Opcode::I32Store=> write!(f, "i32.store"),
-            Opcode::I64Load=> write!(f, "i64.load"),
-            Opcode::I64Store=> write!(f, "i64.store"),
-            Opcode::F32Load=> write!(f, "f32.load"),
-            Opcode::F32Store=> write!(f, "f32.store"),
-            Opcode::F64Load=> write!(f, "f64.load"),
-            Opcode::F64Store=> write!(f, "f64.store"),
+            Opcode::MemoryGrow => write!(f, "memory.grow"),
+            Opcode::I32Load => write!(f, "i32.load"),
+            Opcode::I32Store => write!(f, "i32.store"),
+            Opcode::I64Load => write!(f, "i64.load"),
+            Opcode::I64Store => write!(f, "i64.store"),
+            Opcode::F32Load => write!(f, "f32.load"),
+            Opcode::F32Store => write!(f, "f32.store"),
+            Opcode::F64Load => write!(f, "f64.load"),
+            Opcode::F64Store => write!(f, "f64.store"),
         }
     }
 }

@@ -21,6 +21,7 @@ pub enum TokenType {
     Less,
     And,
     Or,
+    Hat,
 
     // Two characters
     BangEqual,

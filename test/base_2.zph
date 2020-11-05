@@ -2,8 +2,6 @@ package "#test"
 
 expose main as _start
 
-// Test let statement
 fun main() i32 {
-    let x = 42
-    return x
+    return 0b101010 // 42 in base 2
 }
