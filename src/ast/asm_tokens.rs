@@ -17,11 +17,12 @@ pub enum TokenType {
     Opcode(Opcode),
 
     // Keywords
+    As,
     Expose,
     Fun,
     Pub,
     Package,
-    As,
+    Standalone,
 
     // Other
     SemiColon,
@@ -68,6 +69,7 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         (String::from("fun"), TokenType::Fun),
         (String::from("pub"), TokenType::Pub),
         (String::from("package"), TokenType::Package),
+        (String::from("standalone"), TokenType::Standalone),
         // Opcodes
         (String::from("drop"), to_token(Opcode::Drop)),
         (String::from("return"), to_token(Opcode::Return)),
@@ -114,6 +116,7 @@ impl fmt::Display for Token {
             TokenType::Fun => write!(f, "fun"),
             TokenType::Pub => write!(f, "pub"),
             TokenType::Package => write!(f, "package"),
+            TokenType::Standalone => write!(f, "standalone"),
             // Literals
             TokenType::Identifier(ref ident) => write!(f, "'{}'", ident),
             TokenType::StringLit(ref s) => write!(f, "\"{}\"", s),

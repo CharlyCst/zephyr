@@ -29,18 +29,19 @@ impl<'a> Parser<'a> {
         let mut used = Vec::new();
 
         let package = match self.package() {
-            Ok(pack) => pack,
+            Ok(pkg) => pkg,
             Err(()) => {
                 self.err.silent_report();
                 // @TODO: In the future we may wan to parse the code anyway in order to provide feedback
                 // even though the `package` declaration is missing.
                 Package {
-                    path: String::from(""),
+                    name: String::from(""),
                     loc: Location {
                         pos: 0,
                         len: 0,
                         f_id: 0,
                     },
+                    t: PackageType::Standard,
                 }
             }
         };
@@ -180,9 +181,14 @@ impl<'a> Parser<'a> {
     /// Parses the 'package' grammar element
     fn package(&mut self) -> Result<Package, ()> {
         let start = self.peek().loc;
+        let package_type = if self.next_match(TokenType::Standalone) {
+            PackageType::Standalone
+        } else {
+            PackageType::Standard
+        };
         if !self.next_match_report(
             TokenType::Package,
-            "Programs must start with a 'package' keyword",
+            "Programs must start with a package declaration",
         ) {
             return Err(());
         }
@@ -194,7 +200,8 @@ impl<'a> Parser<'a> {
             self.consume_semi_colon();
             Ok(Package {
                 loc: start.merge(end),
-                path: string,
+                name: string,
+                t: package_type,
             })
         } else {
             let loc = token.loc;

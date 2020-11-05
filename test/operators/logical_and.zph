@@ -1,4 +1,4 @@
-package "#logical_or"
+standalone package "logical_and"
 
 expose main as _start
 

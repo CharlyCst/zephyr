@@ -49,6 +49,7 @@ pub enum TokenType {
     Package,
     Pub,
     Return,
+    Standalone,
     True,
     Use,
     Var,

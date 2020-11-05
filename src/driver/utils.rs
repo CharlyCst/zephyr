@@ -1,60 +1,44 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub enum PackageType {
-    Package { name: String },
-    SingleFilePackage { parent: String, name: String },
-    OrphanFile { name: String },
+use crate::ast;
+
+/// A list of packages known from the compiler and expected to be available.
+pub enum KnownPackage {
+    Core,
+}
+
+/// The result of a path lookup: either file or a directory
+pub enum ResolvedPath {
+    Dir(Vec<PathBuf>),
+    File(PathBuf),
+}
+
+/// A file prepared to be passed to the AST parser.
+pub struct PreparedFile {
+    pub code: String,
+    pub f_id: u16,
+    pub file_name: String,
+    pub kind: ast::Kind,
 }
 
 pub const ZEPHYR_EXTENSION: &str = "zph";
 pub const ASM_EXTENSION: &str = "zasm";
 
-/// Returns a list of files pointed by `path` and a flag set to `true` if `path` points directly 
+/// Returns a list of files pointed by `path` and a flag set to `true` if `path` points directly
 /// at a file, false otherwise. In case of success, return at least one path.
-pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), String> {
+pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<ResolvedPath, String> {
     let path = path.as_ref();
-    let file_info = if let Ok(f) = fs::metadata(&path) {
-        f
-    } else {
-        return Err(format!(
-            "Path '{}' does not exist.",
-            path.to_str().unwrap_or("")
-        ));
-    };
+    let file_info = fs::metadata(&path)
+        .map_err(|_| format!("Path '{}' does not exist.", path.to_str().unwrap_or("")))?;
     if file_info.is_dir() {
-        if let Ok(dir) = fs::read_dir(path) {
-            let mut paths = Vec::new();
-            for entry in dir {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if let Some(ext) = path.extension() {
-                        if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
-                            paths.push(path);
-                        }
-                    }
-                }
-            }
-            if paths.len() == 0 {
-                Err(format!(
-                    "Could not find any zephyr file (.{}) in '{}'",
-                    ZEPHYR_EXTENSION,
-                    path.to_str().unwrap_or("")
-                ))
-            } else {
-                Ok((paths, false))
-            }
-        } else {
-            Err(String::from(""))
-        }
+        let dir = fs::read_dir(path).expect("Should never happen");
+        let files = resolve_directory_files(dir, path)?;
+        Ok(files)
     } else if file_info.is_file() {
-        let ext = if let Some(ext) = path.extension() {
-            ext
-        } else {
-            return Err(String::from("Could not read file extension"));
-        };
+        let ext = path.extension().expect("Could not read file extension");
         if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
-            Ok((vec![path.to_owned()], true))
+            Ok(ResolvedPath::File(path.to_owned()))
         } else {
             Err(format!(
                 "Invalid file extension '{}'.",
@@ -69,8 +53,33 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
     }
 }
 
+/// Given a directory, return a list of all the zephyr files it contains.
+/// Rises an error if no file with a zephyr extension are found.
+fn resolve_directory_files(dir: fs::ReadDir, path: &Path) -> Result<ResolvedPath, String> {
+    let mut paths = Vec::new();
+    for entry in dir {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    if paths.is_empty() {
+        Err(format!(
+            "Could not find any zephyr file (.{}) in '{}'",
+            ZEPHYR_EXTENSION,
+            path.to_str().unwrap_or("")
+        ))
+    } else {
+        Ok(ResolvedPath::Dir(paths))
+    }
+}
+
 /// Returns the path without the root package.
-/// 'std/math/cryo' becomes 'math/crypto'.
+/// 'std/math/crypo' becomes 'math/crypto'.
 pub fn strip_root(path: &str) -> &str {
     let mut iter = path.chars();
     loop {
@@ -113,54 +122,6 @@ pub fn validate_use_path(path: &str) -> Option<(String, String)> {
     }
 }
 
-/// Returns the type of package infered from its name. Returns an error if name is not well
-/// formatted.
-pub fn get_package_type(package_name: &str) -> Result<PackageType, String> {
-    if is_orphan(package_name) {
-        if validate_orphan_file(package_name) {
-            Ok(PackageType::OrphanFile {
-                name: package_name.to_string(),
-            })
-        } else {
-            Err(format!("Malformed orphan file name: '{}'", package_name,))
-        }
-    } else if is_single_file_package(package_name) {
-        if let Some((parent, name)) = validate_single_file_package(package_name) {
-            Ok(PackageType::SingleFilePackage {
-                parent: parent,
-                name: name,
-            })
-        } else {
-            Err(format!(
-                "Malformed single file package name: '{}'",
-                package_name,
-            ))
-        }
-    } else if validate_package(package_name) {
-        Ok(PackageType::Package {
-            name: package_name.to_string(),
-        })
-    } else {
-        Err(format!("Malformed package name: '{}'", package_name))
-    }
-}
-
-/// Returns `true` if the package looks like an orphan file (i.e. it starts with an `#`)
-fn is_orphan(package_name: &str) -> bool {
-    if let Some(c) = package_name.chars().next() {
-        c == '#'
-    } else {
-        false
-    }
-}
-
-/// Returns `true` if the package looks like a single file package
-fn is_single_file_package(package_name: &str) -> bool {
-    // A single file package MUST contain a `/`, and is the only
-    // type of package allowed to.
-    package_name.chars().find(|c| *c == '/').is_some()
-}
-
 /// Returns `true` if the package name is correct, that is:
 /// - It contrains only lower case characters and underscores
 /// - It starts with a lower case character
@@ -179,66 +140,9 @@ fn validate_package(package_name: &str) -> bool {
     true
 }
 
-/// Returns `true` if the package name is a valid orphan file, that is:
-/// - It starts with `#`
-/// - It is followed by  a valid package name
-fn validate_orphan_file(package_name: &str) -> bool {
-    match package_name.chars().next() {
-        Some('#') => true,
-        _ => return false,
-    };
-
-    validate_package(&package_name[1..])
-}
-
-/// Returns an option containing the host package name (the main package of the directory) and the
-/// single file package name if the single file package name is well formad, that is:
-/// - It starts with the host package name (a valid package name)
-/// - Is followed by a a slash `/`
-/// - Itself followed by the single file package name (a valid package name)
-fn validate_single_file_package(package_name: &str) -> Option<(String, String)> {
-    let mut parts = package_name.split('/');
-    let host_package = if let Some(host_package) = parts.next() {
-        host_package.to_string()
-    } else {
-        return None;
-    };
-    let single_file_package = if let Some(single_file_package) = parts.next() {
-        single_file_package.to_string()
-    } else {
-        return None;
-    };
-    if parts.next() == None
-        && validate_package(&host_package)
-        && validate_package(&single_file_package)
-    {
-        Some((host_package, single_file_package))
-    } else {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    /// Test `is_orphan`
-    fn orphan() {
-        assert_eq!(is_orphan("#orphan"), true);
-        assert_eq!(is_orphan("orphan"), false);
-        assert_eq!(is_orphan("trap/#orphan"), false);
-        assert_eq!(is_orphan(""), false);
-    }
-
-    #[test]
-    /// Test `is_single_file_package`
-    fn single_file_package() {
-        assert_eq!(is_single_file_package("greeting/hello"), true);
-        assert_eq!(is_single_file_package("greeting"), false);
-        assert_eq!(is_single_file_package("#greeting"), false);
-        assert_eq!(is_single_file_package(""), false);
-    }
 
     #[test]
     /// test `validate_package`
@@ -249,32 +153,6 @@ mod tests {
         assert!(!validate_package("Greeting"));
         assert!(!validate_package("_greeting"));
         assert!(!validate_package("#greeting"));
-    }
-
-    #[test]
-    /// test `validate_orphan_file`
-    fn orphan_file_name() {
-        assert!(validate_orphan_file("#greeting"));
-        assert!(validate_orphan_file("#greeting_world"));
-        assert!(!validate_orphan_file("#greeting/hello"));
-        assert!(!validate_orphan_file("greeting"));
-        assert!(!validate_orphan_file("#_greeting"));
-    }
-
-    #[test]
-    /// test `validate_single_file_package`
-    fn single_file_package_name() {
-        assert_eq!(
-            validate_single_file_package("greeting/hello"),
-            Some((String::from("greeting"), String::from("hello")))
-        );
-        assert_eq!(
-            validate_single_file_package("greeting_world/hello_world"),
-            Some((String::from("greeting_world"), String::from("hello_world")))
-        );
-        assert_eq!(validate_single_file_package("#greeting/world"), None);
-        assert_eq!(validate_single_file_package("greeting/#world"), None);
-        assert_eq!(validate_single_file_package("greeting/world/hello"), None);
     }
 
     #[test]

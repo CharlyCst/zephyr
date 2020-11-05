@@ -1,4 +1,4 @@
-package "#test"
+standalone package "if"
 
 expose main as _start
 

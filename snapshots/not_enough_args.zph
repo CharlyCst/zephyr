@@ -1,4 +1,4 @@
-package "#test"
+standalone package "not_enough_args"
 
 fun main() i32 {
     return plus_one()

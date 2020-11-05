@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
     ) -> Parser<'a> {
         Parser {
             err: error_handler,
-            tokens: tokens,
+            tokens,
             current: 0,
             package_id,
         }
@@ -41,8 +41,9 @@ impl<'a> Parser<'a> {
             Err(_) => {
                 self.err.silent_report(); // Error message is already emited by self.package.
                 ast::Package {
-                    path: String::from(""),
+                    name: String::from(""),
                     loc: Location::dummy(),
+                    t: ast::PackageType::Standard,
                 }
             }
         };
@@ -59,9 +60,9 @@ impl<'a> Parser<'a> {
 
         ast::Program {
             package_id: self.package_id,
-            package: package,
-            exposed: exposed,
-            funs: funs,
+            package,
+            exposed,
+            funs,
             used: vec![],
         }
     }
@@ -142,6 +143,11 @@ impl<'a> Parser<'a> {
 
     /// Parses the 'package' grammar element
     fn package(&mut self) -> Result<ast::Package, ()> {
+        let package_type = if self.next_match(TokenType::Standalone) {
+            ast::PackageType::Standalone
+        } else {
+            ast::PackageType::Standard
+        };
         if !self.next_match_report(
             TokenType::Package,
             "File must start with a 'package' declaration.",
@@ -150,7 +156,7 @@ impl<'a> Parser<'a> {
         }
         let token = self.advance();
         let loc = token.loc;
-        let path = match token.t {
+        let name = match token.t {
             TokenType::StringLit(ref s) => s.clone(),
             _ => {
                 self.err.report(
@@ -162,8 +168,9 @@ impl<'a> Parser<'a> {
         };
         self.consume_semi_colon();
         Ok(ast::Package {
-            path: path,
-            loc: loc,
+            name,
+            loc,
+            t: package_type
         })
     }
 
@@ -223,8 +230,8 @@ impl<'a> Parser<'a> {
             self.consume_semi_colon();
             return Ok(ast::Expose {
                 ident: fun_name,
-                alias: alias,
-                loc: loc,
+                alias,
+                loc,
             });
         }
         self.err.report(
@@ -279,12 +286,12 @@ impl<'a> Parser<'a> {
         self.consume_semi_colon();
 
         Ok(ast::Function {
-            ident: ident,
-            params: params,
-            result: result,
+            ident,
+            params,
+            result,
             body: ast::Body::Asm(stmts),
             is_pub: false, // handled by the called who may have consumed the "pub" keyword
-            loc: loc,      // location of the identifier
+            loc,      // location of the identifier
         })
     }
 
@@ -312,7 +319,7 @@ impl<'a> Parser<'a> {
             };
 
             params.push(ast::Variable {
-                ident: ident,
+                ident,
                 t: Some(t),
                 loc: var_loc,
             });

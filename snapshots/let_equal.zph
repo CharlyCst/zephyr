@@ -1,4 +1,4 @@
-package "#test"
+standalone package "let_equal"
 
 fun main() i32 {
     let x

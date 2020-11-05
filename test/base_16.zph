@@ -1,4 +1,4 @@
-package "#test"
+standalone package "base_16"
 
 expose main as _start
 

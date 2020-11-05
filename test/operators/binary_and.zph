@@ -1,4 +1,4 @@
-package "#test"
+standalone package "binary_and"
 
 expose main as _start
 
