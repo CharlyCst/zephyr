@@ -216,17 +216,27 @@ impl SectionData {
         // encoded as a u32 at mem[0]. This address should be carefully picked
         // so that data will be aligned (see allocator).
         let mut hardcoded_data = WasmVec::new();
-        // mem[0..4]
-        hardcoded_data.push_item(4);
+        // mem[0..4] - address of first block
+        hardcoded_data.push_item(12);
         hardcoded_data.push_item(0);
         hardcoded_data.push_item(0);
         hardcoded_data.push_item(0);
-        // mem[4..8]
+        // mem[4..8] - padding
         hardcoded_data.push_item(0);
         hardcoded_data.push_item(0);
-        hardcoded_data.push_item(1);
         hardcoded_data.push_item(0);
-        // mem_idx:0, offset: 0
+        hardcoded_data.push_item(0);
+        // mem[8..12] - mocked block footer with allocated bit set
+        hardcoded_data.push_item(0xff);
+        hardcoded_data.push_item(0xff);
+        hardcoded_data.push_item(0xff);
+        hardcoded_data.push_item(0xff);
+        // mem[12..16] - first block header (its size)
+        hardcoded_data.push_item(0xf0);
+        hardcoded_data.push_item(0xff);
+        hardcoded_data.push_item(0);
+        hardcoded_data.push_item(0);
+
         let mut data_segment = Vec::new();
         // mem_idx: 0
         data_segment.extend(to_leb(0));
@@ -234,7 +244,7 @@ impl SectionData {
         data_segment.push(INSTR_I32_CST);
         data_segment.extend(to_leb(0));
         data_segment.push(INSTR_END);
-        // vector of bytes: 32
+        // data
         data_segment.extend(hardcoded_data);
 
         data.extend_item(data_segment);

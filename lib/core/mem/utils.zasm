@@ -1,16 +1,17 @@
 package "mem"
 
-fun memory_size() i32 {
-    memory.size
-}
-
-/// Increase the memory size by a given number of pages and return the old
+/// Increases the memory size by a given number of pages and return the old
 /// memory size, or -1 if the operation failed.
 ///
 /// A memory page is 65536 bytes, or 64Ki bytes
 fun memory_grow(size i32) i32 {
     local.get size
     memory.grow
+}
+
+/// Returns the size of memory in pages (65536 = 2^16 bytes).
+fun memory_size() i32 {
+    memory.size
 }
 
 /// Reads an i32 from memory, expects an alignment of 32 at least.
