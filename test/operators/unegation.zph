@@ -1,4 +1,4 @@
-package "#test"
+standalone package "unegation"
 
 expose main as _start
 

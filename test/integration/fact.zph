@@ -1,4 +1,4 @@
-package "#test"
+standalone package "fact"
 
 expose main as _start
 

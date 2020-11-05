@@ -1,6 +1,6 @@
 .PHONY: main
 main: src/main.rs
-	cargo run -- zephyr -o out/hello.wasm
+	cargo run -- zephyr/test.zasm -v -o out/hello.wasm
 
 .PHONY: setup
 setup:

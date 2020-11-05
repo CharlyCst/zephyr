@@ -1,4 +1,4 @@
-package "#test"
+standalone package "wrong_top_level"
 
 if true {}
 

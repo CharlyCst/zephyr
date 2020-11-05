@@ -4,6 +4,11 @@ use std::fmt;
 
 ////// Zephyr AST nodes //////
 
+pub enum PackageType {
+    Standard,
+    Standalone,
+}
+
 pub enum Value {
     Integer { val: u64, loc: Location },
     Float { val: f64, loc: Location },
@@ -110,8 +115,9 @@ pub struct Program {
 }
 
 pub struct Package {
-    pub path: String,
+    pub name: String,
     pub loc: Location,
+    pub t: PackageType,
 }
 
 pub struct Function {
@@ -188,7 +194,7 @@ impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut program = String::from("");
         // Package
-        program.push_str(&format!("packge \"{}\";\n\n", self.package.path));
+        program.push_str(&format!("packge \"{}\";\n\n", self.package.name));
         // Use
         for is_used in &self.used {
             program.push_str(&format!("use \"{}\"", is_used.path));

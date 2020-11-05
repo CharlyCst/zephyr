@@ -31,6 +31,7 @@ impl<'a> Scanner<'a> {
             (String::from("package"), TokenType::Package),
             (String::from("pub"), TokenType::Pub),
             (String::from("return"), TokenType::Return),
+            (String::from("standalone"), TokenType::Standalone),
             (String::from("true"), TokenType::True),
             (String::from("use"), TokenType::Use),
             (String::from("var"), TokenType::Var),

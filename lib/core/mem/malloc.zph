@@ -55,20 +55,19 @@ pub fun malloc(size i32) i32 {
     let addr = read_i32(0)
     let target_size = get_real_block_size(size)
     while true {
-        if read_i32(addr) >= target_size {
-            let block_size = split_block(addr, target_size)
-            remove_block(addr)
-            let header = block_size | 0x80000000 // set the allocated bit
-            set_i32(addr, header)          // header
-            set_i32(addr + block_size, header)   // footer
-            return addr + 4
-        }
-        // go to next block
-        addr = read_i32(addr + 4)
         if addr == 0 {
             // TODO: out of memory
             utils.panic()
         }
+        if read_i32(addr) >= target_size {
+            let block_size = split_block(addr, target_size)
+            remove_block(addr)
+            let header = block_size | 0x80000000 // set the allocated bit
+            set_i32(addr, header)                // header
+            set_i32(addr + block_size, header)   // footer
+            return addr + 4
+        }
+        addr = read_i32(addr + 4)                // go to next block
     }
     // needed for wasm stack type check...
     // TODO: find a (compiler) solution

@@ -1,4 +1,4 @@
-package "#test"
+standalone package "identifiers"
 
 expose main as _start
 
