@@ -1,6 +1,7 @@
 standalone package "use"
 
 use "core"
+use "core/mem"
 
 expose main as _start
 

@@ -104,7 +104,7 @@ impl Driver {
         path: P,
         root: Option<&str>,
         root_path: P,
-        mut imported: HashSet<String>,
+        imported: HashSet<String>,
     ) -> Result<(mir::Program, error::ErrorHandler), ()> {
         // Get AST
         let (mut pkg_ast, mut error_handler) = self.get_package_ast(path)?;
@@ -115,60 +115,50 @@ impl Driver {
         let mut mir_funs = Vec::new();
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
-            if let Some((used_root, used_alias)) = validate_use_path(&used.path) {
-                // Check for circular imports
-                if imported.contains(&used.path) {
-                    self.err.report_no_loc(format!(
-                        "Circular import detected: '{}' already imported.",
-                        &used.path
-                    ));
-                    exit!(self);
-                }
-                if package_import.contains(&used.path) {
-                    self.err.warn_no_loc(format!(
-                        "Package '{}' is imported multiple times from the same package.",
-                        &used.path
-                    ));
-                }
-                package_import.insert(used.path.clone());
+            self.detect_circular_imports(&used.path, &imported);
+            // Warn for circular imports
+            if package_import.contains(&used.path) {
+                self.err.warn_no_loc(format!(
+                    "Package '{}' is imported multiple times from the same package.",
+                    &used.path
+                ));
+            }
+            package_import.insert(used.path.clone());
+            // Collect dependencies
+            // TODO: Should we hide exposed declarations of imported packages?
+            let pub_decls = if let Some(pub_decls) = self.pub_decls.get(&used.path) {
+                // Already processed and cached.
+                pub_decls.clone()
+            } else if let Some((package_root, subpackage_path)) = split_package_name(&used.path) {
+                let mut imported = imported.clone();
                 imported.insert(used.path.clone());
-                // TODO: Should we hide exposed declarations of imported packages?
-                let pub_decls = if let Some(pub_decls) = self.pub_decls.get(&used.path) {
-                    // Already processed and cached.
-                    pub_decls.clone()
+                let (sub_pkg_mir, err_handler) = if package_root == root {
+                    // Current package
+                    self.get_subpackage_mir(&used, root, root_path.as_ref().to_owned(), imported)?
+                } else if let Some(package) = self.as_known_pachage(&package_root) {
+                    // Known package
+                    self.get_known_package_mir(package, subpackage_path, imported)?
                 } else {
-                    let (sub_pkg_mir, err_handler) =
-                        if let Some(package) = self.as_known_pachage(&used_root) {
-                            self.get_known_package_mir(package, imported.clone())?
-                        } else if used_root == root {
-                            self.get_subpackage_mir(
-                                &used,
-                                root,
-                                root_path.as_ref().to_owned(),
-                                imported.clone(),
-                            )?
-                        } else {
-                            self.err
-                                .report_no_loc(format!("Unknown package '{}'.", &used.path));
-                            self.err.merge(error_handler);
-                            exit!(self);
-                        };
-                    error_handler.merge(err_handler);
-                    mir_funs.extend(sub_pkg_mir.funs);
-                    self.pub_decls
-                        .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
-                    sub_pkg_mir.pub_decls
+                    self.err
+                        .report_no_loc(format!("Unknown package '{}'.", &used.path));
+                    self.err.merge(error_handler);
+                    exit!(self);
                 };
-                if let Some(alias) = &used.alias {
-                    namespaces.insert(alias.clone(), pub_decls);
-                } else {
-                    namespaces.insert(used_alias.clone(), pub_decls);
-                }
+                error_handler.merge(err_handler);
+                mir_funs.extend(sub_pkg_mir.funs);
+                self.pub_decls
+                    .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
+                sub_pkg_mir.pub_decls
             } else {
                 self.err
                     .report_no_loc(format!("Use path is not well formatted '{}'.", &used.path));
                 self.err.merge(error_handler);
                 exit!(self);
+            };
+            if let Some(alias) = &used.alias {
+                namespaces.insert(alias.clone(), pub_decls);
+            } else {
+                namespaces.insert(get_alias(&used.path).to_owned(), pub_decls);
             }
         }
         let hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
@@ -179,12 +169,11 @@ impl Driver {
     }
 
     /// Returns the MIR of a known package.
-    ///
-    /// TODO: this does not handle the case of importing a subpackage of a known package.
     fn get_known_package_mir(
         &mut self,
         package: KnownPackage,
-        mut imported: HashSet<String>,
+        subpackage_path: Option<String>,
+        imported: HashSet<String>,
     ) -> Result<(mir::Program, error::ErrorHandler), ()> {
         if let Some(known_package_path) = &self.known_package_path {
             let mut path = known_package_path.clone();
@@ -192,7 +181,9 @@ impl Driver {
                 KnownPackage::Core => "core",
             };
             path.push(suffix);
-            imported.insert(suffix.to_string());
+            if let Some(subpackage_path) = subpackage_path {
+                path.extend(subpackage_path.split('/'));
+            }
             self.get_package_mir(path.clone(), Some(suffix), path, imported)
         } else {
             self.err.report_no_loc(format!(
@@ -398,6 +389,9 @@ impl Driver {
         }
     }
 
+    /// Iterates through all the path, reads the files and bundle code with medat-data.
+    ///
+    /// Each file gets its own ID, a kind (zephyr or asm) and the code is read.
     pub fn prepare_files(&mut self, resolved_path: ResolvedPath) -> Vec<PreparedFile> {
         let mut files = Vec::new();
         let paths = match resolved_path {
@@ -425,5 +419,20 @@ impl Driver {
             });
         }
         files
+    }
+
+    /// Raises and error if a circular import is detected.
+    ///
+    /// Params:
+    ///  - path: path to import (from 'use' statement)
+    ///  - imported: a set oof paths already imported
+    pub fn detect_circular_imports(&mut self, path: &str, imported: &HashSet<String>) {
+        if imported.contains(path) {
+            self.err.report_no_loc(format!(
+                "Circular import detected: '{}' already imported.",
+                path
+            ));
+            exit!(self);
+        }
     }
 }

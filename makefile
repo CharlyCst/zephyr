@@ -1,6 +1,4 @@
-.PHONY: main
-main: src/main.rs
-	cargo run -- zephyr/test.zasm -v -o out/hello.wasm
+export ZEPHYR_LIB=$(shell pwd)/lib
 
 .PHONY: setup
 setup:

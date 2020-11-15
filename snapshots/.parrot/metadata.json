@@ -84,6 +84,29 @@
       "exit_code": 65,
       "stdout": "equal-typing-rule.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr multiple_imports.zph -o a.wasm",
+      "name": "multiple_imports",
+      "description": "The compiler should rise a warning when importing multiple time the same\npackage.\n#driver #warning",
+      "tags": [
+        "driver",
+        "warning"
+      ],
+      "exit_code": 0,
+      "stdout": "multiple_imports.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr circular_import",
+      "name": "circular_import",
+      "description": "The compiler should rise an error when a circular import is detected.\n#driver",
+      "tags": [
+        "driver"
+      ],
+      "exit_code": 64,
+      "stdout": "circular_import.out",
+      "stderr": null
     }
   ]
 }
