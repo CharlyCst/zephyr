@@ -60,6 +60,7 @@ impl FunctionType {
 }
 
 pub struct Program {
+    pub name: String,
     pub funs: Vec<Function>,
     pub pub_decls: HashMap<String, Declaration>,
 }
@@ -200,7 +201,6 @@ pub enum Value {
 /// The available unary operations, type represents operant type.
 pub enum Unop {
     Neg(NumericType),
-    
     // Boolean
     Not,
 }

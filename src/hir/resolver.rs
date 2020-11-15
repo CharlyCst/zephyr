@@ -159,6 +159,7 @@ impl<'a> NameResolver<'a> {
         }
 
         ResolvedProgram {
+            name: ast_program.package.name,
             funs: named_funs,
             names: state.names,
             types: state.types,

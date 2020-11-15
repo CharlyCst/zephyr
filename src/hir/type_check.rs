@@ -45,6 +45,7 @@ impl<'a> TypeChecker<'a> {
         let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs);
 
         TypedProgram {
+            name: prog.name,
             funs: prog.funs,
             names: prog.names,
             types: store,

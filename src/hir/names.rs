@@ -11,6 +11,7 @@ pub type FunId = u64;
 
 /// A type program, ready to be converted to MIR.
 pub struct ResolvedProgram {
+    pub name: String,
     pub funs: Vec<Function>,
     pub names: NameStore,
     pub types: TypeVarStore,
