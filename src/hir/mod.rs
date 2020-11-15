@@ -20,6 +20,7 @@ mod type_check;
 mod types;
 
 pub struct TypedProgram {
+    pub name: String,
     pub funs: Vec<names::Function>,
     pub names: NameStore,
     pub types: TypeStore,

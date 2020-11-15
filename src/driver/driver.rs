@@ -72,13 +72,12 @@ impl Driver {
             } else {
                 exit!(self);
             };
+        let name = pkg_mir.name.clone();
         let binary = wasm::to_wasm(pkg_mir, &mut error_handler, &self.config);
-
         let output = if let Some(output) = &self.config.output {
             output.clone()
         } else {
-            // TODO: use the name from pkg_mir
-            PathBuf::from("a.wasm")
+            PathBuf::from(&format!("{}.zph.wasm", name))
         };
         // Write down compiled code
         match fs::write(&output, binary) {

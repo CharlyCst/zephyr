@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub struct Program {
+    pub name: String,
     pub funs: Vec<Function>,
     pub pub_decls: HashMap<String, HirDeclaration>,
 }

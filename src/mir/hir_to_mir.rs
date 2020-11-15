@@ -53,6 +53,7 @@ impl<'a> MIRProducer<'a> {
         }
 
         Program {
+            name: prog.name,
             funs,
             pub_decls: prog.pub_decls,
         }
