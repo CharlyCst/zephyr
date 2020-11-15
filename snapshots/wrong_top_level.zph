@@ -1,0 +1,7 @@
+standalone package "wrong_top_level"
+
+if true {}
+
+fun main() i32 {
+    return 0
+}

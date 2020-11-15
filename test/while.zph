@@ -1,4 +1,4 @@
-package "#test"
+standalone package "while"
 
 expose main as _start
 
@@ -8,5 +8,5 @@ fun main() i32 {
 	while x < 42 {
         x = x + 1
     }
-	return x
+    return x
 }

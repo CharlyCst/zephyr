@@ -1,0 +1,8 @@
+standalone package "if_no_arg"
+
+fun main() i32 {
+    if {
+    	return 1
+    }
+    return 0
+}

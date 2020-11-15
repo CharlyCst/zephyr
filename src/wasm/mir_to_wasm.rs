@@ -3,12 +3,13 @@ use super::sections;
 use super::wasm;
 use crate::error::ErrorHandler;
 use crate::mir;
+use crate::hir;
 
 use std::collections::HashMap;
 
-type LocalsMap = HashMap<mir::LocalId, usize>;
+type LocalsMap = HashMap<hir::LocalId, usize>;
 type BlocksMap = HashMap<mir::BasicBlockId, usize>;
-type FunctionsMap = HashMap<mir::FunctionId, usize>;
+type FunctionsMap = HashMap<hir::FunId, usize>;
 
 struct GlobalState {
     funs: FunctionsMap,
@@ -36,7 +37,7 @@ impl<'a> LocalState<'a> {
         LocalState {
             locals: HashMap::new(),
             blocks: HashMap::new(),
-            global_state: global_state,
+            global_state,
             depth: 0,
         }
     }
@@ -53,7 +54,7 @@ impl<'a> LocalState<'a> {
         self.depth - self.blocks[&label] - 1
     }
 
-    pub fn get_fun(&self, fun_id: mir::FunctionId) -> usize {
+    pub fn get_fun(&self, fun_id: hir::FunId) -> usize {
         self.global_state.funs[&fun_id]
     }
 }
@@ -84,12 +85,12 @@ impl<'a> Compiler<'a> {
         let mut results = Vec::new();
         let mut state = LocalState::new(gs);
 
-        for param in fun.param_types.iter() {
+        for param in fun.param_t.iter() {
             let t = mir_t_to_wasm(*param);
             params.push(t);
         }
 
-        for param in fun.ret_types.iter() {
+        for param in fun.ret_t.iter() {
             let t = mir_t_to_wasm(*param);
             results.push(t);
         }
@@ -230,6 +231,7 @@ impl<'a> Compiler<'a> {
                 },
                 mir::Statement::Control { cntrl } => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
+                    mir::Control::Unreachable => code.push(INSTR_UNREACHABLE),
                     mir::Control::Br(label) => {
                         code.push(INSTR_BR);
                         code.extend(to_leb(s.get_label(label) as u64));
@@ -318,12 +320,17 @@ fn get_binop(binop: mir::Binop) -> Instr {
         mir::Binop::I32Div => INSTR_I32_DIV_U,
         mir::Binop::I32Rem => INSTR_I32_REM_U,
         mir::Binop::I32Xor => INSTR_I32_XOR,
+        mir::Binop::I32And => INSTR_I32_AND,
+        mir::Binop::I32Or => INSTR_I32_OR,
 
         mir::Binop::I64Add => INSTR_I64_ADD,
         mir::Binop::I64Sub => INSTR_I64_SUB,
         mir::Binop::I64Mul => INSTR_I64_MUL,
         mir::Binop::I64Div => INSTR_I64_DIV_U,
         mir::Binop::I64Rem => INSTR_I64_REM_U,
+        mir::Binop::I64Xor => INSTR_I64_XOR,
+        mir::Binop::I64And => INSTR_I64_AND,
+        mir::Binop::I64Or => INSTR_I64_OR,
 
         mir::Binop::F32Add => INSTR_F32_ADD,
         mir::Binop::F32Sub => INSTR_F32_SUB,

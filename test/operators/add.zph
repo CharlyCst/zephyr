@@ -1,4 +1,4 @@
-package "#test"
+standalone package "add"
 
 expose main as _start
 

@@ -1,0 +1,8 @@
+standalone package "binary_and"
+
+expose main as _start
+
+// Test binary and operator
+fun main() i32 {
+    return 58 & 43 // This should evaluate to 42
+}

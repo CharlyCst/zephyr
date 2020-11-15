@@ -121,7 +121,7 @@ impl TypeVarStore {
     }
 
     pub fn replace(&mut self, id: TypeId, new_types: Vec<Type>) {
-        std::mem::replace(&mut self.types[id].types, new_types);
+        self.types[id].types  = new_types;
     }
 
     pub fn fresh(&mut self, loc: Location, mut candidate: Vec<Type>) -> TypeId {

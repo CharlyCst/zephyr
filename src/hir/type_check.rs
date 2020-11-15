@@ -45,6 +45,7 @@ impl<'a> TypeChecker<'a> {
         let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs);
 
         TypedProgram {
+            name: prog.name,
             funs: prog.funs,
             names: prog.names,
             types: store,
@@ -77,7 +78,8 @@ impl<'a> TypeChecker<'a> {
                     // TODO: improve error handling...
                     println!("{:?}", floats.types);
                     println!("{:?}", var.types);
-                    self.err.report(var.loc, String::from("Could not infer type"))
+                    self.err
+                        .report(var.loc, String::from("Could not infer type"))
                 }
             }
         }
@@ -295,7 +297,18 @@ impl<'a> TypeChecker<'a> {
             }
         };
 
-        if ret_t.len() != 1 {
+        if ret_t.len() == 0 {
+            if ts.types.len() == 0 {
+                return Progress::Some;
+            } else if ts.types[0] == Type::Any {
+                // TODO: do we accept type any?
+                return Progress::Some;
+            } else {
+                self.err
+                    .report(t_fun.loc, String::from("Function returns no value"));
+                return Progress::Error;
+            }
+        } else if ret_t.len() != 1 {
             self.err.report_internal(
                 t_fun.loc,
                 String::from("Function returning multiple values are not yet supported"),

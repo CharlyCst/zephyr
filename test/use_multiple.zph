@@ -1,0 +1,10 @@
+standalone package "use"
+
+use "core"
+use "core/mem"
+
+expose main as _start
+
+fun main() i32 {
+    return 42
+}

@@ -1,0 +1,6 @@
+/// Exposes utility functions
+standalone package "utils"
+
+pub fun panic() {
+    unreachable
+}

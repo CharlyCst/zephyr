@@ -1,4 +1,4 @@
-package "#test"
+standalone package "expose"
 
 // Test the expose keyword
 expose main as _start

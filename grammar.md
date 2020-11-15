@@ -2,12 +2,12 @@
 
 ## Main grammar
 
-The grammar is defined as follow, and parsed using recursive descent.
+The grammar is defined as follow, and parsed in recursive descent fashion.
 
 ```
 program        -> package declaration* EOF
 
-package        -> "package" STRING ";"
+package        -> "standalone"? "package" STRING ";"
 
 declaration    -> use | expose | function
 use            -> "use" STRING ( "as" IDENTIFIER)? ";"
@@ -33,63 +33,38 @@ logical_or     -> logical_and ("||" logical_and)*
 logical_and    -> equality ("&&" equality)*
 equality       -> comparison ( ( "!=" | "==" ) comparison)*
 comparison     -> bitwise_or (("<" | ">" | "<=" | ">=") bitwise_or)*
-bitwise_or     -> bitwise_and ("|" bitwise_and)*
+bitwise_or     -> bitwise_xor ("|" bitwise_xor)*
+bitwise_xor    -> bitwise_and ("^" bitwise_and)*
 bitwise_and    -> addition ("&" addition)*
 addition       -> multiplication (("+" | "-") multiplication)*
 multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
 call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
-primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | "false" 
+primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | "false"
                 | "true" | "(" expression ")"
 arguments      -> ( expression ( "," expression )* ","? )?
 ```
 
-It is worth noting that there is no semi-colon `;` in Fork, but some are inserted by the scanner following Go-like rules.
+It is worth noting that there is no semi-colon `;` in Zephyr, but some are inserted by the scanner following Go-like rules.
 
-**Priority tree:**
+## Zephyr Assembly (zasm) grammar
 
-```
-                         [||]
-                          ↓
-                         [&&]
-                          ↓
-                      [==] [!=]
-                          ↓
-                   [<] [>] [<=] [>=]
-                          ↓
-                         [|]
-                          ↓
-                         [&]
-                          ↓
-                       [+] [-]
-                          ↓
-                     [/] [*] [%]
-                          ↓
-                       [!] [-]
-                          ↓
-                        [call]
-                          ↓
-[0-9] [true,false] [ident] ['(' expression ')']
-```
-
-## Fasm grammar
-
-This grammar is used by the fasm front end, it is much simpler and closer to wasm. Its main purpose is to ease the use of low level wasm instructions needed for the runtime and standard library.
+This grammar is used by the zasm front end, it is much simpler and closer to wasm. Its main purpose is to ease the use of low level wasm instructions needed for the runtime and standard library.
 
 ```
-program -> package declaration\* EOF
+program     -> package declaration* EOF
 
-package -> "package" STRING ";"
+package     -> "package" STRING ";"
 declaration -> expose | function
-expose -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
-function -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
-parameters -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)\* ","?
-result -> IDENTIFIER?
+expose      -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
+function    -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+parameters  -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)* ","?
+result      -> IDENTIFIER?
 
-block -> "{" statement\* "}"
-statement -> opcode primary? ";"
-primary -> NUMBER | IDENTIFIER
+block       -> "{" statement* "}"
+statement   -> opcode primary? ";"
+primary     -> NUMBER | IDENTIFIER
 
-opcode -> WASM_OPCODE
+opcode      -> WASM_OPCODE
 ```

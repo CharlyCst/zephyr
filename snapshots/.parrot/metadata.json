@@ -1,0 +1,112 @@
+{
+  "snapshots": [
+    {
+      "cmd": "../target/debug/zephyr let_equal.zph -o a.wasm",
+      "name": "initialize-variable",
+      "description": "Variable should be initialized, at lest as long as we don't check if they are\nassigned before being used.\n#parser #let #control-flow",
+      "tags": [
+        "parser",
+        "let",
+        "control-flow"
+      ],
+      "exit_code": 65,
+      "stdout": "initialize-variable.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr if_no_arg.zph -o a.wasm",
+      "name": "if-no-arg",
+      "description": "If statement expects an argument after the 'if' keyword.\n#parser #if #not-satisfying",
+      "tags": [
+        "parser",
+        "if",
+        "not-satisfying"
+      ],
+      "exit_code": 65,
+      "stdout": "if-no-arg.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr not_enough_args.zph -o a.wasm",
+      "name": "not-enough-args",
+      "description": "Calling a function without enough arguments.\n#resolver #fun",
+      "tags": [
+        "resolver",
+        "fun"
+      ],
+      "exit_code": 65,
+      "stdout": "not_enough_args.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr too_many_args.zph -o a.wasm",
+      "name": "too-many-args",
+      "description": "Calling a function with too much arguments.\n#resolver #fun",
+      "tags": [
+        "resolver",
+        "fun"
+      ],
+      "exit_code": 65,
+      "stdout": "too-many-args.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr not_defined.zph -o a.wasm",
+      "name": "not-defined",
+      "description": "Use a variable before declaring it.\n#resolver",
+      "tags": [
+        "resolver"
+      ],
+      "exit_code": 65,
+      "stdout": "not-defined.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr wrong_top_level.zph -o a.wasm",
+      "name": "wrong-top-level",
+      "description": "Top level 'if' (among other) should not be allowed.\n#parser #if",
+      "tags": [
+        "parser",
+        "if"
+      ],
+      "exit_code": 65,
+      "stdout": "wrong-top-level.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr equal_typing_rules.zph -o a.wasm",
+      "name": "equal-typing-rule",
+      "description": "Both size of '==' should have the same type.\n#typing #eq",
+      "tags": [
+        "typing",
+        "eq"
+      ],
+      "exit_code": 65,
+      "stdout": "equal-typing-rule.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr multiple_imports.zph -o a.wasm",
+      "name": "multiple_imports",
+      "description": "The compiler should rise a warning when importing multiple time the same\npackage.\n#driver #warning",
+      "tags": [
+        "driver",
+        "warning"
+      ],
+      "exit_code": 0,
+      "stdout": "multiple_imports.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr circular_import",
+      "name": "circular_import",
+      "description": "The compiler should rise an error when a circular import is detected.\n#driver",
+      "tags": [
+        "driver"
+      ],
+      "exit_code": 64,
+      "stdout": "circular_import.out",
+      "stderr": null
+    }
+  ]
+}

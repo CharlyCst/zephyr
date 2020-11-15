@@ -1,0 +1,9 @@
+standalone package "too_many_args"
+
+fun main() i32 {
+    return plus_one(1, 2)
+}
+
+fun plus_one(x i32) i32 {
+    return x + 1
+}

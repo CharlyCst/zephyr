@@ -1,8 +1,6 @@
-package "#test"
+standalone package "use"
 
-// TODO: Test the use keyword
-// use "std/awesome"
-// use "std/math" as math
+use "core"
 
 expose main as _start
 

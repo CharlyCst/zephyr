@@ -1,0 +1,9 @@
+standalone package "use_subpackage"
+
+use "core/utils"
+
+expose main as _start
+
+fun main() i32 {
+    return 42
+}

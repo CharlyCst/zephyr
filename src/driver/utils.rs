@@ -1,60 +1,57 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub enum PackageType {
-    Package { name: String },
-    SingleFilePackage { parent: String, name: String },
-    OrphanFile { name: String },
+use crate::ast;
+
+/// A list of packages known from the compiler and expected to be available.
+pub enum KnownPackage {
+    Core,
+}
+
+/// The result of a path lookup: either file or a directory
+pub enum ResolvedPath {
+    Dir(Vec<PathBuf>),
+    File(PathBuf),
+}
+
+/// A file prepared to be passed to the AST parser.
+pub struct PreparedFile {
+    pub code: String,
+    pub f_id: u16,
+    pub file_name: String,
+    pub kind: ast::Kind,
 }
 
 pub const ZEPHYR_EXTENSION: &str = "zph";
 pub const ASM_EXTENSION: &str = "zasm";
 
-/// Returns a list of files pointed by `path` and a flag set to `true` if `path` points directly 
-/// at a file, false otherwise. In case of success, return at least one path.
-pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), String> {
-    let path = path.as_ref();
-    let file_info = if let Ok(f) = fs::metadata(&path) {
-        f
-    } else {
-        return Err(format!(
-            "Path '{}' does not exist.",
-            path.to_str().unwrap_or("")
-        ));
-    };
-    if file_info.is_dir() {
-        if let Ok(dir) = fs::read_dir(path) {
-            let mut paths = Vec::new();
-            for entry in dir {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if let Some(ext) = path.extension() {
-                        if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
-                            paths.push(path);
-                        }
-                    }
-                }
-            }
-            if paths.len() == 0 {
-                Err(format!(
-                    "Could not find any zephyr file (.{}) in '{}'",
-                    ZEPHYR_EXTENSION,
-                    path.to_str().unwrap_or("")
-                ))
-            } else {
-                Ok((paths, false))
-            }
+/// Returns a list of files pointed by `path`.
+pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<ResolvedPath, String> {
+    let mut path = path.as_ref().to_owned();
+    // look for a file if the path does not exist.
+    if !path.exists() {
+        let mut zph_path = path.clone();
+        zph_path.set_extension(ZEPHYR_EXTENSION);
+        if zph_path.is_file() {
+            path = zph_path;
         } else {
-            Err(String::from(""))
+            let mut asm_path = path.clone();
+            asm_path.set_extension(ASM_EXTENSION);
+            if asm_path.is_file() {
+                path = asm_path;
+            }
         }
+    }
+    let file_info = fs::metadata(&path)
+        .map_err(|_| format!("Path '{}' does not exist.", path.to_str().unwrap_or("")))?;
+    if file_info.is_dir() {
+        let dir = fs::read_dir(&path).expect("Should never happen");
+        let files = resolve_directory_files(dir, &path)?;
+        Ok(files)
     } else if file_info.is_file() {
-        let ext = if let Some(ext) = path.extension() {
-            ext
-        } else {
-            return Err(String::from("Could not read file extension"));
-        };
+        let ext = path.extension().expect("Could not read file extension");
         if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
-            Ok((vec![path.to_owned()], true))
+            Ok(ResolvedPath::File(path.to_owned()))
         } else {
             Err(format!(
                 "Invalid file extension '{}'.",
@@ -69,8 +66,33 @@ pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<(Vec<PathBuf>, bool), Str
     }
 }
 
+/// Given a directory, return a list of all the zephyr files it contains.
+/// Rises an error if no file with a zephyr extension are found.
+fn resolve_directory_files(dir: fs::ReadDir, path: &PathBuf) -> Result<ResolvedPath, String> {
+    let mut paths = Vec::new();
+    for entry in dir {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    if paths.is_empty() {
+        Err(format!(
+            "Could not find any zephyr file (.{}) in '{}'",
+            ZEPHYR_EXTENSION,
+            path.to_str().unwrap_or("")
+        ))
+    } else {
+        Ok(ResolvedPath::Dir(paths))
+    }
+}
+
 /// Returns the path without the root package.
-/// 'std/math/cryo' becomes 'math/crypto'.
+/// 'std/math/crypo' becomes 'math/crypto'.
 pub fn strip_root(path: &str) -> &str {
     let mut iter = path.chars();
     loop {
@@ -85,137 +107,56 @@ pub fn strip_root(path: &str) -> &str {
     }
 }
 
-/// Returns the root and alias of a use path if it is well formed, i.e. is a sequence
-/// of well formed package names separated by '/'.
-pub fn validate_use_path(path: &str) -> Option<(String, String)> {
-    let path = path
+/// Returns an alias for the given path, that is its last component.
+pub fn get_alias(path: &str) -> &str {
+    path.split('/')
+        .last()
+        .expect("Unable to retrieve alias from path")
+}
+
+/// Returns the package root name and a path to the given subpackage from the root.
+pub fn split_package_name(path: &str) -> Option<(String, Option<String>)> {
+    if !validate_package_name(path) {
+        return None;
+    }
+    let root = path
         .split('/')
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
-    if path.len() < 2 {
-        return None;
-    }
-    let mut iter = path.into_iter();
-    let root = iter.next().unwrap();
-    if !validate_package(&root) {
-        return None;
-    }
-    let mut next = iter.next().unwrap();
-    loop {
-        if !validate_package(&next) {
-            return None;
-        }
-        next = if let Some(next_next) = iter.next() {
-            next_next
-        } else {
-            return Some((root, next));
-        }
-    }
-}
-
-/// Returns the type of package infered from its name. Returns an error if name is not well
-/// formatted.
-pub fn get_package_type(package_name: &str) -> Result<PackageType, String> {
-    if is_orphan(package_name) {
-        if validate_orphan_file(package_name) {
-            Ok(PackageType::OrphanFile {
-                name: package_name.to_string(),
-            })
-        } else {
-            Err(format!("Malformed orphan file name: '{}'", package_name,))
-        }
-    } else if is_single_file_package(package_name) {
-        if let Some((parent, name)) = validate_single_file_package(package_name) {
-            Ok(PackageType::SingleFilePackage {
-                parent: parent,
-                name: name,
-            })
-        } else {
-            Err(format!(
-                "Malformed single file package name: '{}'",
-                package_name,
-            ))
-        }
-    } else if validate_package(package_name) {
-        Ok(PackageType::Package {
-            name: package_name.to_string(),
-        })
+        .collect::<Vec<&str>>()
+        .get(0)
+        .expect("Internal error: could not retrieve path root")
+        .to_string();
+    let sub_package = strip_root(path);
+    if sub_package == "" {
+        Some((root, None))
     } else {
-        Err(format!("Malformed package name: '{}'", package_name))
+        Some((root, Some(sub_package.to_string())))
     }
-}
-
-/// Returns `true` if the package looks like an orphan file (i.e. it starts with an `#`)
-fn is_orphan(package_name: &str) -> bool {
-    if let Some(c) = package_name.chars().next() {
-        c == '#'
-    } else {
-        false
-    }
-}
-
-/// Returns `true` if the package looks like a single file package
-fn is_single_file_package(package_name: &str) -> bool {
-    // A single file package MUST contain a `/`, and is the only
-    // type of package allowed to.
-    package_name.chars().find(|c| *c == '/').is_some()
 }
 
 /// Returns `true` if the package name is correct, that is:
 /// - It contrains only lower case characters and underscores
 /// - It starts with a lower case character
-fn validate_package(package_name: &str) -> bool {
+fn validate_package_name(package_name: &str) -> bool {
     let mut is_first = true;
     for c in package_name.chars() {
-        if c == '_' && !is_first {
-            continue;
+        if c == '_' || c =='-' {
+            if is_first {
+                return false;
+            }
+        } else if c == '/' {
+            if is_first {
+                return false;
+            }
+            is_first = true;
         } else if !c.is_alphabetic() {
             return false;
         } else if !c.is_lowercase() {
             return false;
+        } else {
+            is_first = false;
         }
-        is_first = false;
     }
     true
-}
-
-/// Returns `true` if the package name is a valid orphan file, that is:
-/// - It starts with `#`
-/// - It is followed by  a valid package name
-fn validate_orphan_file(package_name: &str) -> bool {
-    match package_name.chars().next() {
-        Some('#') => true,
-        _ => return false,
-    };
-
-    validate_package(&package_name[1..])
-}
-
-/// Returns an option containing the host package name (the main package of the directory) and the
-/// single file package name if the single file package name is well formad, that is:
-/// - It starts with the host package name (a valid package name)
-/// - Is followed by a a slash `/`
-/// - Itself followed by the single file package name (a valid package name)
-fn validate_single_file_package(package_name: &str) -> Option<(String, String)> {
-    let mut parts = package_name.split('/');
-    let host_package = if let Some(host_package) = parts.next() {
-        host_package.to_string()
-    } else {
-        return None;
-    };
-    let single_file_package = if let Some(single_file_package) = parts.next() {
-        single_file_package.to_string()
-    } else {
-        return None;
-    };
-    if parts.next() == None
-        && validate_package(&host_package)
-        && validate_package(&single_file_package)
-    {
-        Some((host_package, single_file_package))
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]
@@ -223,77 +164,38 @@ mod tests {
     use super::*;
 
     #[test]
-    /// Test `is_orphan`
-    fn orphan() {
-        assert_eq!(is_orphan("#orphan"), true);
-        assert_eq!(is_orphan("orphan"), false);
-        assert_eq!(is_orphan("trap/#orphan"), false);
-        assert_eq!(is_orphan(""), false);
-    }
-
-    #[test]
-    /// Test `is_single_file_package`
-    fn single_file_package() {
-        assert_eq!(is_single_file_package("greeting/hello"), true);
-        assert_eq!(is_single_file_package("greeting"), false);
-        assert_eq!(is_single_file_package("#greeting"), false);
-        assert_eq!(is_single_file_package(""), false);
-    }
-
-    #[test]
     /// test `validate_package`
     fn package_name() {
-        assert!(validate_package("greeting"));
-        assert!(validate_package("hello_world"));
-        assert!(!validate_package("greeting/hello"));
-        assert!(!validate_package("Greeting"));
-        assert!(!validate_package("_greeting"));
-        assert!(!validate_package("#greeting"));
+        assert!(validate_package_name("greeting"));
+        assert!(validate_package_name("hello_world"));
+        assert!(validate_package_name("greeting/hello"));
+        assert!(validate_package_name("std/utils/test_name"));
+        assert!(!validate_package_name("std/utils/_test_name"));
+        assert!(!validate_package_name("Greeting"));
+        assert!(!validate_package_name("_greeting"));
+        assert!(!validate_package_name("#greeting"));
     }
 
     #[test]
-    /// test `validate_orphan_file`
-    fn orphan_file_name() {
-        assert!(validate_orphan_file("#greeting"));
-        assert!(validate_orphan_file("#greeting_world"));
-        assert!(!validate_orphan_file("#greeting/hello"));
-        assert!(!validate_orphan_file("greeting"));
-        assert!(!validate_orphan_file("#_greeting"));
-    }
-
-    #[test]
-    /// test `validate_single_file_package`
-    fn single_file_package_name() {
+    /// test `split_package_name`
+    fn split_package_names() {
         assert_eq!(
-            validate_single_file_package("greeting/hello"),
-            Some((String::from("greeting"), String::from("hello")))
+            split_package_name("std/math/crypto"),
+            Some((String::from("std"), Some(String::from("math/crypto"))))
         );
         assert_eq!(
-            validate_single_file_package("greeting_world/hello_world"),
-            Some((String::from("greeting_world"), String::from("hello_world")))
-        );
-        assert_eq!(validate_single_file_package("#greeting/world"), None);
-        assert_eq!(validate_single_file_package("greeting/#world"), None);
-        assert_eq!(validate_single_file_package("greeting/world/hello"), None);
-    }
-
-    #[test]
-    /// test `validate_use_path`
-    fn use_path() {
-        assert_eq!(
-            validate_use_path("std/math/crypto"),
-            Some((String::from("std"), String::from("crypto")))
+            split_package_name("std/math"),
+            Some((String::from("std"), Some(String::from("math"))))
         );
         assert_eq!(
-            validate_use_path("std/math"),
-            Some((String::from("std"), String::from("math")))
+            split_package_name("external_package/foo/bar_buzz"),
+            Some((
+                String::from("external_package"),
+                Some(String::from("foo/bar_buzz"))
+            ))
         );
-        assert_eq!(
-            validate_use_path("external_package/foo/bar_buzz"),
-            Some((String::from("external_package"), String::from("bar_buzz")))
-        );
-        assert_eq!(validate_use_path("std"), None);
-        assert_eq!(validate_use_path("Std/math"), None);
+        assert_eq!(split_package_name("std"), Some((String::from("std"), None)));
+        assert_eq!(split_package_name("Std/math"), None);
     }
 
     #[test]
@@ -301,5 +203,12 @@ mod tests {
     fn _strip_root() {
         assert_eq!(strip_root("std/math/crypto"), "math/crypto");
         assert_eq!(strip_root("std"), "");
+    }
+
+    #[test]
+    fn _get_alias() {
+        assert_eq!(get_alias("core/utils"), "utils");
+        assert_eq!(get_alias("core"), "core");
+        assert_eq!(get_alias("core/mem/malloc"), "malloc");
     }
 }

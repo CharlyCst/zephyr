@@ -1,0 +1,8 @@
+standalone package "multiple_imports"
+
+use "core"
+use "core"
+
+fun main() i32 {
+    return 42
+}

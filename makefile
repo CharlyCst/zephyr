@@ -1,6 +1,4 @@
-.PHONY: main
-main: src/main.rs
-	cargo run -- zephyr -o out/hello.wasm
+export ZEPHYR_LIB=$(shell pwd)/lib
 
 .PHONY: setup
 setup:
@@ -18,7 +16,7 @@ clean:
 
 .PHONY: test
 test: build
-	./test.sh
+	python3 tests.py
 
 .PHONY: book
 book: book/book.toml

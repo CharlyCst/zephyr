@@ -26,7 +26,7 @@ jobs:
         path: .runtimes
         key: standard-key
 
-    - name: Cache Fork
+    - name: Cache Zephyr
       uses: actions/cache@v2
       with:
         path: target
@@ -48,8 +48,9 @@ jobs:
     - name: Run rust tests
       run: cargo test --verbose
 
-    - name: Run fork test-suite
+    - name: Run Zephyr test-suite
       shell: bash
       run: |
           export PATH=".runtimes:$PATH"
+          export ZEPHYR_LIB=`pwd`/lib
           python tests.py --debug

@@ -31,6 +31,7 @@ impl<'a> Scanner<'a> {
             (String::from("package"), TokenType::Package),
             (String::from("pub"), TokenType::Pub),
             (String::from("return"), TokenType::Return),
+            (String::from("standalone"), TokenType::Standalone),
             (String::from("true"), TokenType::True),
             (String::from("use"), TokenType::Use),
             (String::from("var"), TokenType::Var),
@@ -46,10 +47,10 @@ impl<'a> Scanner<'a> {
         Scanner {
             code: code.chars().collect(), // TODO: remove this copy
             err: error_handler,
-            f_id: f_id,
+            f_id,
             start: 0,
             current: 0,
-            keywords: keywords,
+            keywords,
             stmt_ender: false,
             parenthesis_count: 0,
         }
@@ -84,6 +85,7 @@ impl<'a> Scanner<'a> {
             '+' => self.add_token(tokens, TokenType::Plus),
             '*' => self.add_token(tokens, TokenType::Star),
             '%' => self.add_token(tokens, TokenType::Percent),
+            '^' => self.add_token(tokens, TokenType::Hat),
             '!' => {
                 if self.next_match('=') {
                     self.add_token(tokens, TokenType::BangEqual)
@@ -198,7 +200,7 @@ impl<'a> Scanner<'a> {
     /// sets the statement ender flag
     fn add_token(&mut self, tokens: &mut Vec<Token>, t: TokenType) {
         let token = Token {
-            t: t,
+            t,
             loc: Location {
                 pos: self.start as u32,
                 len: (self.current - self.start) as u32,
@@ -237,13 +239,23 @@ impl<'a> Scanner<'a> {
     /// Consumes consecutive digit characters and push a number token
     fn number(&mut self, tokens: &mut Vec<Token>) {
         let mut is_integer = true;
-        while !self.is_at_end() && self.peek().is_digit(RADIX) {
+        let mut radix = RADIX;
+        if self.peek() == 'x' {
+            radix = 16;
+            self.advance();
+            self.start = self.current;
+        } else if self.peek() == 'b' {
+            radix = 2;
+            self.advance();
+            self.start = self.current;
+        }
+        while !self.is_at_end() && self.peek().is_digit(radix) {
             self.advance();
         }
         if self.peek() == '.' {
             self.advance();
             is_integer = false;
-            while !self.is_at_end() && self.peek().is_digit(RADIX) {
+            while !self.is_at_end() && self.peek().is_digit(radix) {
                 self.advance();
             }
         }
@@ -252,7 +264,7 @@ impl<'a> Scanner<'a> {
             .cloned()
             .collect::<String>();
         if is_integer {
-            match str_val.parse::<u64>() {
+            match u64::from_str_radix(&str_val, radix) {
                 Ok(n) => self.add_token(tokens, TokenType::IntegerLit(n)),
                 Err(_) => self.err.report(
                     self.get_loc(),
@@ -260,6 +272,13 @@ impl<'a> Scanner<'a> {
                 ),
             }
         } else {
+            if radix != RADIX {
+                self.err.report(
+                    self.get_loc(),
+                    String::from("Float numbers can only be written in base 10."),
+                );
+                return ();
+            }
             match str_val.parse::<f64>() {
                 Ok(x) => self.add_token(tokens, TokenType::FloatLit(x)),
                 Err(_) => self.err.report(

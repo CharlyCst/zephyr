@@ -1,0 +1,7 @@
+standalone package "base_2"
+
+expose main as _start
+
+fun main() i32 {
+    return 0b101010 // 42 in base 2
+}

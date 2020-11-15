@@ -18,6 +18,10 @@ pub struct Config {
     /// Output location
     #[clap(short, long, parse(from_os_str))]
     pub output: Option<PathBuf>,
+
+    /// Exclude standard packages (core, std...)
+    #[clap(long)]
+    pub no_std: bool,
 }
 
 /// Parse CLI args, may terminate the program.
