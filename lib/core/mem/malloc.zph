@@ -51,7 +51,7 @@ expose free
 /// This malloc implementation uses a single (doubly linked) free list with a
 /// first-fit strategy.
 /// Coalescence is done when blocks are freed.
-pub fun malloc(size i32) i32 {
+pub fun malloc(size: i32): i32 {
     let addr = read_i32(0)
     let target_size = get_real_block_size(size)
     while true {
@@ -77,7 +77,7 @@ pub fun malloc(size i32) i32 {
 /// Marks the memory as free.
 ///
 /// This operation is the inverse of malloc, blocks freed can be re-allocated later.
-pub fun free(ptr i32) {
+pub fun free(ptr: i32) {
     let addr = ptr - 4
     let old_root = read_i32(0)
     if old_root != 0 {
@@ -95,7 +95,7 @@ pub fun free(ptr i32) {
 
 /// Computes the final size of a block, so that the next block is aligned to 8 and
 /// there is room for at least two 4 bytes pointers and a 4 bytes footer.
-fun get_real_block_size(size i32) i32 {
+fun get_real_block_size(size: i32): i32 {
     if size <= 8 {
         return 12
     }
@@ -112,7 +112,7 @@ fun get_real_block_size(size i32) i32 {
 /// is a flag indicating if the block is free (0) or allocated (1).
 /// Thus, interpreted as a signed 32 bits integer, if the header is positive
 /// then the block is free.
-fun is_free(header i32) bool {
+fun is_free(header: i32): bool {
     return header >= 0
 }
 
@@ -125,7 +125,7 @@ fun is_free(header i32) bool {
 ///   - 4 bytes footer
 ///
 /// ! The block is assumed to be free.
-fun split_block(addr i32, size i32) i32 {
+fun split_block(addr: i32, size: i32): i32 {
     let available_size = read_i32(addr)
     if available_size - size >= 16 {
         let new_block_addr = addr + 4 + size
@@ -142,7 +142,7 @@ fun split_block(addr i32, size i32) i32 {
 }
 
 /// Removes a block from the free list.
-fun remove_block(addr i32) {
+fun remove_block(addr: i32) {
     let next = read_i32(addr + 4)
     let prev = read_i32(addr + 8)
     if next != 0 {
@@ -159,7 +159,7 @@ fun remove_block(addr i32) {
 /// the one just before.
 ///
 /// ! The block passed as argument is assumed to be free.
-fun try_coalesce(addr i32) {
+fun try_coalesce(addr: i32) {
     let size = read_i32(addr)
     let next_addr = addr + 4 + size
     if next_addr < memory_size() * 0x10000 { // end of memory

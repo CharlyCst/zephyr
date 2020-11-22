@@ -1,0 +1,11 @@
+standalone package "colon_syntax"
+
+// There is no colon between the function and type here
+fun main() i32 {
+    return 42
+}
+
+// There is no colon after the parameter here
+fun neg(a i32): i32 {
+    return -a
+}

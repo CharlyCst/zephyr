@@ -38,7 +38,7 @@ package "pow"
 
 expose pow 
 
-fun pow(a i32, b i32) i32 {
+fun pow(a: i32, b: i32): i32 {
     if b == 0 {
         return 1
     }

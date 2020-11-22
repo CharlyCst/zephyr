@@ -356,10 +356,12 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let result = self.result();
-        if !self.next_match_report(
-            TokenType::LeftBrace,
-            "A left brace '{' is expected at the beginning of the function body.",
-        ) {
+        let error = if result.is_some() {
+            "A left brace '{' is expected at the beginning of the function body."
+        } else {
+            "Expected a type (': MyType') or a brace ('{')."
+        };
+        if !self.next_match_report(TokenType::LeftBrace, error) {
             self.synchronize_fun();
             return Err(());
         }
@@ -385,8 +387,15 @@ impl<'a> Parser<'a> {
         {
             let ident = param.clone();
             let var_loc = *var_loc;
+            if !self.next_match_report(
+                TokenType::Colon,
+                "Expected a type after parameter identifier",
+            ) {
+                return params;
+            }
             let token = self.advance();
             let loc = token.loc;
+
             let t = match token {
                 Token {
                     t: TokenType::Identifier(ref x),
@@ -415,10 +424,17 @@ impl<'a> Parser<'a> {
 
     /// Parses the 'result' grammar element
     fn result(&mut self) -> Option<(String, Location)> {
-        if let TokenType::Identifier(ref t) = self.peek().t {
-            let result = Some((t.clone(), self.peek().loc));
-            self.advance();
-            result
+        if self.next_match(TokenType::Colon) {
+            let token = self.peek();
+            if let TokenType::Identifier(ref t) = token.t {
+                let result = Some((t.clone(), self.peek().loc));
+                self.advance();
+                result
+            } else {
+                let loc = token.loc;
+                self.err.report(loc, String::from("Expected a type"));
+                return None;
+            }
         } else {
             None
         }
@@ -603,18 +619,12 @@ impl<'a> Parser<'a> {
         match expr {
             Ok(e) => {
                 self.consume_semi_colon();
-                Ok(Statement::ReturnStmt {
-                    expr: Some(e),
-                    loc,
-                })
+                Ok(Statement::ReturnStmt { expr: Some(e), loc })
             }
             Err(()) => {
                 self.back(); // expression consumes one character
                 self.consume_semi_colon();
-                Ok(Statement::ReturnStmt {
-                    expr: None,
-                    loc,
-                })
+                Ok(Statement::ReturnStmt { expr: None, loc })
             }
         }
     }

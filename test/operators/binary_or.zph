@@ -3,6 +3,6 @@ standalone package "binary_test"
 expose main as _start
 
 // Test binary or operator
-fun main() i32 {
+fun main(): i32 {
     return 40 | 10 // This should evaluate to 42
 }

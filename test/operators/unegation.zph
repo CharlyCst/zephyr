@@ -3,7 +3,7 @@ standalone package "unegation"
 expose main as _start
 
 // Test unary negation operator
-fun main() i32 {
+fun main(): i32 {
     let x = - 1
     if x + 1 == 0 {
         return 42

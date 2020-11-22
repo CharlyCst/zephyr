@@ -3,6 +3,6 @@ standalone package "add"
 expose main as _start
 
 // Test add operator
-fun main() i32 {
+fun main(): i32 {
     return 38 + 4
 }

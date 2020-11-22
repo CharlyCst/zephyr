@@ -3,6 +3,6 @@ standalone package "xor"
 expose main as _start
 
 // Test xor operator
-fun main() i32 {
+fun main(): i32 {
     return 80 ^ 122 // This should evaluate to 42
 }

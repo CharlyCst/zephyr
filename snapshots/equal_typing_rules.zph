@@ -1,6 +1,6 @@
 standalone package "equal_typing_rules"
 
-fun main() i32 {
+fun main(): i32 {
     if 1 == true {
 	return 1
     }

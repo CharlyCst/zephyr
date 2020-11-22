@@ -80,6 +80,7 @@ impl<'a> Scanner<'a> {
             '{' => self.add_token(tokens, TokenType::LeftBrace),
             '}' => self.add_token(tokens, TokenType::RightBrace),
             ',' => self.add_token(tokens, TokenType::Comma),
+            ':' => self.add_token(tokens, TokenType::Colon),
             '.' => self.add_token(tokens, TokenType::Dot),
             '-' => self.add_token(tokens, TokenType::Minus),
             '+' => self.add_token(tokens, TokenType::Plus),

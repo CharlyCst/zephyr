@@ -14,8 +14,8 @@ use            -> "use" STRING ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
 
-parameters     -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)* ","?
-result         -> IDENTIFIER?
+parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
+result         -> (":" IDENTIFIER)?
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt
@@ -59,8 +59,8 @@ package     -> "package" STRING ";"
 declaration -> expose | function
 expose      -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 function    -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
-parameters  -> IDENTIFIER IDENTIFIER ( "," IDENTIFIER IDENTIFIER)* ","?
-result      -> IDENTIFIER?
+parameters  -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
+result      -> (":" IDENTIFIER)?
 
 block       -> "{" statement* "}"
 statement   -> opcode primary? ";"

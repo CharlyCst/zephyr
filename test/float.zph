@@ -2,11 +2,11 @@ standalone package "float"
 
 expose main as _start
 
-fun pi() f32 {
+fun pi(): f32 {
     return 3.14
 }
 
-fun main() i32 {
+fun main(): i32 {
     if pi() * 2. == 6.28 {
         return 42
     }
