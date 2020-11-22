@@ -10,6 +10,7 @@ pub enum TokenType {
     LeftBrace,
     RightBrace,
     Comma,
+    Colon,
     // Literals
     Identifier(String),
     StringLit(String),
@@ -108,6 +109,7 @@ impl fmt::Display for Token {
             TokenType::LeftBrace => write!(f, "{{"),
             TokenType::RightBrace => write!(f, "}}"),
             TokenType::Comma => write!(f, ","),
+            TokenType::Colon => write!(f, ":"),
             TokenType::SemiColon => write!(f, ";"),
             TokenType::EOF => write!(f, "EOF"),
             // Keywords

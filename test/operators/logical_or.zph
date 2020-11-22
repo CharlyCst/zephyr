@@ -2,7 +2,7 @@ standalone package "logical_or"
 
 expose main as _start
 
-fun main() i32 {
+fun main(): i32 {
     let a = 1
     let b = 2
     if a == b || b == b {

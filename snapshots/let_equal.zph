@@ -1,6 +1,6 @@
 standalone package "let_equal"
 
-fun main() i32 {
+fun main(): i32 {
     let x
     x = 42
     return x

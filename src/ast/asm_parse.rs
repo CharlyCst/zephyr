@@ -170,7 +170,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Package {
             name,
             loc,
-            t: package_type
+            t: package_type,
         })
     }
 
@@ -273,15 +273,22 @@ impl<'a> Parser<'a> {
             self.synchronize();
             return Err(());
         }
-        let token = self.peek();
-        let result = if let TokenType::Identifier(ref result) = token.t {
-            let loc = token.loc;
-            let result = result.clone();
-            self.advance();
-            Some((result, loc))
+        let result = if self.next_match(TokenType::Colon) {
+            let token = self.peek();
+            if let TokenType::Identifier(ref result) = token.t {
+                let loc = token.loc;
+                let result = result.clone();
+                self.advance();
+                Some((result, loc))
+            } else {
+                let loc = token.loc;
+                self.err.report(loc, String::from("Expected a type."));
+                None
+            }
         } else {
             None
         };
+
         let stmts = self.block()?;
         self.consume_semi_colon();
 
@@ -291,7 +298,7 @@ impl<'a> Parser<'a> {
             result,
             body: ast::Body::Asm(stmts),
             is_pub: false, // handled by the called who may have consumed the "pub" keyword
-            loc,      // location of the identifier
+            loc,           // location of the identifier
         })
     }
 
@@ -305,6 +312,12 @@ impl<'a> Parser<'a> {
         {
             let ident = param.clone();
             let var_loc = *var_loc;
+            if !self.next_match_report(
+                TokenType::Colon,
+                "Expected a type after parameter identifier",
+            ) {
+                return Err(());
+            }
             let token = self.advance();
             let loc = token.loc;
             let t = match token.t {

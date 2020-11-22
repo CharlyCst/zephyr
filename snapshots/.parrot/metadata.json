@@ -107,6 +107,17 @@
       "exit_code": 64,
       "stdout": "circular_import.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr colon_syntax.zph",
+      "name": "colon_syntax",
+      "description": "The compiler should rise a nice error when a colon is missing before a type.\n#parser",
+      "tags": [
+        "parser"
+      ],
+      "exit_code": 65,
+      "stdout": "colon_syntax.out",
+      "stderr": null
     }
   ]
 }
