@@ -2,14 +2,14 @@ standalone package "fact"
 
 expose main as _start
 
-fun main() i32 {
+fun main(): i32 {
     if fact(1, 6) == 720 {
         return 42
     }
     return 1
 }
 
-fun fact(acc i32, n i32) i32 {
+fun fact(acc: i32, n: i32): i32 {
     if n <= 1 {
         return acc
     }

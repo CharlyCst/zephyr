@@ -1,5 +1,5 @@
 standalone package "not_defined_fun"
 
-fun main() i32 {
+fun main(): i32 {
     return x()
 }

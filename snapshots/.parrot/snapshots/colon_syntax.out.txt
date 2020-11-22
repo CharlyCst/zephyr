@@ -1,0 +1,12 @@
+    4 | fun main() i32 {
+                   [31m^^^[0m
+[31m[1mError:[0m[31m Expected a type (': MyType') or a brace ('{').[0m
+
+    9 | fun neg(a i32): i32 {
+            [31m^^^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose'[0m
+
+   11 | }
+        [31m^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose'[0m
+

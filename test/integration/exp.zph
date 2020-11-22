@@ -2,7 +2,7 @@ standalone package "exp"
 
 expose main as _start
 
-fun main() i32 {
+fun main(): i32 {
     // Parameters
     let a = 3
     let b = 9

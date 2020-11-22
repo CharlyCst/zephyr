@@ -4,6 +4,6 @@ use "core"
 
 expose main as _start
 
-fun main() i32 {
+fun main(): i32 {
     return 42
 }

@@ -53,6 +53,7 @@ impl<'a> Scanner<'a> {
             ')' => self.add_token(tokens, TokenType::RightPar),
             '{' => self.add_token(tokens, TokenType::LeftBrace),
             '}' => self.add_token(tokens, TokenType::RightBrace),
+            ':' => self.add_token(tokens, TokenType::Colon),
             ',' => self.add_token(tokens, TokenType::Comma),
             '/' => {
                 // Ignore comments
