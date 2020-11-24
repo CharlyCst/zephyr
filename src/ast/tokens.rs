@@ -50,6 +50,7 @@ pub enum TokenType {
     Package,
     Pub,
     Return,
+    Runtime,
     Standalone,
     True,
     Use,

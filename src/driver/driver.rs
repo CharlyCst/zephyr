@@ -113,16 +113,11 @@ impl Driver {
         let mut package_import = HashSet::new();
         let mut namespaces = HashMap::new();
         let mut mir_funs = Vec::new();
+        let mut runtime = None;
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
             self.detect_circular_imports(&used.path, &imported);
-            // Warn for circular imports
-            if package_import.contains(&used.path) {
-                self.err.warn_no_loc(format!(
-                    "Package '{}' is imported multiple times from the same package.",
-                    &used.path
-                ));
-            }
+            self.detect_multiple_imports(&used.path, &package_import);
             package_import.insert(used.path.clone());
             // Collect dependencies
             // TODO: Should we hide exposed declarations of imported packages?
@@ -144,8 +139,10 @@ impl Driver {
                     self.err.merge(error_handler);
                     exit!(self);
                 };
+                // Merge package content
                 error_handler.merge(err_handler);
                 mir_funs.extend(sub_pkg_mir.funs);
+                runtime = self.detect_multiple_runtimes(runtime, sub_pkg_mir.runtime);
                 self.pub_decls
                     .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
                 sub_pkg_mir.pub_decls
@@ -195,6 +192,12 @@ impl Driver {
     }
 
     /// Returns the MIR of a subpackage
+    ///
+    /// params:
+    ///  - used: zephyr 'use' declaration
+    ///  - root: root of the package
+    ///  - root_path: the path to the package root
+    ///  - imported: a set of already imported packages
     fn get_subpackage_mir(
         &mut self,
         used: &ast::Use,
@@ -265,7 +268,7 @@ impl Driver {
         let mut exposed = Vec::new();
         let mut used = Vec::new();
         let mut error_handler: Option<error::ErrorHandler> = None;
-        let mut expected_package_name: Option<String> = None;
+        let mut package_definition: Option<ast::Package> = None;
 
         // Iterate over ast_program of all zephyr files in the folder
         for (ast, err_handler, file_name) in ast_programs {
@@ -278,20 +281,7 @@ impl Driver {
                             path.parent().expect("Could not resolve parent directory"),
                         );
                     }
-                    // Ensure that there is only one standard package in a directory
-                    if let Some(ref expected_package_name) = expected_package_name {
-                        if expected_package_name != package_name {
-                            self.err.report_no_loc(
-                                format!(
-                                    "Expected package '{}', found '{}'. This may happen if you have multiple packages in the same directory.",
-                                    expected_package_name, package_name
-                                ),
-                            );
-                            exit!(self);
-                        }
-                    } else {
-                        expected_package_name = Some(ast.package.name.clone());
-                    }
+                    self.check_ast_coherence(&mut package_definition, &ast.package);
                     // Extend AST package
                     if let Some(ref mut error_handler) = error_handler {
                         error_handler.merge(err_handler);
@@ -312,7 +302,7 @@ impl Driver {
                             ))
                         }
                         error_handler = Some(err_handler);
-                        expected_package_name = Some(package_name.to_owned());
+                        package_definition = Some(ast.package);
                         funs.extend(ast.funs);
                         exposed.extend(ast.exposed);
                         used.extend(ast.used);
@@ -321,20 +311,13 @@ impl Driver {
             }
         }
         // Validate and build final package
-        if let (Some(name), Some(error_handler)) = (expected_package_name, error_handler) {
-            // TODO: the package is no longer used, but still we should pass a valid one...
-            let package = ast::Package {
-                name,
-                loc: error::Location::dummy(),
-                t: ast::PackageType::Standard,
-            };
+        if let (Some(package), Some(error_handler)) = (package_definition, error_handler) {
             Ok((
                 ast::Program {
                     package,
                     exposed,
                     used,
                     funs,
-                    package_id,
                 },
                 error_handler,
             ))
@@ -354,7 +337,7 @@ impl Driver {
         package_id
     }
 
-    /// Match the package root against well known packages, such as 'core'.
+    /// Matches the package root against well known packages, such as 'core'.
     /// Return some if the package is known from the compiler.
     pub fn as_known_pachage(&self, package_root: &str) -> Option<KnownPackage> {
         if !self.with_known_packages {
@@ -421,6 +404,37 @@ impl Driver {
         files
     }
 
+    /// Raises an error if an AST package declare different package names or kinds.
+    ///
+    /// Params:
+    ///  - package_definition: The expected package caracteristics, or None
+    ///  - package_shard: A shard of the package (typically the content of a file)
+    ///
+    /// If `package_definition` is none, it will be set to `package_shard`
+    pub fn check_ast_coherence(
+        &mut self,
+        package_definition: &mut Option<ast::Package>,
+        package_shard: &ast::Package,
+    ) {
+        if let Some(package_def) = package_definition {
+            if &package_shard.name != &package_def.name {
+                self.err.report_no_loc(
+                    format!(
+                        "Expected package '{}', found '{}'. This may happen if you have multiple packages in the same directory.",
+                        &package_def.name,&package_shard.name
+                    ),
+                );
+                exit!(self);
+            }
+            if &package_shard.kind != &package_def.kind {
+                self.err.report_no_loc(String::from("All files of a package must share the same package kind (`package` or `runtime`)"));
+                exit!(self);
+            }
+        } else {
+            *package_definition = Some(package_shard.clone());
+        }
+    }
+
     /// Raises and error if a circular import is detected.
     ///
     /// Params:
@@ -433,6 +447,45 @@ impl Driver {
                 path
             ));
             exit!(self);
+        }
+    }
+
+    /// Creates a warning if a same dependency is imported multiple times.
+    ///
+    /// Params:
+    ///  - path: path to import (from 'use' statement)
+    ///  - package_imports: set of packages path already imported.
+    pub fn detect_multiple_imports(&mut self, path: &str, package_imports: &HashSet<String>) {
+        if package_imports.contains(path) {
+            self.err.warn_no_loc(format!(
+                "Package '{}' is imported multiple times from the same package.",
+                path
+            ));
+        }
+    }
+
+    /// Raises an error if both packages depends on different runtimes otherwise return the runtime
+    /// if any.
+    pub fn detect_multiple_runtimes(
+        &mut self,
+        r_1: Option<mir::Runtime>,
+        r_2: Option<mir::Runtime>,
+    ) -> Option<mir::Runtime> {
+        match (r_1, r_2) {
+            (Some(r_1), Some(r_2)) => {
+                if r_1.package_id != r_2.package_id {
+                    self.err.report_no_loc(format!(
+                    "Detected multiple 'runtime' packages: '{}' and '{}', but there can be at most one.",
+                    &r_1.name, &r_2.name,
+                ));
+                    exit!(self);
+                } else {
+                    Some(r_1)
+                }
+            }
+            (Some(r_1), None) => Some(r_1),
+            (None, Some(r_2)) => Some(r_2),
+            (None, None) => None,
         }
     }
 }

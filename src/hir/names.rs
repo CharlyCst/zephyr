@@ -1,6 +1,6 @@
 use crate::mir::Value as MirValue;
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
-use crate::ast::{BinaryOperator, UnaryOperator};
+use crate::ast::{BinaryOperator, UnaryOperator, Package};
 use crate::error::Location;
 use std::fmt;
 
@@ -11,11 +11,11 @@ pub type FunId = u64;
 
 /// A type program, ready to be converted to MIR.
 pub struct ResolvedProgram {
-    pub name: String,
     pub funs: Vec<Function>,
     pub names: NameStore,
     pub types: TypeVarStore,
     pub constraints: ConstraintStore,
+    pub package: Package,
 }
 
 pub struct Function {
