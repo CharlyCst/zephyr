@@ -1,0 +1,5 @@
+standalone runtime package "runtime_b"
+
+fun main(): i32 {
+    return 42
+}

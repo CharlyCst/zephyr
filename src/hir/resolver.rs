@@ -127,7 +127,7 @@ impl<'a> NameResolver<'a> {
         used_namespace: HashMap<String, HashMap<String, Declaration>>,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new(ast_program.package_id, used_namespace);
+        let mut state = State::new(ast_program.package.id, used_namespace);
         let mut named_funs = Vec::with_capacity(funs.len());
         let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
@@ -159,11 +159,11 @@ impl<'a> NameResolver<'a> {
         }
 
         ResolvedProgram {
-            name: ast_program.package.name,
             funs: named_funs,
             names: state.names,
             types: state.types,
             constraints: state.constraints,
+            package: ast_program.package,
         }
     }
 

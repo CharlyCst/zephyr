@@ -41,9 +41,11 @@ impl<'a> Parser<'a> {
             Err(_) => {
                 self.err.silent_report(); // Error message is already emited by self.package.
                 ast::Package {
+                    id: self.package_id,
                     name: String::from(""),
                     loc: Location::dummy(),
                     t: ast::PackageType::Standard,
+                    kind: ast::PackageKind::Package,
                 }
             }
         };
@@ -59,7 +61,6 @@ impl<'a> Parser<'a> {
         }
 
         ast::Program {
-            package_id: self.package_id,
             package,
             exposed,
             funs,
@@ -168,9 +169,11 @@ impl<'a> Parser<'a> {
         };
         self.consume_semi_colon();
         Ok(ast::Package {
+            id: self.package_id,
             name,
             loc,
             t: package_type,
+            kind: ast::PackageKind::Package,
         })
     }
 

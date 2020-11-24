@@ -12,6 +12,7 @@ const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
 const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
 pub use super::names::FunId;
+pub use crate::ast::Package;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
@@ -60,9 +61,9 @@ impl FunctionType {
 }
 
 pub struct Program {
-    pub name: String,
     pub funs: Vec<Function>,
     pub pub_decls: HashMap<String, Declaration>,
+    pub package: Package,
 }
 
 pub struct Function {

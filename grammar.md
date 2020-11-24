@@ -7,7 +7,7 @@ The grammar is defined as follow, and parsed in recursive descent fashion.
 ```
 program        -> package declaration* EOF
 
-package        -> "standalone"? "package" STRING ";"
+package        -> "standalone"? "runtime"? "package" STRING ";"
 
 declaration    -> use | expose | function
 use            -> "use" STRING ( "as" IDENTIFIER)? ";"

@@ -4,10 +4,18 @@ use crate::hir::{Declaration as HirDeclaration, FunId, LocalId};
 use std::collections::HashMap;
 use std::fmt;
 
+pub use crate::ast::PackageKind;
+
 pub struct Program {
     pub name: String,
     pub funs: Vec<Function>,
     pub pub_decls: HashMap<String, HirDeclaration>,
+    pub runtime: Option<Runtime>,
+}
+
+pub struct Runtime {
+    pub package_id: u32,
+    pub name: String
 }
 
 pub struct Function {

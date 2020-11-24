@@ -35,6 +35,7 @@ impl<'a> Parser<'a> {
                 // @TODO: In the future we may wan to parse the code anyway in order to provide feedback
                 // even though the `package` declaration is missing.
                 Package {
+                    id: self.package_id,
                     name: String::from(""),
                     loc: Location {
                         pos: 0,
@@ -42,6 +43,7 @@ impl<'a> Parser<'a> {
                         f_id: 0,
                     },
                     t: PackageType::Standard,
+                    kind: PackageKind::Package,
                 }
             }
         };
@@ -62,7 +64,6 @@ impl<'a> Parser<'a> {
             funs,
             exposed,
             used,
-            package_id: self.package_id,
         }
     }
 
@@ -186,6 +187,11 @@ impl<'a> Parser<'a> {
         } else {
             PackageType::Standard
         };
+        let package_kind = if self.next_match(TokenType::Runtime) {
+            PackageKind::Runtime
+        } else {
+            PackageKind::Package
+        };
         if !self.next_match_report(
             TokenType::Package,
             "Programs must start with a package declaration",
@@ -199,9 +205,11 @@ impl<'a> Parser<'a> {
             let end = self.peek().loc;
             self.consume_semi_colon();
             Ok(Package {
+                id: self.package_id,
                 loc: start.merge(end),
                 name: string,
                 t: package_type,
+                kind: package_kind,
             })
         } else {
             let loc = token.loc;

@@ -1,0 +1,7 @@
+standalone runtime package "runtime"
+
+expose main as _start
+
+fun main(): i32 {
+	return 42
+}

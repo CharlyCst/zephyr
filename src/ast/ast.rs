@@ -4,9 +4,18 @@ use std::fmt;
 
 ////// Zephyr AST nodes //////
 
+/// A package type describes how the package is organised in the filesystem.
+#[derive(Clone)]
 pub enum PackageType {
     Standard,
     Standalone,
+}
+
+/// A package kind describes the role of the package.
+#[derive(Eq, PartialEq, Copy, Clone)]
+pub enum PackageKind {
+    Package,
+    Runtime,
 }
 
 pub enum Value {
@@ -111,13 +120,15 @@ pub struct Program {
     pub funs: Vec<Function>,
     pub exposed: Vec<Expose>,
     pub used: Vec<Use>,
-    pub package_id: u32,
 }
 
+#[derive(Clone)]
 pub struct Package {
+    pub id: u32,
     pub name: String,
     pub loc: Location,
     pub t: PackageType,
+    pub kind: PackageKind,
 }
 
 pub struct Function {

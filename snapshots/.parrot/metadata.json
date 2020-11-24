@@ -118,6 +118,18 @@
       "exit_code": 65,
       "stdout": "colon_syntax.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr multiple_runtimes",
+      "name": "multiple_runtimes",
+      "description": "There can be at most one runtime, the driver should rise an error otherwise.\n#driver #runtime",
+      "tags": [
+        "driver",
+        "runtime"
+      ],
+      "exit_code": 64,
+      "stdout": "multiple_runtimes.out",
+      "stderr": null
     }
   ]
 }
