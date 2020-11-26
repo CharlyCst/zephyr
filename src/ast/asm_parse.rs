@@ -64,6 +64,7 @@ impl<'a> Parser<'a> {
             package,
             exposed,
             funs,
+            imported: vec![],
             used: vec![],
         }
     }
@@ -306,7 +307,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'parameters' grammar element
-    fn parameters(&mut self) -> Result<Vec<ast::Variable>, ()> {
+    fn parameters(&mut self) -> Result<Vec<ast::Parameter>, ()> {
         let mut params = Vec::new();
         while let Token {
             t: TokenType::Identifier(ref param),
@@ -334,9 +335,9 @@ impl<'a> Parser<'a> {
                 }
             };
 
-            params.push(ast::Variable {
+            params.push(ast::Parameter {
                 ident,
-                t: Some(t),
+                t,
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {

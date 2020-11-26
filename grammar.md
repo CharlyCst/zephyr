@@ -9,9 +9,10 @@ program        -> package declaration* EOF
 
 package        -> "standalone"? "runtime"? "package" STRING ";"
 
-declaration    -> use | expose | function
+declaration    -> use | expose | function | import
 use            -> "use" STRING ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
+import         -> "pub"? "import" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
 
 parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?

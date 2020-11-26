@@ -1,5 +1,8 @@
+use super::names;
 use crate::error::Location;
+use crate::hir::Package;
 
+use std::collections::HashMap;
 use std::fmt;
 
 pub mod id {
@@ -26,6 +29,14 @@ pub enum Type {
     Unit,
     Bug, // Used to signal that an error occurred somewhere
     Fun(Vec<Type>, Vec<Type>),
+}
+
+pub struct TypedProgram {
+    pub funs: Vec<names::Function>,
+    pub names: names::NameStore,
+    pub types: TypeStore,
+    pub pub_decls: HashMap<String, names::Declaration>,
+    pub package: Package,
 }
 
 pub enum TypeConstraint {
@@ -121,7 +132,7 @@ impl TypeVarStore {
     }
 
     pub fn replace(&mut self, id: TypeId, new_types: Vec<Type>) {
-        self.types[id].types  = new_types;
+        self.types[id].types = new_types;
     }
 
     pub fn fresh(&mut self, loc: Location, mut candidate: Vec<Type>) -> TypeId {

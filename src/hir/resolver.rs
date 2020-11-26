@@ -127,12 +127,14 @@ impl<'a> NameResolver<'a> {
         used_namespace: HashMap<String, HashMap<String, Declaration>>,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
+        let imports = ast_program.imported;
         let mut state = State::new(ast_program.package.id, used_namespace);
         let mut named_funs = Vec::with_capacity(funs.len());
         let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
         // Register functions names and signatures
         self.register_functions(&funs, &mut state);
+        self.register_imports(&imports, ast_program.package.kind, &mut state);
 
         // Resolve exposed funs
         for exposed in &ast_program.exposed {
@@ -205,7 +207,7 @@ impl<'a> NameResolver<'a> {
         };
 
         for param in fun.params.into_iter() {
-            let t = match get_var_type(&param) {
+            let t = match get_param_type(&param) {
                 Some(t) => t,
                 None => {
                     self.err
@@ -798,18 +800,11 @@ impl<'a> NameResolver<'a> {
         for fun in funs {
             let mut params = Vec::new();
             for param in fun.params.iter() {
-                if let Some(t) = &param.t {
-                    if let Some(known_t) = check_built_in_type(&t) {
-                        params.push(known_t);
-                    } else {
-                        self.err
-                            .report(param.loc, format!("Unknown parameter type: {}", t));
-                    }
+                if let Some(known_t) = check_built_in_type(&param.t) {
+                    params.push(known_t);
                 } else {
-                    self.err.report_internal(
-                        param.loc,
-                        String::from("No type associated to function parameter"),
-                    );
+                    self.err
+                        .report(param.loc, format!("Unknown parameter type: {}", &param.t));
                 }
             }
 
@@ -833,15 +828,62 @@ impl<'a> NameResolver<'a> {
             }
         }
     }
+
+    /// Register top level imports into the global state (`state`).
+    /// Will rise an error if imports are declared in an unappropriate package.
+    fn register_imports(
+        &mut self,
+        imports: &Vec<ast::FunctionPrototype>,
+        package_kind: ast::PackageKind,
+        state: &mut State,
+    ) {
+        if package_kind != ast::PackageKind::Runtime && !imports.is_empty() {
+            let loc = imports.first().unwrap().loc;
+            self.err.report(
+                loc,
+                String::from("Function imports are only permitted in 'runtime' packages."),
+            );
+        }
+        for import in imports {
+            let mut params = Vec::new();
+            for param in import.params.iter() {
+                if let Some(known_t) = check_base_type(&param.t) {
+                    params.push(known_t);
+                } else {
+                    self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
+                }
+            }
+
+            let mut results = Vec::new();
+            if let Some((t, loc)) = &import.result {
+                if let Some(known_t) = check_base_type(&t) {
+                    results.push(known_t);
+                } else {
+                    self.err.report(*loc, format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
+                }
+            }
+
+            let ident = if let Some(ref alias) = import.alias {
+                alias.clone()
+            } else {
+                import.ident.clone()
+            };
+            let declaration =
+                state.declare(ident.clone(), vec![Type::Fun(params, results)], import.loc);
+            if let Err(_decl_loc) = declaration {
+                let error = format!("Function {} declared multiple times", ident);
+                self.err.report(import.loc, error);
+            } else if let Ok((n_id, _)) = declaration {
+                let fun_id = state.fresh_f_id();
+                state.functions.insert(ident, (fun_id, n_id));
+            }
+        }
+    }
 }
 
-fn get_var_type(var: &ast::Variable) -> Option<Vec<Type>> {
-    if let Some(ref t) = var.t {
-        if let Some(known_t) = check_built_in_type(&t) {
-            Some(vec![known_t])
-        } else {
-            None
-        }
+fn get_param_type(param: &ast::Parameter) -> Option<Vec<Type>> {
+    if let Some(known_t) = check_built_in_type(&param.t) {
+        Some(vec![known_t])
     } else {
         None
     }
@@ -854,6 +896,19 @@ fn check_built_in_type(t: &str) -> Option<Type> {
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
         "bool" => Some(Type::Bool),
+        _ => None,
+    }
+}
+
+/// Return the corresponding base type, if any.
+/// Base types are i32, i64, f32, f64 and are the only types that
+/// can be imported/exported at the time (i.e. before interface types)
+fn check_base_type(t: &str) -> Option<Type> {
+    match t {
+        "i32" => Some(Type::I32),
+        "i64" => Some(Type::I64),
+        "f32" => Some(Type::F32),
+        "f64" => Some(Type::F64),
         _ => None,
     }
 }

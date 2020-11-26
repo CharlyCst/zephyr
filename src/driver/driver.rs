@@ -266,6 +266,7 @@ impl Driver {
         // Merge package ASTs
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
+        let mut imported = Vec::new();
         let mut used = Vec::new();
         let mut error_handler: Option<error::ErrorHandler> = None;
         let mut package_definition: Option<ast::Package> = None;
@@ -305,6 +306,7 @@ impl Driver {
                         package_definition = Some(ast.package);
                         funs.extend(ast.funs);
                         exposed.extend(ast.exposed);
+                        imported.extend(ast.imported);
                         used.extend(ast.used);
                     }
                 }
@@ -316,6 +318,7 @@ impl Driver {
                 ast::Program {
                     package,
                     exposed,
+                    imported,
                     used,
                     funs,
                 },
