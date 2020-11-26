@@ -46,6 +46,7 @@ pub enum TokenType {
     False,
     Fun,
     If,
+    Import,
     Let,
     Package,
     Pub,

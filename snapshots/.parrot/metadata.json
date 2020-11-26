@@ -87,7 +87,7 @@
     },
     {
       "cmd": "../target/debug/zephyr multiple_imports.zph -o a.wasm",
-      "name": "multiple_imports",
+      "name": "multiple-imports",
       "description": "The compiler should rise a warning when importing multiple time the same\npackage.\n#driver #warning",
       "tags": [
         "driver",
@@ -99,7 +99,7 @@
     },
     {
       "cmd": "../target/debug/zephyr circular_import",
-      "name": "circular_import",
+      "name": "circular-import",
       "description": "The compiler should rise an error when a circular import is detected.\n#driver",
       "tags": [
         "driver"
@@ -110,7 +110,7 @@
     },
     {
       "cmd": "../target/debug/zephyr colon_syntax.zph",
-      "name": "colon_syntax",
+      "name": "colon-syntax",
       "description": "The compiler should rise a nice error when a colon is missing before a type.\n#parser",
       "tags": [
         "parser"
@@ -121,7 +121,7 @@
     },
     {
       "cmd": "../target/debug/zephyr multiple_runtimes",
-      "name": "multiple_runtimes",
+      "name": "multiple-runtimes",
       "description": "There can be at most one runtime, the driver should rise an error otherwise.\n#driver #runtime",
       "tags": [
         "driver",
@@ -129,6 +129,19 @@
       ],
       "exit_code": 64,
       "stdout": "multiple_runtimes.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr unauthorized_import.zph",
+      "name": "unauthorized-import",
+      "description": "Imports are only allowed in 'runtime' packages, the compiler should rise and error if another kind of package defines an import.\n#resolver #import #runtime",
+      "tags": [
+        "resolver",
+        "import",
+        "runtime"
+      ],
+      "exit_code": 65,
+      "stdout": "unauthorized-import.out",
       "stderr": null
     }
   ]

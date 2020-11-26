@@ -3,7 +3,7 @@ use super::names::{
     AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, Function, NameId, NameStore,
 };
 use super::types::{Type as MirType, TypeStore};
-use super::TypedProgram;
+use super::types::TypedProgram;
 use crate::error::{ErrorHandler, Location};
 
 use std::fmt;

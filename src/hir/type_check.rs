@@ -1,7 +1,6 @@
-use super::names::{Declaration, Function, NameStore};
+use super::names::{Declaration, Function, NameStore, ResolvedProgram};
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
-use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore};
-use super::{ResolvedProgram, TypedProgram};
+use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore, TypedProgram};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;

@@ -1,0 +1,5 @@
+    4 | import add(a: i32, b: i32): i32 as extern_add
+
+               [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1mError:[0m[31m Function imports are only permitted in 'runtime' packages.[0m
+

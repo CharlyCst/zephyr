@@ -26,13 +26,14 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
+        let mut imported = Vec::new();
         let mut used = Vec::new();
 
         let package = match self.package() {
             Ok(pkg) => pkg,
             Err(()) => {
                 self.err.silent_report();
-                // @TODO: In the future we may wan to parse the code anyway in order to provide feedback
+                // TODO: In the future we may wan to parse the code anyway in order to provide feedback
                 // even though the `package` declaration is missing.
                 Package {
                     id: self.package_id,
@@ -54,6 +55,7 @@ impl<'a> Parser<'a> {
                     Declaration::Function(fun) => funs.push(fun),
                     Declaration::Use(uses) => used.push(uses),
                     Declaration::Expose(expose) => exposed.push(expose),
+                    Declaration::Import(import) => imported.push(import),
                 },
                 Err(()) => self.err.silent_report(),
             }
@@ -63,6 +65,7 @@ impl<'a> Parser<'a> {
             package,
             funs,
             exposed,
+            imported,
             used,
         }
     }
@@ -222,12 +225,27 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a 'declaration' that can be either a 'use', 'expose' or 'fun'
+    /// Parses a 'declaration' that can be either a 'use', 'expose', 'import' or 'fun'
     fn declaration(&mut self) -> Result<Declaration, ()> {
         match self.peek().t {
-            TokenType::Fun | TokenType::Pub => Ok(Declaration::Function(self.function()?)),
+            TokenType::Fun => Ok(Declaration::Function(self.function()?)),
             TokenType::Use => Ok(Declaration::Use(self._use()?)),
             TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
+            TokenType::Import => Ok(Declaration::Import(self.import()?)),
+            TokenType::Pub => match self.peekpeek().t {
+                TokenType::Fun => Ok(Declaration::Function(self.function()?)),
+                TokenType::Import => Ok(Declaration::Import(self.import()?)),
+                _ => {
+                    self.err.report(
+                        self.peekpeek().loc,
+                        String::from(
+                            "Top level declaration must be one of 'function', 'use', 'expose'",
+                        ),
+                    );
+                    self.synchronize();
+                    Err(())
+                }
+            },
             _ => {
                 self.err.report(
                     self.peek().loc,
@@ -328,10 +346,72 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parses the 'import' grammar element
+    fn import(&mut self) -> Result<FunctionPrototype, ()> {
+        let is_pub = self.next_match(TokenType::Pub);
+        if !self.next_match_report(TokenType::Import, "Unexpected top level declaration") {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let loc = self.peek().loc;
+        let ident = if let Token {
+            t: TokenType::Identifier(ref ident),
+            ..
+        } = self.advance()
+        {
+            ident.clone()
+        } else {
+            self.err.report(
+                loc,
+                String::from("Expected a function identifier after 'import'"),
+            );
+            self.synchronize_fun();
+            return Err(());
+        };
+        if !self.next_match_report(
+            TokenType::LeftPar,
+            "Parenthesis are expected after import identifier",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let params = self.parameters();
+        if !self.next_match_report(TokenType::RightPar, "Expected a right parenthesis ')'") {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let result = self.result();
+        let alias = if self.next_match(TokenType::As) {
+            let token = self.advance();
+            if let TokenType::Identifier(ref ident) = token.t {
+                Some(ident.clone())
+            } else {
+                let loc = token.loc;
+                self.err.report(
+                    loc,
+                    String::from("'as' should be followed by an identifier"),
+                );
+                return Err(());
+            }
+        } else {
+            None
+        };
+        let end = self.peek().loc;
+        self.consume_semi_colon();
+        Ok(FunctionPrototype {
+            ident,
+            params,
+            result,
+            alias,
+            is_pub,
+            loc: loc.merge(end),
+        })
+    }
+
     /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        if !self.next_match_report(TokenType::Fun, "Top level declaration must be functions") {
+        if !self.next_match_report(TokenType::Fun, "Unexpected top level declaration") {
             self.synchronize_fun();
             return Err(());
         }
@@ -386,7 +466,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'parameters' grammar element
-    fn parameters(&mut self) -> Vec<Variable> {
+    fn parameters(&mut self) -> Vec<Parameter> {
         let mut params = Vec::new();
         while let Token {
             t: TokenType::Identifier(ref param),
@@ -408,16 +488,16 @@ impl<'a> Parser<'a> {
                 Token {
                     t: TokenType::Identifier(ref x),
                     ..
-                } => Some(x.clone()),
+                } => x.clone(),
                 _ => {
                     self.err
                         .report(loc, String::from("Expected parameter type"));
                     self.back();
-                    None
+                    return params;
                 }
             };
 
-            params.push(Variable {
+            params.push(Parameter {
                 ident,
                 t,
                 loc: var_loc,

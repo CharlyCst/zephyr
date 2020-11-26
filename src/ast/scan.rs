@@ -27,6 +27,7 @@ impl<'a> Scanner<'a> {
             (String::from("false"), TokenType::False),
             (String::from("fun"), TokenType::Fun),
             (String::from("if"), TokenType::If),
+            (String::from("import"), TokenType::Import),
             (String::from("let"), TokenType::Let),
             (String::from("package"), TokenType::Package),
             (String::from("pub"), TokenType::Pub),

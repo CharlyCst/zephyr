@@ -3,8 +3,7 @@ use super::names::{
     Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun, NameStore,
     Statement as S, Value as V, Variable as NameVariable,
 };
-use super::types::{Type as ASTTypes, TypeStore};
-use super::TypedProgram;
+use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
 
 use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use crate::error::{ErrorHandler, Location};
