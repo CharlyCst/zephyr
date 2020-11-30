@@ -9,6 +9,7 @@ pub use crate::ast::PackageKind;
 pub struct Program {
     pub name: String,
     pub funs: Vec<Function>,
+    pub imported: Vec<FunctionPrototype>,
     pub pub_decls: HashMap<String, HirDeclaration>,
     pub runtime: Option<Runtime>,
 }
@@ -28,6 +29,14 @@ pub struct Function {
     pub is_pub: bool,
     pub exposed: Option<String>,
     pub fun_id: FunId,
+}
+
+pub struct FunctionPrototype {
+    pub ident: String,
+    pub param_t: Vec<Type>,
+    pub ret_t: Vec<Type>,
+    pub alias: Option<String>,
+    pub is_pub: bool,
 }
 
 pub struct LocalVariable {

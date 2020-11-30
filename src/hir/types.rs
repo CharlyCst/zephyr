@@ -33,6 +33,7 @@ pub enum Type {
 
 pub struct TypedProgram {
     pub funs: Vec<names::Function>,
+    pub imported: Vec<names::FunctionPrototype>,
     pub names: names::NameStore,
     pub types: TypeStore,
     pub pub_decls: HashMap<String, names::Declaration>,

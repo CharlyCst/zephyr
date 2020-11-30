@@ -127,31 +127,19 @@ impl<'a> NameResolver<'a> {
         used_namespace: HashMap<String, HashMap<String, Declaration>>,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let imports = ast_program.imported;
         let mut state = State::new(ast_program.package.id, used_namespace);
         let mut named_funs = Vec::with_capacity(funs.len());
-        let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
         // Register functions names and signatures
         self.register_functions(&funs, &mut state);
-        self.register_imports(&imports, ast_program.package.kind, &mut state);
+        let imported = self.register_and_resolve_imports(
+            ast_program.imported,
+            ast_program.package.kind,
+            &mut state,
+        );
 
         // Resolve exposed funs
-        for exposed in &ast_program.exposed {
-            if let Some((f_id, _)) = state.functions.get(&exposed.ident) {
-                let exposed_name = if let Some(alias) = &exposed.alias {
-                    alias.clone()
-                } else {
-                    exposed.ident.clone()
-                };
-                exposed_funs.insert(*f_id, exposed_name);
-            } else {
-                self.err.report(
-                    exposed.loc,
-                    format!("Exposed function '{}' is not defined.", &exposed.ident),
-                )
-            }
-        }
+        let exposed_funs = self.resolve_exports(ast_program.exposed, &state);
 
         // Resolve function bodies
         for fun in funs.into_iter() {
@@ -162,6 +150,7 @@ impl<'a> NameResolver<'a> {
 
         ResolvedProgram {
             funs: named_funs,
+            imported,
             names: state.names,
             types: state.types,
             constraints: state.constraints,
@@ -829,14 +818,16 @@ impl<'a> NameResolver<'a> {
         }
     }
 
-    /// Register top level imports into the global state (`state`).
+    /// Register top level imports into the global state (`state`) and return resolved
+    /// functions.
     /// Will rise an error if imports are declared in an unappropriate package.
-    fn register_imports(
+    fn register_and_resolve_imports(
         &mut self,
-        imports: &Vec<ast::FunctionPrototype>,
+        imports: Vec<ast::FunctionPrototype>,
         package_kind: ast::PackageKind,
         state: &mut State,
-    ) {
+    ) -> Vec<FunctionPrototype> {
+        let mut prototypes = Vec::with_capacity(imports.len());
         if package_kind != ast::PackageKind::Runtime && !imports.is_empty() {
             let loc = imports.first().unwrap().loc;
             self.err.report(
@@ -868,16 +859,52 @@ impl<'a> NameResolver<'a> {
             } else {
                 import.ident.clone()
             };
-            let declaration =
-                state.declare(ident.clone(), vec![Type::Fun(params, results)], import.loc);
-            if let Err(_decl_loc) = declaration {
-                let error = format!("Function {} declared multiple times", ident);
-                self.err.report(import.loc, error);
-            } else if let Ok((n_id, _)) = declaration {
-                let fun_id = state.fresh_f_id();
-                state.functions.insert(ident, (fun_id, n_id));
+
+            match state.declare(ident.clone(), vec![Type::Fun(params, results)], import.loc) {
+                Ok((n_id, _)) => {
+                    let fun_id = state.fresh_f_id();
+                    state.functions.insert(ident, (fun_id, n_id));
+                    prototypes.push(FunctionPrototype {
+                        ident: import.ident,
+                        is_pub: import.is_pub,
+                        alias: import.alias,
+                        fun_id,
+                        n_id,
+                        loc: import.loc,
+                    })
+                }
+                Err(_decl_loc) => {
+                    let error = format!("Function {} declared multiple times", ident);
+                    self.err.report(import.loc, error);
+                }
             }
         }
+        prototypes
+    }
+
+    /// Resolve the exposed functions and return a map of function ID to their name.
+    fn resolve_exports(
+        &mut self,
+        exposed: Vec<ast::Expose>,
+        state: &State,
+    ) -> HashMap<FunId, String> {
+        let mut exposed_funs = HashMap::with_capacity(exposed.len());
+        for fun in exposed {
+            if let Some((f_id, _)) = state.functions.get(&fun.ident) {
+                let exposed_name = if let Some(alias) = fun.alias {
+                    alias
+                } else {
+                    fun.ident
+                };
+                exposed_funs.insert(*f_id, exposed_name);
+            } else {
+                self.err.report(
+                    fun.loc,
+                    format!("Exposed function '{}' is not defined.", &fun.ident),
+                )
+            }
+        }
+        exposed_funs
     }
 }
 
