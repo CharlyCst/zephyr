@@ -1,7 +1,8 @@
 use super::hir::*;
 use super::names::{
-    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun, NameStore,
-    Statement as S, Value as V, Variable as NameVariable,
+    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun,
+    FunctionPrototype as NameFunProto, NameStore, Statement as S, Value as V,
+    Variable as NameVariable,
 };
 use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
 
@@ -32,16 +33,25 @@ impl<'a> HirProducer<'a> {
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
+        let mut imported = Vec::with_capacity(prog.imported.len());
 
-        for fun in prog.funs.into_iter() {
+        for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
                 Ok(fun) => funs.push(fun),
                 Err(err) => self.err.report_internal_no_loc(err),
             }
         }
 
+        for import in prog.imported {
+            match self.reduce_import(import, &mut state) {
+                Ok(proto) => imported.push(proto),
+                Err(err) => self.err.report_internal_no_loc(err),
+            }
+        }
+
         Program {
             funs,
+            imported,
             pub_decls: prog.pub_decls,
             package: prog.package,
         }
@@ -298,6 +308,34 @@ impl<'a> HirProducer<'a> {
             ident: var.ident,
             loc: var.loc,
             n_id: var.n_id,
+            t,
+        })
+    }
+
+    fn reduce_import(
+        &mut self,
+        import: NameFunProto,
+        s: &mut State,
+    ) -> Result<FunctionPrototype, String> {
+        let fun_name = s.names.get(import.n_id);
+        let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
+            let param_t: Result<Vec<Type>, String> =
+                param_t.into_iter().map(|t| to_hir_t(t)).collect();
+            let ret_t: Result<Vec<Type>, String> = ret_t.into_iter().map(|t| to_hir_t(t)).collect();
+            (param_t?, ret_t?)
+        } else {
+            self.err.report_internal(
+                import.loc,
+                String::from("Imported function does not have function type"),
+            );
+            (vec![], vec![])
+        };
+        let t = FunctionType::new(param_t, ret_t);
+        Ok(FunctionPrototype {
+            ident: import.ident,
+            alias: import.alias,
+            is_pub: import.is_pub,
+            loc: import.loc,
             t,
         })
     }
