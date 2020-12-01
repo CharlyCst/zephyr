@@ -25,7 +25,7 @@ pub enum Limit {
     MinMax(u32, u32),
 }
 
-/// A struct representing a Wasm vector (as specified for the binary format).
+/// A struct representing a Wasm vector (as specified by the binary format).
 /// It implements IntoIterator and can be directly passed where a wasm `vec`
 /// is expected.
 pub struct WasmVec {

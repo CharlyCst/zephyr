@@ -26,7 +26,7 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
-        let mut imported = Vec::new();
+        let mut imports = Vec::new();
         let mut used = Vec::new();
 
         let package = match self.package() {
@@ -55,7 +55,7 @@ impl<'a> Parser<'a> {
                     Declaration::Function(fun) => funs.push(fun),
                     Declaration::Use(uses) => used.push(uses),
                     Declaration::Expose(expose) => exposed.push(expose),
-                    Declaration::Import(import) => imported.push(import),
+                    Declaration::Imports(import) => imports.push(import),
                 },
                 Err(()) => self.err.silent_report(),
             }
@@ -65,7 +65,7 @@ impl<'a> Parser<'a> {
             package,
             funs,
             exposed,
-            imported,
+            imports,
             used,
         }
     }
@@ -84,9 +84,6 @@ impl<'a> Parser<'a> {
         &self.tokens[cur]
     }
 
-    // @TODO: test
-    // In theory if the tokens list is valid, only EOF is at the last position
-    // of the tokens list, so peekpeek <=> peek only for EOF (is_at_end == true)
     /// Shows the next token (after the current) if it exists, else shows the
     /// current token
     fn peekpeek(&self) -> &Token {
@@ -231,15 +228,14 @@ impl<'a> Parser<'a> {
             TokenType::Fun => Ok(Declaration::Function(self.function()?)),
             TokenType::Use => Ok(Declaration::Use(self._use()?)),
             TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
-            TokenType::Import => Ok(Declaration::Import(self.import()?)),
+            TokenType::From => Ok(Declaration::Imports(self.imports()?)),
             TokenType::Pub => match self.peekpeek().t {
                 TokenType::Fun => Ok(Declaration::Function(self.function()?)),
-                TokenType::Import => Ok(Declaration::Import(self.import()?)),
                 _ => {
                     self.err.report(
                         self.peekpeek().loc,
                         String::from(
-                            "Top level declaration must be one of 'function', 'use', 'expose'",
+                            "Top level declaration must be one of 'function', 'use', 'expose' or 'import'",
                         ),
                     );
                     self.synchronize();
@@ -346,10 +342,69 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parses the 'imports' grammar element
+    fn imports(&mut self) -> Result<Imports, ()> {
+        if !self.next_match_report(
+            TokenType::Import,
+            "Expected 'from' to start an import declaration",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let loc = self.peek().loc;
+        let from = if let Token {
+            t: TokenType::Identifier(ref ident),
+            ..
+        } = self.advance()
+        {
+            ident.clone()
+        } else {
+            self.err.report(
+                loc,
+                String::from("Expected a function identifier after 'import'"),
+            );
+            self.synchronize_fun();
+            return Err(());
+        };
+        if !self.next_match_report(
+            TokenType::Import,
+            "Expected 'import' keyword after 'from' identifier",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let prototypes = self.import_block()?;
+        self.consume_semi_colon();
+        Ok(Imports {
+            from,
+            prototypes
+        })
+    }
+
+    /// Parses the 'import_block' grammar element
+    fn import_block(&mut self) -> Result<Vec<FunctionPrototype>, ()> {
+        if !self.next_match_report(
+            TokenType::LeftBrace,
+            "Expected a left brace '{' to open import block",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let mut prototypes = Vec::new();
+        while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
+            let next_expr = self.import();
+            match next_expr {
+                Ok(import) => prototypes.push(import),
+                Err(()) => (),
+            }
+        }
+        Ok(prototypes)
+    }
+
     /// Parses the 'import' grammar element
     fn import(&mut self) -> Result<FunctionPrototype, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        if !self.next_match_report(TokenType::Import, "Unexpected top level declaration") {
+        if !self.next_match_report(TokenType::Fun, "Unexpected function prototype") {
             self.synchronize_fun();
             return Err(());
         }
@@ -717,7 +772,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses the '{' grammar element (assuming the `{` token has been
+    /// Parses the 'block' grammar element (assuming the `{` token has been
     /// consumed )
     fn block(&mut self) -> Result<Block, ()> {
         // The `{` token must have been consumed

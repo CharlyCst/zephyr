@@ -62,6 +62,12 @@ impl SectionType {
     }
 }
 
+struct SectionImport {}
+
+impl SectionImport {
+    fn new() {}
+}
+
 struct SectionFunction {
     types: WasmVec,
 }

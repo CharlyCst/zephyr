@@ -44,6 +44,7 @@ pub enum TokenType {
     Else,
     Expose,
     False,
+    From,
     Fun,
     If,
     Import,

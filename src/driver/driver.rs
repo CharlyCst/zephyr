@@ -306,7 +306,7 @@ impl Driver {
                         package_definition = Some(ast.package);
                         funs.extend(ast.funs);
                         exposed.extend(ast.exposed);
-                        imported.extend(ast.imported);
+                        imported.extend(ast.imports);
                         used.extend(ast.used);
                     }
                 }
@@ -318,7 +318,7 @@ impl Driver {
                 ast::Program {
                     package,
                     exposed,
-                    imported,
+                    imports: imported,
                     used,
                     funs,
                 },

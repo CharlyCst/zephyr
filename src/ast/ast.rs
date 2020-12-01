@@ -119,7 +119,7 @@ pub enum Declaration {
     Function(Function),
     Use(Use),
     Expose(Expose),
-    Import(FunctionPrototype),
+    Imports(Imports),
 }
 
 pub struct Program {
@@ -128,7 +128,7 @@ pub struct Program {
     /// Functions exposed to the host runtime.
     pub exposed: Vec<Expose>,
     ///Functions imported from the host runtime.
-    pub imported: Vec<FunctionPrototype>,
+    pub imports: Vec<Imports>,
     pub used: Vec<Use>,
 }
 
@@ -139,6 +139,11 @@ pub struct Package {
     pub loc: Location,
     pub t: PackageType,
     pub kind: PackageKind,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
 }
 
 pub struct Function {
