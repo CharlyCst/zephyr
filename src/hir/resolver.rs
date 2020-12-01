@@ -133,7 +133,7 @@ impl<'a> NameResolver<'a> {
         // Register functions names and signatures
         self.register_functions(&funs, &mut state);
         let imported = self.register_and_resolve_imports(
-            ast_program.imported,
+            ast_program.imports,
             ast_program.package.kind,
             &mut state,
         );

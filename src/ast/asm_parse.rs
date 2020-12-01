@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
             package,
             exposed,
             funs,
-            imported: vec![],
+            imports: vec![],
             used: vec![],
         }
     }

@@ -25,6 +25,7 @@ impl<'a> Scanner<'a> {
             (String::from("else"), TokenType::Else),
             (String::from("expose"), TokenType::Expose),
             (String::from("false"), TokenType::False),
+            (String::from("from"), TokenType::From),
             (String::from("fun"), TokenType::Fun),
             (String::from("if"), TokenType::If),
             (String::from("import"), TokenType::Import),

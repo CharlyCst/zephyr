@@ -9,11 +9,14 @@ program        -> package declaration* EOF
 
 package        -> "standalone"? "runtime"? "package" STRING ";"
 
-declaration    -> use | expose | function | import
+declaration    -> use | expose | function | imports
 use            -> "use" STRING ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
-import         -> "pub"? "import" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
+imports        -> "from" IDENTIFIER "import" import_block ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+
+import_block   -> "{" import* "}"
+import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
 
 parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
 result         -> (":" IDENTIFIER)?
