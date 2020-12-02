@@ -62,9 +62,15 @@ impl FunctionType {
 
 pub struct Program {
     pub funs: Vec<Function>,
-    pub imported: Vec<FunctionPrototype>,
+    pub imports: Vec<Imports>,
     pub pub_decls: HashMap<String, Declaration>,
     pub package: Package,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
 }
 
 pub struct Function {

@@ -5,7 +5,7 @@ use crate::error::ErrorHandler;
 use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
 use crate::hir::{
     Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, Function as HirFun,
-    FunctionPrototype as HirFunProto, IntegerType as HirIntergerType,
+    FunctionPrototype as HirFunProto, Imports as HirImports, IntegerType as HirIntergerType,
     LocalVariable as HirLocalVariable, NumericType as HirNumericType, Program as HirProgram,
     ScalarType as HirScalarType, Statement as S, Type as HirType, Unop as HirUnop, Value as V,
 };
@@ -45,7 +45,7 @@ impl<'a> MIRProducer<'a> {
     pub fn reduce(&mut self, prog: HirProgram) -> Program {
         let mut state = State::new();
         let mut funs = Vec::with_capacity(prog.funs.len());
-        let mut imported = Vec::with_capacity(prog.imported.len());
+        let mut imports = Vec::with_capacity(prog.imports.len());
 
         for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
@@ -53,9 +53,9 @@ impl<'a> MIRProducer<'a> {
                 Err(err) => self.err.report_internal_no_loc(err),
             }
         }
-        for proto in prog.imported {
-            match self.reduce_imported(proto) {
-                Ok(proto) => imported.push(proto),
+        for import in prog.imports {
+            match self.reduce_import(import) {
+                Ok(import) => imports.push(import),
                 Err(err) => self.err.report_internal_no_loc(err),
             }
         }
@@ -70,7 +70,7 @@ impl<'a> MIRProducer<'a> {
         Program {
             name: prog.package.name,
             funs,
-            imported,
+            imports,
             pub_decls: prog.pub_decls,
             runtime,
         }
@@ -427,7 +427,18 @@ impl<'a> MIRProducer<'a> {
         }
     }
 
-    fn reduce_imported(&mut self, proto: HirFunProto) -> Result<FunctionPrototype, String> {
+    fn reduce_import(&mut self, imports: HirImports) -> Result<Imports, String> {
+        let mut prototypes = Vec::with_capacity(imports.prototypes.len());
+        for proto in imports.prototypes {
+            prototypes.push(self.reduce_prototype(proto)?);
+        }
+        Ok(Imports {
+            from: imports.from,
+            prototypes,
+        })
+    }
+
+    fn reduce_prototype(&mut self, proto: HirFunProto) -> Result<FunctionPrototype, String> {
         let mut param_t = Vec::with_capacity(proto.t.params.len());
         let mut ret_t = Vec::with_capacity(proto.t.ret.len());
 

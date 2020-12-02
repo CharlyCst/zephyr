@@ -9,14 +9,19 @@ pub use crate::ast::PackageKind;
 pub struct Program {
     pub name: String,
     pub funs: Vec<Function>,
-    pub imported: Vec<FunctionPrototype>,
+    pub imports: Vec<Imports>,
     pub pub_decls: HashMap<String, HirDeclaration>,
     pub runtime: Option<Runtime>,
 }
 
 pub struct Runtime {
     pub package_id: u32,
-    pub name: String
+    pub name: String,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
 }
 
 pub struct Function {

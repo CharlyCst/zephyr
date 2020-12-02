@@ -132,7 +132,7 @@ impl<'a> NameResolver<'a> {
 
         // Register functions names and signatures
         self.register_functions(&funs, &mut state);
-        let imported = self.register_and_resolve_imports(
+        let imports = self.register_and_resolve_imports(
             ast_program.imports,
             ast_program.package.kind,
             &mut state,
@@ -150,7 +150,7 @@ impl<'a> NameResolver<'a> {
 
         ResolvedProgram {
             funs: named_funs,
-            imported,
+            imports,
             names: state.names,
             types: state.types,
             constraints: state.constraints,
@@ -823,11 +823,11 @@ impl<'a> NameResolver<'a> {
     /// Will rise an error if imports are declared in an unappropriate package.
     fn register_and_resolve_imports(
         &mut self,
-        imports: Vec<ast::FunctionPrototype>,
+        imports: Vec<ast::Imports>,
         package_kind: ast::PackageKind,
         state: &mut State,
-    ) -> Vec<FunctionPrototype> {
-        let mut prototypes = Vec::with_capacity(imports.len());
+    ) -> Vec<Imports> {
+        let mut resolved_imports = Vec::with_capacity(imports.len());
         if package_kind != ast::PackageKind::Runtime && !imports.is_empty() {
             let loc = imports.first().unwrap().loc;
             self.err.report(
@@ -836,8 +836,26 @@ impl<'a> NameResolver<'a> {
             );
         }
         for import in imports {
+            resolved_imports.push(Imports {
+                from: import.from,
+                prototypes: self.register_and_resolve_prototypes(import.prototypes, state),
+                loc: import.loc,
+            })
+        }
+        resolved_imports
+    }
+
+    /// Register top level prototypes definition into the global state (`state`) and return
+    /// resolved functions.
+    fn register_and_resolve_prototypes(
+        &mut self,
+        prototypes: Vec<ast::FunctionPrototype>,
+        state: &mut State,
+    ) -> Vec<FunctionPrototype> {
+        let mut resolved_protos = Vec::with_capacity(prototypes.len());
+        for proto in prototypes {
             let mut params = Vec::new();
-            for param in import.params.iter() {
+            for param in proto.params.iter() {
                 if let Some(known_t) = check_base_type(&param.t) {
                     params.push(known_t);
                 } else {
@@ -846,7 +864,7 @@ impl<'a> NameResolver<'a> {
             }
 
             let mut results = Vec::new();
-            if let Some((t, loc)) = &import.result {
+            if let Some((t, loc)) = &proto.result {
                 if let Some(known_t) = check_base_type(&t) {
                     results.push(known_t);
                 } else {
@@ -854,32 +872,32 @@ impl<'a> NameResolver<'a> {
                 }
             }
 
-            let ident = if let Some(ref alias) = import.alias {
+            let ident = if let Some(ref alias) = proto.alias {
                 alias.clone()
             } else {
-                import.ident.clone()
+                proto.ident.clone()
             };
 
-            match state.declare(ident.clone(), vec![Type::Fun(params, results)], import.loc) {
+            match state.declare(ident.clone(), vec![Type::Fun(params, results)], proto.loc) {
                 Ok((n_id, _)) => {
                     let fun_id = state.fresh_f_id();
                     state.functions.insert(ident, (fun_id, n_id));
-                    prototypes.push(FunctionPrototype {
-                        ident: import.ident,
-                        is_pub: import.is_pub,
-                        alias: import.alias,
+                    resolved_protos.push(FunctionPrototype {
+                        ident: proto.ident,
+                        is_pub: proto.is_pub,
+                        alias: proto.alias,
                         fun_id,
                         n_id,
-                        loc: import.loc,
+                        loc: proto.loc,
                     })
                 }
                 Err(_decl_loc) => {
                     let error = format!("Function {} declared multiple times", ident);
-                    self.err.report(import.loc, error);
+                    self.err.report(proto.loc, error);
                 }
             }
         }
-        prototypes
+        resolved_protos
     }
 
     /// Resolve the exposed functions and return a map of function ID to their name.
