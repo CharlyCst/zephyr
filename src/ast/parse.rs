@@ -366,6 +366,7 @@ impl<'a> Parser<'a> {
             self.synchronize_fun();
             return Err(());
         };
+        let loc = self.peek().loc.merge(loc);
         if !self.next_match_report(
             TokenType::Import,
             "Expected 'import' keyword after 'from' identifier",
@@ -377,7 +378,8 @@ impl<'a> Parser<'a> {
         self.consume_semi_colon();
         Ok(Imports {
             from,
-            prototypes
+            prototypes,
+            loc,
         })
     }
 

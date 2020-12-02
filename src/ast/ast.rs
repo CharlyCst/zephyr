@@ -144,6 +144,7 @@ pub struct Package {
 pub struct Imports {
     pub from: String,
     pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
 }
 
 pub struct Function {

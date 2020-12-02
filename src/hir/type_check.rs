@@ -45,7 +45,7 @@ impl<'a> TypeChecker<'a> {
 
         TypedProgram {
             funs: prog.funs,
-            imported: prog.imported,
+            imports: prog.imports,
             names: prog.names,
             types: store,
             pub_decls,

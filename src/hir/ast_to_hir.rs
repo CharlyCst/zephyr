@@ -1,8 +1,8 @@
 use super::hir::*;
 use super::names::{
     Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun,
-    FunctionPrototype as NameFunProto, NameStore, Statement as S, Value as V,
-    Variable as NameVariable,
+    FunctionPrototype as NameFunProto, Imports as NameImports, NameStore, Statement as S,
+    Value as V, Variable as NameVariable,
 };
 use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
 
@@ -33,7 +33,7 @@ impl<'a> HirProducer<'a> {
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
-        let mut imported = Vec::with_capacity(prog.imported.len());
+        let mut imports = Vec::with_capacity(prog.imports.len());
 
         for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
@@ -42,16 +42,16 @@ impl<'a> HirProducer<'a> {
             }
         }
 
-        for import in prog.imported {
+        for import in prog.imports {
             match self.reduce_import(import, &mut state) {
-                Ok(proto) => imported.push(proto),
+                Ok(proto) => imports.push(proto),
                 Err(err) => self.err.report_internal_no_loc(err),
             }
         }
 
         Program {
             funs,
-            imported,
+            imports: imports,
             pub_decls: prog.pub_decls,
             package: prog.package,
         }
@@ -312,12 +312,24 @@ impl<'a> HirProducer<'a> {
         })
     }
 
-    fn reduce_import(
+    fn reduce_import(&mut self, imports: NameImports, s: &mut State) -> Result<Imports, String> {
+        let mut prototypes = Vec::with_capacity(imports.prototypes.len());
+        for proto in imports.prototypes {
+            prototypes.push(self.reduce_prototype(proto, s)?);
+        }
+        Ok(Imports {
+            from: imports.from,
+            prototypes,
+            loc: imports.loc,
+        })
+    }
+
+    fn reduce_prototype(
         &mut self,
-        import: NameFunProto,
+        proto: NameFunProto,
         s: &mut State,
     ) -> Result<FunctionPrototype, String> {
-        let fun_name = s.names.get(import.n_id);
+        let fun_name = s.names.get(proto.n_id);
         let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
             let param_t: Result<Vec<Type>, String> =
                 param_t.into_iter().map(|t| to_hir_t(t)).collect();
@@ -325,17 +337,17 @@ impl<'a> HirProducer<'a> {
             (param_t?, ret_t?)
         } else {
             self.err.report_internal(
-                import.loc,
+                proto.loc,
                 String::from("Imported function does not have function type"),
             );
             (vec![], vec![])
         };
         let t = FunctionType::new(param_t, ret_t);
         Ok(FunctionPrototype {
-            ident: import.ident,
-            alias: import.alias,
-            is_pub: import.is_pub,
-            loc: import.loc,
+            ident: proto.ident,
+            alias: proto.alias,
+            is_pub: proto.is_pub,
+            loc: proto.loc,
             t,
         })
     }
