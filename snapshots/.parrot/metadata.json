@@ -116,7 +116,7 @@
         "parser"
       ],
       "exit_code": 65,
-      "stdout": "colon_syntax.out",
+      "stdout": "colon-syntax.out",
       "stderr": null
     },
     {
@@ -127,8 +127,8 @@
         "driver",
         "runtime"
       ],
-      "exit_code": 64,
-      "stdout": "multiple_runtimes.out",
+      "exit_code": 0,
+      "stdout": "multiple-runtimes.out",
       "stderr": null
     },
     {

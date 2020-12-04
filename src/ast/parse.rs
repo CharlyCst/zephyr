@@ -235,7 +235,7 @@ impl<'a> Parser<'a> {
                     self.err.report(
                         self.peekpeek().loc,
                         String::from(
-                            "Top level declaration must be one of 'function', 'use', 'expose' or 'import'",
+                            "Top level declaration must be one of 'function', 'use', 'expose' or 'from ... import'.",
                         ),
                     );
                     self.synchronize();
@@ -246,7 +246,7 @@ impl<'a> Parser<'a> {
                 self.err.report(
                     self.peek().loc,
                     String::from(
-                        "Top level declaration must be one of 'function', 'use', 'expose'",
+                        "Top level declaration must be one of 'function', 'use', 'expose' or 'from ... import'.",
                     ),
                 );
                 self.synchronize();
@@ -345,7 +345,7 @@ impl<'a> Parser<'a> {
     /// Parses the 'imports' grammar element
     fn imports(&mut self) -> Result<Imports, ()> {
         if !self.next_match_report(
-            TokenType::Import,
+            TokenType::From,
             "Expected 'from' to start an import declaration",
         ) {
             self.synchronize_fun();

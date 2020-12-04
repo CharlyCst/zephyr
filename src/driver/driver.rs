@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -31,7 +31,7 @@ pub struct Driver {
     file_id: u16,
     package_id: u32,
     err: error::ErrorHandler,
-    pub_decls: HashMap<String, HashMap<String, hir::Declaration>>, // package -> (decl -> type)
+    pub_decls: PublicDeclarations,
 }
 
 impl Driver {
@@ -47,7 +47,7 @@ impl Driver {
             file_id: 0,
             package_id: 0,
             err: error::ErrorHandler::new_no_file(),
-            pub_decls: HashMap::new(),
+            pub_decls: PublicDeclarations::new(),
         }
     }
 
@@ -111,9 +111,10 @@ impl Driver {
         let root = root.unwrap_or(&pkg_ast.package.name);
         // Prepare MIR
         let mut package_import = HashSet::new();
-        let mut namespaces = HashMap::new();
+        let mut namespaces = PublicDeclarations::new();
         let mut mir_funs = Vec::new();
-        let mut runtime = None;
+        let mut mir_imports = Vec::new();
+        let mut runtime_modules = HashSet::new();
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
             self.detect_circular_imports(&used.path, &imported);
@@ -141,8 +142,9 @@ impl Driver {
                 };
                 // Merge package content
                 error_handler.merge(err_handler);
+                self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_mir.imports);
                 mir_funs.extend(sub_pkg_mir.funs);
-                runtime = self.detect_multiple_runtimes(runtime, sub_pkg_mir.runtime);
+                mir_imports.extend(sub_pkg_mir.imports);
                 self.pub_decls
                     .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
                 sub_pkg_mir.pub_decls
@@ -162,6 +164,7 @@ impl Driver {
         let mut mir_program = mir::to_mir(hir_program, &mut error_handler, &self.config);
         // Insert imported functions
         mir_program.funs.extend(mir_funs);
+        mir_program.imports.extend(mir_imports);
         Ok((mir_program, error_handler))
     }
 
@@ -467,28 +470,26 @@ impl Driver {
         }
     }
 
-    /// Raises an error if both packages depends on different runtimes otherwise return the runtime
-    /// if any.
-    pub fn detect_multiple_runtimes(
+    /// Raises an error if a runtime module has already been defined in the `modules` set
+    /// and insert the newly defines modules into that set.
+    ///
+    /// params:
+    ///  - modules: a set of modules already imported.
+    ///  - imports: the new import definitions.
+    pub fn detect_duplicate_runtime_modules(
         &mut self,
-        r_1: Option<mir::Runtime>,
-        r_2: Option<mir::Runtime>,
-    ) -> Option<mir::Runtime> {
-        match (r_1, r_2) {
-            (Some(r_1), Some(r_2)) => {
-                if r_1.package_id != r_2.package_id {
-                    self.err.report_no_loc(format!(
-                    "Detected multiple 'runtime' packages: '{}' and '{}', but there can be at most one.",
-                    &r_1.name, &r_2.name,
+        modules: &mut HashSet<String>,
+        imports: &Vec<mir::Imports>,
+    ) {
+        for import in imports {
+            if modules.contains(&import.from) {
+                self.err.report_no_loc(format!(
+                    "The runtime module '{}' is defined in multiple places.",
+                    &import.from
                 ));
-                    exit!(self);
-                } else {
-                    Some(r_1)
-                }
+            } else {
+                modules.insert(import.from.clone());
             }
-            (Some(r_1), None) => Some(r_1),
-            (None, Some(r_2)) => Some(r_2),
-            (None, None) => None,
         }
     }
 }

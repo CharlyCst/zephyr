@@ -1,22 +1,16 @@
 #![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
-use crate::hir::{Declaration as HirDeclaration, FunId, LocalId};
+use crate::hir::{FunId, LocalId};
 
-use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::PackageKind;
+pub use crate::driver::{PackageDeclarations, PublicDeclarations};
 
 pub struct Program {
     pub name: String,
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
-    pub pub_decls: HashMap<String, HirDeclaration>,
-    pub runtime: Option<Runtime>,
-}
-
-pub struct Runtime {
-    pub package_id: u32,
-    pub name: String,
+    pub pub_decls: PackageDeclarations,
 }
 
 pub struct Imports {
