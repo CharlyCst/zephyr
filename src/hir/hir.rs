@@ -1,8 +1,8 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, Declaration, NameId};
+use super::names::{AsmStatement, NameId};
+use crate::driver::PackageDeclarations;
 use crate::error::Location;
 
-use std::collections::HashMap;
 use std::fmt;
 
 const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
@@ -63,7 +63,7 @@ impl FunctionType {
 pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
-    pub pub_decls: HashMap<String, Declaration>,
+    pub pub_decls: PackageDeclarations,
     pub package: Package,
 }
 

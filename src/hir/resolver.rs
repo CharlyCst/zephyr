@@ -2,6 +2,7 @@ use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
+use crate::driver::PublicDeclarations;
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
@@ -26,7 +27,7 @@ struct State {
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
     functions: HashMap<String, (FunId, NameId)>,
-    used_namespace: HashMap<String, HashMap<String, Declaration>>,
+    used_namespace: PublicDeclarations,
     constraints: ConstraintStore,
     fun_counter: u32,
     package_id: u32,
@@ -35,7 +36,7 @@ struct State {
 impl State {
     pub fn new(
         package_id: u32,
-        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+        used_namespace: PublicDeclarations,
     ) -> State {
         let contexts = vec![HashMap::new()];
         State {
@@ -124,7 +125,7 @@ impl<'a> NameResolver<'a> {
     pub fn resolve(
         &mut self,
         ast_program: ast::Program,
-        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+        used_namespace: PublicDeclarations,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
         let mut state = State::new(ast_program.package.id, used_namespace);

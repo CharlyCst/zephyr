@@ -1,8 +1,8 @@
 use super::names;
 use crate::error::Location;
 use crate::hir::Package;
+use crate::driver::PackageDeclarations;
 
-use std::collections::HashMap;
 use std::fmt;
 
 pub mod id {
@@ -36,7 +36,7 @@ pub struct TypedProgram {
     pub imports: Vec<names::Imports>,
     pub names: names::NameStore,
     pub types: TypeStore,
-    pub pub_decls: HashMap<String, names::Declaration>,
+    pub pub_decls: PackageDeclarations,
     pub package: Package,
 }
 

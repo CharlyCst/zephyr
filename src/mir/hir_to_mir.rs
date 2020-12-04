@@ -1,5 +1,4 @@
 use super::mir::*;
-use crate::ast::PackageKind;
 
 use crate::error::ErrorHandler;
 use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
@@ -60,19 +59,11 @@ impl<'a> MIRProducer<'a> {
             }
         }
 
-        let runtime = match prog.package.kind {
-            PackageKind::Runtime => Some(Runtime {
-                package_id: prog.package.id,
-                name: prog.package.name.clone(),
-            }),
-            _ => None,
-        };
         Program {
             name: prog.package.name,
             funs,
             imports,
             pub_decls: prog.pub_decls,
-            runtime,
         }
     }
 

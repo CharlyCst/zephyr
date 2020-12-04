@@ -1,8 +1,7 @@
 use crate::ast;
 use crate::cli::Config;
 use crate::error::ErrorHandler;
-
-use std::collections::HashMap;
+use crate::driver::PublicDeclarations;
 
 pub use self::names::{
     AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Declaration, NameId,
@@ -22,7 +21,7 @@ mod types;
 
 pub fn to_hir<'a>(
     ast_program: ast::Program,
-    namespace: HashMap<String, HashMap<String, Declaration>>,
+    namespace: PublicDeclarations,
     error_handler: &mut ErrorHandler,
     config: &Config,
 ) -> hir::Program {

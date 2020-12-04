@@ -1,10 +1,10 @@
-use super::names::{Declaration, Function, NameStore, ResolvedProgram};
+use super::names::{Declaration, Function, Imports, NameStore, ResolvedProgram};
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore, TypedProgram};
+use crate::driver::PackageDeclarations;
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
 
 enum Progress {
     Some,
@@ -41,7 +41,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         let store = self.build_store(&type_vars);
-        let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs);
+        let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs, &prog.imports);
 
         TypedProgram {
             funs: prog.funs,
@@ -87,19 +87,35 @@ impl<'a> TypeChecker<'a> {
         store
     }
 
-    /// Returns a map of the public types (from public declaration with `pub` keyword).
+    /// Returns the public declarations of the package, this include public functions and
+    /// imported runtime module.
     fn get_pub_decls(
         &mut self,
         types: &TypeStore,
         names: &NameStore,
         funs: &Vec<Function>,
-    ) -> HashMap<String, Declaration> {
-        let mut pub_decls = HashMap::new();
+        imports: &Vec<Imports>,
+    ) -> PackageDeclarations {
+        let mut pub_decls = PackageDeclarations::new();
         for fun in funs {
             if fun.is_pub {
                 let name = names.get(fun.n_id);
                 let t = types.get(name.t_id);
-                pub_decls.insert(
+                pub_decls.decls.insert(
+                    fun.ident.clone(),
+                    Declaration::Function {
+                        t: t.clone(),
+                        fun_id: fun.fun_id,
+                    },
+                );
+            }
+        }
+        for import in imports {
+            pub_decls.runtime_modules.insert(import.from.clone());
+            for fun in &import.prototypes {
+                let name = names.get(fun.n_id);
+                let t = types.get(name.t_id);
+                pub_decls.decls.insert(
                     fun.ident.clone(),
                     Declaration::Function {
                         t: t.clone(),
@@ -112,7 +128,7 @@ impl<'a> TypeChecker<'a> {
         pub_decls
     }
 
-    /// Apply a constraints, it may modify the type variable store `store`.
+    /// Apply a constraint, it may modify the type variable store `store`.
     /// Progress can be made or not, depending on the state of the store.
     fn apply_constr(
         &mut self,

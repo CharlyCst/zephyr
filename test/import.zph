@@ -1,0 +1,11 @@
+standalone runtime package "import"
+
+expose main as _start
+
+from test import {}
+
+// Test direct calls
+fun main(): i32 {
+    return 42
+}
+
