@@ -2,4 +2,5 @@
 .vscode
 /out/*.wasm
 /test_out/*.wasm
+/snapshots/*.wasm
 .gdb*

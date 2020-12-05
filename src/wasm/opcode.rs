@@ -6,7 +6,7 @@ pub const MAGIC_NUMBER: u32 = 0x6d736100;
 pub const VERSION: u32 = 0x1;
 
 // Section identifier
-type SecTyp = u8;
+pub type SecTyp = u8;
 pub const SEC_CUSTOM: SecTyp = 0;
 pub const SEC_TYPE: SecTyp = 1;
 pub const SEC_IMPORT: SecTyp = 2;
@@ -21,14 +21,14 @@ pub const SEC_CODE: SecTyp = 10;
 pub const SEC_DATA: SecTyp = 11;
 
 // Kind
-type Kind = u8;
+pub type Kind = u8;
 pub const KIND_FUNC: Kind = 0;
 pub const KIND_TABLE: Kind = 1;
 pub const KIND_MEM: Kind = 2;
 pub const KIND_GLOBAL: Kind = 3;
 
 // Types
-type Type = u8;
+pub type Type = u8;
 pub const BLOCK_TYPE: Type = 0x40;
 pub const FUNC: Type = 0x60;
 pub const ANY_FUNC: Type = 0x70;

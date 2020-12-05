@@ -36,6 +36,7 @@ pub struct FunctionPrototype {
     pub ret_t: Vec<Type>,
     pub alias: Option<String>,
     pub is_pub: bool,
+    pub fun_id: FunId,
 }
 
 pub struct LocalVariable {

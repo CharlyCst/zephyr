@@ -452,6 +452,7 @@ impl<'a> MIRProducer<'a> {
             ret_t,
             alias: proto.alias,
             is_pub: proto.is_pub,
+            fun_id: proto.fun_id,
         })
     }
 }

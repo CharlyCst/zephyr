@@ -5,6 +5,42 @@ use super::opcode::*;
 use super::wasm;
 use super::wasm::WasmVec;
 
+/// Handles type index attribution and storage.
+struct TypeStore {
+    index: usize,
+    existing_types: HashMap<Vec<u8>, usize>,
+    types: WasmVec,
+}
+
+impl TypeStore {
+    fn new() -> Self {
+        Self {
+            index: 0,
+            existing_types: HashMap::new(),
+            types: WasmVec::new(),
+        }
+    }
+
+    /// Consumes a type to return its index.
+    fn get_idx(&mut self, t: Vec<u8>) -> usize {
+        match self.existing_types.get(&t) {
+            Some(idx) => *idx,
+            None => {
+                let idx = self.index;
+                self.existing_types.insert(t.clone(), idx);
+                self.types.extend_item(t);
+                self.index += 1;
+                idx
+            }
+        }
+    }
+
+    /// Returns a WasmVec of types.
+    fn get_types(self) -> WasmVec {
+        self.types
+    }
+}
+
 struct SectionType {
     types: WasmVec,
 }
@@ -12,43 +48,40 @@ struct SectionType {
 impl SectionType {
     // Function declaration format:
     // [Func] (nb_args) [arg_1] [arg_2] ... (nb_results) [result_1] [result_2] ...
-    fn new(funs: &mut Vec<wasm::Function>) -> SectionType {
-        let mut types = WasmVec::new();
-        let mut index: usize = 0;
-        let mut known_types = HashMap::new();
-
+    fn new(funs: &mut Vec<wasm::Function>, imports: &mut Vec<wasm::Import>) -> Self {
+        let mut type_store = TypeStore::new();
         for fun in funs.iter_mut() {
-            let mut params = WasmVec::new();
-            let mut results = WasmVec::new();
-            let mut fun_type = Vec::new();
-
-            for t in fun.param_types.iter() {
-                params.push_item(type_to_bytes(*t))
-            }
-
-            for t in fun.ret_types.iter() {
-                results.push_item(type_to_bytes(*t))
-            }
-
-            fun_type.push(FUNC);
-            fun_type.extend(params);
-            fun_type.extend(results);
-
-            match known_types.get(&fun_type) {
-                Some(idx) => {
-                    fun.type_idx = *idx;
-                }
-                None => {
-                    known_types.insert(fun_type.clone(), index);
-
-                    types.extend_item(fun_type);
-                    fun.type_idx = index;
-                    index += 1;
-                }
-            }
+            let fun_type = SectionType::build_type(&fun.param_types, &fun.ret_types);
+            fun.type_idx = type_store.get_idx(fun_type);
+        }
+        for import in imports.iter_mut() {
+            let fun_type = SectionType::build_type(&import.param_types, &import.ret_types);
+            import.type_idx = type_store.get_idx(fun_type);
         }
 
-        SectionType { types }
+        Self {
+            types: type_store.get_types(),
+        }
+    }
+
+    /// Builds a function type from parameters and return types.
+    fn build_type(param_types: &Vec<wasm::Type>, ret_types: &Vec<wasm::Type>) -> Vec<u8> {
+        let mut params = WasmVec::new();
+        let mut results = WasmVec::new();
+        let mut fun_type = Vec::new();
+
+        for t in param_types.iter() {
+            params.push_item(type_to_bytes(*t))
+        }
+
+        for t in ret_types.iter() {
+            results.push_item(type_to_bytes(*t))
+        }
+
+        fun_type.push(FUNC);
+        fun_type.extend(params);
+        fun_type.extend(results);
+        fun_type
     }
 
     fn encode(self) -> Vec<Instr> {
@@ -62,10 +95,43 @@ impl SectionType {
     }
 }
 
-struct SectionImport {}
+struct SectionImport {
+    imports: WasmVec,
+}
 
 impl SectionImport {
-    fn new() {}
+    fn new(imports: Vec<wasm::Import>) -> Self {
+        let mut wasm_imports = WasmVec::new();
+        for import in imports {
+            let mut raw_import = Vec::new();
+            let mut module = WasmVec::new();
+            let mut name = WasmVec::new();
+            for byte in import.module.as_bytes() {
+                module.push_item(*byte);
+            }
+            for byte in import.name.as_bytes() {
+                name.push_item(*byte);
+            }
+            raw_import.extend(module);
+            raw_import.extend(name);
+            raw_import.push(import.kind);
+            raw_import.extend(to_leb(import.type_idx as u64));
+            wasm_imports.extend_item(raw_import);
+        }
+        Self {
+            imports: wasm_imports,
+        }
+    }
+
+    fn encode(self) -> Vec<Instr> {
+        let mut bytecode = Vec::new();
+
+        bytecode.push(SEC_IMPORT);
+        bytecode.extend(to_leb(self.imports.size()));
+        bytecode.extend(self.imports);
+
+        bytecode
+    }
 }
 
 struct SectionFunction {
@@ -73,7 +139,7 @@ struct SectionFunction {
 }
 
 impl SectionFunction {
-    fn new(funs: &Vec<wasm::Function>) -> SectionFunction {
+    fn new(funs: &Vec<wasm::Function>) -> Self {
         let mut types = WasmVec::new();
 
         // The function index corresponds to its index in funs
@@ -82,7 +148,7 @@ impl SectionFunction {
             types.extend_item(idx);
         }
 
-        SectionFunction { types }
+        Self { types }
     }
 
     fn encode(self) -> Vec<Instr> {
@@ -101,7 +167,7 @@ struct SectionMemory {
 }
 
 impl SectionMemory {
-    fn new(memories: Vec<wasm::Limit>) -> SectionMemory {
+    fn new(memories: Vec<wasm::Limit>) -> Self {
         let mut mems = WasmVec::new();
 
         for memory in memories {
@@ -120,7 +186,7 @@ impl SectionMemory {
             mems.extend_item(mem);
         }
 
-        SectionMemory { memories: mems }
+        Self { memories: mems }
     }
 
     fn encode(self) -> Vec<Instr> {
@@ -140,7 +206,7 @@ struct SectionCode {
 }
 
 impl SectionCode {
-    fn new(funs: &Vec<wasm::Function>) -> SectionCode {
+    fn new(funs: &Vec<wasm::Function>) -> Self {
         let mut fun_bodies = WasmVec::new();
 
         for fun in funs {
@@ -150,7 +216,7 @@ impl SectionCode {
             fun_bodies.extend_item(sized_body);
         }
 
-        SectionCode { bodies: fun_bodies }
+        Self { bodies: fun_bodies }
     }
 
     fn encode(self) -> Vec<Instr> {
@@ -169,7 +235,7 @@ struct SectionExport {
 }
 
 impl SectionExport {
-    fn new(funs: &Vec<wasm::Function>) -> SectionExport {
+    fn new(funs: &Vec<wasm::Function>) -> Self {
         let mut exports = WasmVec::new();
 
         // Export functions
@@ -196,7 +262,7 @@ impl SectionExport {
         data.push(0);
         exports.extend_item(data);
 
-        SectionExport { exports }
+        Self { exports }
     }
 
     fn encode(self) -> Vec<Instr> {
@@ -254,7 +320,7 @@ impl SectionData {
         data_segment.extend(hardcoded_data);
 
         data.extend_item(data_segment);
-        SectionData { data }
+        Self { data }
     }
 
     fn encode(self) -> Vec<Instr> {
@@ -270,6 +336,7 @@ impl SectionData {
 
 pub struct Module {
     types: SectionType,
+    imports: SectionImport,
     functions: SectionFunction,
     memories: SectionMemory,
     exports: SectionExport,
@@ -278,15 +345,17 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(mut funs: Vec<wasm::Function>) -> Module {
-        let types = SectionType::new(&mut funs); // Must be called first because of side effects
+    pub fn new(mut funs: Vec<wasm::Function>, mut imports: Vec<wasm::Import>) -> Self {
+        let types = SectionType::new(&mut funs, &mut imports); // Must be called first because of side effects
+        let imports = SectionImport::new(imports);
         let functions = SectionFunction::new(&funs);
         let memories = SectionMemory::new(vec![wasm::Limit::Min(1)]);
         let exports = SectionExport::new(&funs);
         let code = SectionCode::new(&funs);
         let data = SectionData::new();
-        Module {
+        Self {
             types,
+            imports,
             functions,
             memories,
             code,
@@ -303,6 +372,7 @@ impl Module {
         bytecode.extend(VERSION.to_le_bytes().iter());
 
         bytecode.extend(self.types.encode());
+        bytecode.extend(self.imports.encode());
         bytecode.extend(self.functions.encode());
         bytecode.extend(self.memories.encode());
         bytecode.extend(self.exports.encode());

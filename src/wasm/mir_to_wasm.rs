@@ -2,29 +2,39 @@ use super::opcode::*;
 use super::sections;
 use super::wasm;
 use crate::error::ErrorHandler;
-use crate::mir;
 use crate::hir;
+use crate::mir;
 
 use std::collections::HashMap;
 
+// Map element IDs to final wasm IDs
 type LocalsMap = HashMap<hir::LocalId, usize>;
 type BlocksMap = HashMap<mir::BasicBlockId, usize>;
 type FunctionsMap = HashMap<hir::FunId, usize>;
 
+/// State globally availlable, which contains functions and global variables.
 struct GlobalState {
     funs: FunctionsMap,
 }
 
 impl GlobalState {
-    pub fn new(funs: &Vec<mir::Function>) -> GlobalState {
+    pub fn new(funs: &Vec<mir::Function>, imports: &Vec<mir::Imports>) -> GlobalState {
         let mut fun_map = HashMap::new();
+        let mut fun_idx = 0;
+        for import in imports {
+            for proto in &import.prototypes {
+                fun_map.insert(proto.fun_id, fun_idx);
+                fun_idx += 1;
+            }
+        }
         for (idx, fun) in funs.iter().enumerate() {
-            fun_map.insert(fun.fun_id, idx);
+            fun_map.insert(fun.fun_id, idx + fun_idx);
         }
         GlobalState { funs: fun_map }
     }
 }
 
+/// A state that is local to a function or block.
 struct LocalState<'a> {
     locals: LocalsMap,
     blocks: BlocksMap,
@@ -70,16 +80,54 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
-        let global_state = GlobalState::new(&mir.funs);
+        let global_state = GlobalState::new(&mir.funs, &mir.imports);
         let mut funs = Vec::new();
+        let mut imports = Vec::new();
         for fun in mir.funs {
             funs.push(self.function(fun, &global_state));
         }
+        for module_imports in mir.imports {
+            imports.extend(self.module_imports(module_imports));
+        }
 
-        let module = sections::Module::new(funs);
+        let module = sections::Module::new(funs, imports);
         module.encode()
     }
 
+    /// Compiles a set of MIR module imports to a list of wasm imports.
+    fn module_imports(&mut self, module_imports: mir::Imports) -> Vec<wasm::Import> {
+        let mut imports = Vec::with_capacity(module_imports.prototypes.len());
+        for import in module_imports.prototypes {
+            imports.push(self.import(module_imports.from.clone(), import));
+        }
+        imports
+    }
+
+    fn import(&mut self, module: String, proto: mir::FunctionPrototype) -> wasm::Import {
+        let mut params = Vec::new();
+        let mut results = Vec::new();
+
+        for param in proto.param_t.iter() {
+            let t = mir_t_to_wasm(*param);
+            params.push(t);
+        }
+
+        for ret in proto.ret_t.iter() {
+            let t = mir_t_to_wasm(*ret);
+            results.push(t);
+        }
+
+        wasm::Import {
+            module,
+            name: proto.ident,
+            param_types: params,
+            ret_types: results,
+            kind: KIND_FUNC,
+            type_idx: std::usize::MAX,
+        }
+    }
+
+    /// Compiles a MIR function down to wasm.
     fn function(&mut self, fun: mir::Function, gs: &GlobalState) -> wasm::Function {
         let mut params = Vec::new();
         let mut results = Vec::new();
@@ -90,8 +138,8 @@ impl<'a> Compiler<'a> {
             params.push(t);
         }
 
-        for param in fun.ret_t.iter() {
-            let t = mir_t_to_wasm(*param);
+        for ret in fun.ret_t.iter() {
+            let t = mir_t_to_wasm(*ret);
             results.push(t);
         }
 
