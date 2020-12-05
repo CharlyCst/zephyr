@@ -1,12 +1,23 @@
 use super::opcode;
 use super::opcode::to_leb;
+use crate::hir::FunId;
 
 pub struct Function {
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
     pub type_idx: usize, // Used by encode
     pub exposed: Option<String>,
+    pub fun_id: FunId,
     pub body: Vec<opcode::Instr>,
+}
+
+pub struct Import {
+    pub module: String,
+    pub name: String,
+    pub param_types: Vec<Type>,
+    pub ret_types: Vec<Type>,
+    pub kind: opcode::Kind,
+    pub type_idx: usize, // Used by encode
 }
 
 #[derive(Copy, Clone)]
@@ -25,7 +36,7 @@ pub enum Limit {
     MinMax(u32, u32),
 }
 
-/// A struct representing a Wasm vector (as specified for the binary format).
+/// A struct representing a Wasm vector (as specified by the binary format).
 /// It implements IntoIterator and can be directly passed where a wasm `vec`
 /// is expected.
 pub struct WasmVec {

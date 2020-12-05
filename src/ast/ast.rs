@@ -4,9 +4,18 @@ use std::fmt;
 
 ////// Zephyr AST nodes //////
 
+/// A package type describes how the package is organised in the filesystem.
+#[derive(Clone)]
 pub enum PackageType {
     Standard,
     Standalone,
+}
+
+/// A package kind describes the role of the package.
+#[derive(Eq, PartialEq, Copy, Clone)]
+pub enum PackageKind {
+    Package,
+    Runtime,
 }
 
 pub enum Value {
@@ -39,6 +48,12 @@ pub enum BinaryOperator {
 pub enum UnaryOperator {
     Minus,
     Not,
+}
+
+pub struct Parameter {
+    pub ident: String,
+    pub t: String,
+    pub loc: Location,
 }
 
 pub struct Variable {
@@ -104,27 +119,48 @@ pub enum Declaration {
     Function(Function),
     Use(Use),
     Expose(Expose),
+    Imports(Imports),
 }
 
 pub struct Program {
     pub package: Package,
     pub funs: Vec<Function>,
+    /// Functions exposed to the host runtime.
     pub exposed: Vec<Expose>,
+    ///Functions imported from the host runtime.
+    pub imports: Vec<Imports>,
     pub used: Vec<Use>,
-    pub package_id: u32,
 }
 
+#[derive(Clone)]
 pub struct Package {
+    pub id: u32,
     pub name: String,
     pub loc: Location,
     pub t: PackageType,
+    pub kind: PackageKind,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
 }
 
 pub struct Function {
     pub ident: String,
-    pub params: Vec<Variable>,
+    pub params: Vec<Parameter>,
     pub result: Option<(String, Location)>,
     pub body: Body,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct FunctionPrototype {
+    pub ident: String,
+    pub alias: Option<String>,
+    pub params: Vec<Parameter>,
+    pub result: Option<(String, Location)>,
     pub is_pub: bool,
     pub loc: Location,
 }
@@ -234,10 +270,7 @@ impl fmt::Display for Function {
             .map(|v| {
                 let mut param = v.ident.clone();
                 param.push_str(" ");
-                param.push_str(match v.t {
-                    Some(ref typ) => typ,
-                    None => "?",
-                });
+                param.push_str(&v.t);
                 param
             })
             .collect::<Vec<String>>()

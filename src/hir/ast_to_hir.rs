@@ -1,10 +1,10 @@
 use super::hir::*;
 use super::names::{
-    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun, NameStore,
-    Statement as S, Value as V, Variable as NameVariable,
+    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun,
+    FunctionPrototype as NameFunProto, Imports as NameImports, NameStore, Statement as S,
+    Value as V, Variable as NameVariable,
 };
-use super::types::{Type as ASTTypes, TypeStore};
-use super::TypedProgram;
+use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
 
 use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use crate::error::{ErrorHandler, Location};
@@ -33,18 +33,27 @@ impl<'a> HirProducer<'a> {
     pub fn reduce(&mut self, prog: TypedProgram) -> Program {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
+        let mut imports = Vec::with_capacity(prog.imports.len());
 
-        for fun in prog.funs.into_iter() {
+        for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
                 Ok(fun) => funs.push(fun),
                 Err(err) => self.err.report_internal_no_loc(err),
             }
         }
 
+        for import in prog.imports {
+            match self.reduce_import(import, &mut state) {
+                Ok(proto) => imports.push(proto),
+                Err(err) => self.err.report_internal_no_loc(err),
+            }
+        }
+
         Program {
-            name: prog.name,
             funs,
+            imports: imports,
             pub_decls: prog.pub_decls,
+            package: prog.package,
         }
     }
 
@@ -299,6 +308,47 @@ impl<'a> HirProducer<'a> {
             ident: var.ident,
             loc: var.loc,
             n_id: var.n_id,
+            t,
+        })
+    }
+
+    fn reduce_import(&mut self, imports: NameImports, s: &mut State) -> Result<Imports, String> {
+        let mut prototypes = Vec::with_capacity(imports.prototypes.len());
+        for proto in imports.prototypes {
+            prototypes.push(self.reduce_prototype(proto, s)?);
+        }
+        Ok(Imports {
+            from: imports.from,
+            prototypes,
+            loc: imports.loc,
+        })
+    }
+
+    fn reduce_prototype(
+        &mut self,
+        proto: NameFunProto,
+        s: &mut State,
+    ) -> Result<FunctionPrototype, String> {
+        let fun_name = s.names.get(proto.n_id);
+        let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
+            let param_t: Result<Vec<Type>, String> =
+                param_t.into_iter().map(|t| to_hir_t(t)).collect();
+            let ret_t: Result<Vec<Type>, String> = ret_t.into_iter().map(|t| to_hir_t(t)).collect();
+            (param_t?, ret_t?)
+        } else {
+            self.err.report_internal(
+                proto.loc,
+                String::from("Imported function does not have function type"),
+            );
+            (vec![], vec![])
+        };
+        let t = FunctionType::new(param_t, ret_t);
+        Ok(FunctionPrototype {
+            ident: proto.ident,
+            alias: proto.alias,
+            is_pub: proto.is_pub,
+            loc: proto.loc,
+            fun_id: proto.fun_id,
             t,
         })
     }

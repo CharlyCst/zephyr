@@ -41,9 +41,11 @@ impl<'a> Parser<'a> {
             Err(_) => {
                 self.err.silent_report(); // Error message is already emited by self.package.
                 ast::Package {
+                    id: self.package_id,
                     name: String::from(""),
                     loc: Location::dummy(),
                     t: ast::PackageType::Standard,
+                    kind: ast::PackageKind::Package,
                 }
             }
         };
@@ -59,10 +61,10 @@ impl<'a> Parser<'a> {
         }
 
         ast::Program {
-            package_id: self.package_id,
             package,
             exposed,
             funs,
+            imports: vec![],
             used: vec![],
         }
     }
@@ -168,9 +170,11 @@ impl<'a> Parser<'a> {
         };
         self.consume_semi_colon();
         Ok(ast::Package {
+            id: self.package_id,
             name,
             loc,
             t: package_type,
+            kind: ast::PackageKind::Package,
         })
     }
 
@@ -303,7 +307,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'parameters' grammar element
-    fn parameters(&mut self) -> Result<Vec<ast::Variable>, ()> {
+    fn parameters(&mut self) -> Result<Vec<ast::Parameter>, ()> {
         let mut params = Vec::new();
         while let Token {
             t: TokenType::Identifier(ref param),
@@ -331,9 +335,9 @@ impl<'a> Parser<'a> {
                 }
             };
 
-            params.push(ast::Variable {
+            params.push(ast::Parameter {
                 ident,
-                t: Some(t),
+                t,
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {

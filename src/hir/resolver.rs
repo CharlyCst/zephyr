@@ -2,6 +2,7 @@ use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
+use crate::driver::PublicDeclarations;
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
@@ -26,7 +27,7 @@ struct State {
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
     functions: HashMap<String, (FunId, NameId)>,
-    used_namespace: HashMap<String, HashMap<String, Declaration>>,
+    used_namespace: PublicDeclarations,
     constraints: ConstraintStore,
     fun_counter: u32,
     package_id: u32,
@@ -35,7 +36,7 @@ struct State {
 impl State {
     pub fn new(
         package_id: u32,
-        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+        used_namespace: PublicDeclarations,
     ) -> State {
         let contexts = vec![HashMap::new()];
         State {
@@ -124,32 +125,22 @@ impl<'a> NameResolver<'a> {
     pub fn resolve(
         &mut self,
         ast_program: ast::Program,
-        used_namespace: HashMap<String, HashMap<String, Declaration>>,
+        used_namespace: PublicDeclarations,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new(ast_program.package_id, used_namespace);
+        let mut state = State::new(ast_program.package.id, used_namespace);
         let mut named_funs = Vec::with_capacity(funs.len());
-        let mut exposed_funs = HashMap::with_capacity(ast_program.exposed.len());
 
         // Register functions names and signatures
         self.register_functions(&funs, &mut state);
+        let imports = self.register_and_resolve_imports(
+            ast_program.imports,
+            ast_program.package.kind,
+            &mut state,
+        );
 
         // Resolve exposed funs
-        for exposed in &ast_program.exposed {
-            if let Some((f_id, _)) = state.functions.get(&exposed.ident) {
-                let exposed_name = if let Some(alias) = &exposed.alias {
-                    alias.clone()
-                } else {
-                    exposed.ident.clone()
-                };
-                exposed_funs.insert(*f_id, exposed_name);
-            } else {
-                self.err.report(
-                    exposed.loc,
-                    format!("Exposed function '{}' is not defined.", &exposed.ident),
-                )
-            }
-        }
+        let exposed_funs = self.resolve_exports(ast_program.exposed, &state);
 
         // Resolve function bodies
         for fun in funs.into_iter() {
@@ -159,11 +150,12 @@ impl<'a> NameResolver<'a> {
         }
 
         ResolvedProgram {
-            name: ast_program.package.name,
             funs: named_funs,
+            imports,
             names: state.names,
             types: state.types,
             constraints: state.constraints,
+            package: ast_program.package,
         }
     }
 
@@ -205,7 +197,7 @@ impl<'a> NameResolver<'a> {
         };
 
         for param in fun.params.into_iter() {
-            let t = match get_var_type(&param) {
+            let t = match get_param_type(&param) {
                 Some(t) => t,
                 None => {
                     self.err
@@ -798,18 +790,11 @@ impl<'a> NameResolver<'a> {
         for fun in funs {
             let mut params = Vec::new();
             for param in fun.params.iter() {
-                if let Some(t) = &param.t {
-                    if let Some(known_t) = check_built_in_type(&t) {
-                        params.push(known_t);
-                    } else {
-                        self.err
-                            .report(param.loc, format!("Unknown parameter type: {}", t));
-                    }
+                if let Some(known_t) = check_built_in_type(&param.t) {
+                    params.push(known_t);
                 } else {
-                    self.err.report_internal(
-                        param.loc,
-                        String::from("No type associated to function parameter"),
-                    );
+                    self.err
+                        .report(param.loc, format!("Unknown parameter type: {}", &param.t));
                 }
             }
 
@@ -833,15 +818,118 @@ impl<'a> NameResolver<'a> {
             }
         }
     }
+
+    /// Register top level imports into the global state (`state`) and return resolved
+    /// functions.
+    /// Will rise an error if imports are declared in an unappropriate package.
+    fn register_and_resolve_imports(
+        &mut self,
+        imports: Vec<ast::Imports>,
+        package_kind: ast::PackageKind,
+        state: &mut State,
+    ) -> Vec<Imports> {
+        let mut resolved_imports = Vec::with_capacity(imports.len());
+        if package_kind != ast::PackageKind::Runtime && !imports.is_empty() {
+            let loc = imports.first().unwrap().loc;
+            self.err.report(
+                loc,
+                String::from("Function imports are only permitted in 'runtime' packages."),
+            );
+        }
+        for import in imports {
+            resolved_imports.push(Imports {
+                from: import.from,
+                prototypes: self.register_and_resolve_prototypes(import.prototypes, state),
+                loc: import.loc,
+            })
+        }
+        resolved_imports
+    }
+
+    /// Register top level prototypes definition into the global state (`state`) and return
+    /// resolved functions.
+    fn register_and_resolve_prototypes(
+        &mut self,
+        prototypes: Vec<ast::FunctionPrototype>,
+        state: &mut State,
+    ) -> Vec<FunctionPrototype> {
+        let mut resolved_protos = Vec::with_capacity(prototypes.len());
+        for proto in prototypes {
+            let mut params = Vec::new();
+            for param in proto.params.iter() {
+                if let Some(known_t) = check_base_type(&param.t) {
+                    params.push(known_t);
+                } else {
+                    self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
+                }
+            }
+
+            let mut results = Vec::new();
+            if let Some((t, loc)) = &proto.result {
+                if let Some(known_t) = check_base_type(&t) {
+                    results.push(known_t);
+                } else {
+                    self.err.report(*loc, format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
+                }
+            }
+
+            let ident = if let Some(ref alias) = proto.alias {
+                alias.clone()
+            } else {
+                proto.ident.clone()
+            };
+
+            match state.declare(ident.clone(), vec![Type::Fun(params, results)], proto.loc) {
+                Ok((n_id, _)) => {
+                    let fun_id = state.fresh_f_id();
+                    state.functions.insert(ident, (fun_id, n_id));
+                    resolved_protos.push(FunctionPrototype {
+                        ident: proto.ident,
+                        is_pub: proto.is_pub,
+                        alias: proto.alias,
+                        fun_id,
+                        n_id,
+                        loc: proto.loc,
+                    })
+                }
+                Err(_decl_loc) => {
+                    let error = format!("Function {} declared multiple times", ident);
+                    self.err.report(proto.loc, error);
+                }
+            }
+        }
+        resolved_protos
+    }
+
+    /// Resolve the exposed functions and return a map of function ID to their name.
+    fn resolve_exports(
+        &mut self,
+        exposed: Vec<ast::Expose>,
+        state: &State,
+    ) -> HashMap<FunId, String> {
+        let mut exposed_funs = HashMap::with_capacity(exposed.len());
+        for fun in exposed {
+            if let Some((f_id, _)) = state.functions.get(&fun.ident) {
+                let exposed_name = if let Some(alias) = fun.alias {
+                    alias
+                } else {
+                    fun.ident
+                };
+                exposed_funs.insert(*f_id, exposed_name);
+            } else {
+                self.err.report(
+                    fun.loc,
+                    format!("Exposed function '{}' is not defined.", &fun.ident),
+                )
+            }
+        }
+        exposed_funs
+    }
 }
 
-fn get_var_type(var: &ast::Variable) -> Option<Vec<Type>> {
-    if let Some(ref t) = var.t {
-        if let Some(known_t) = check_built_in_type(&t) {
-            Some(vec![known_t])
-        } else {
-            None
-        }
+fn get_param_type(param: &ast::Parameter) -> Option<Vec<Type>> {
+    if let Some(known_t) = check_built_in_type(&param.t) {
+        Some(vec![known_t])
     } else {
         None
     }
@@ -854,6 +942,19 @@ fn check_built_in_type(t: &str) -> Option<Type> {
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
         "bool" => Some(Type::Bool),
+        _ => None,
+    }
+}
+
+/// Return the corresponding base type, if any.
+/// Base types are i32, i64, f32, f64 and are the only types that
+/// can be imported/exported at the time (i.e. before interface types)
+fn check_base_type(t: &str) -> Option<Type> {
+    match t {
+        "i32" => Some(Type::I32),
+        "i64" => Some(Type::I64),
+        "f32" => Some(Type::F32),
+        "f64" => Some(Type::F64),
         _ => None,
     }
 }

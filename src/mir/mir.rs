@@ -1,13 +1,21 @@
 #![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
-use crate::hir::{Declaration as HirDeclaration, FunId, LocalId};
+use crate::hir::{FunId, LocalId};
 
-use std::collections::HashMap;
 use std::fmt;
+
+pub use crate::ast::PackageKind;
+pub use crate::driver::{PackageDeclarations, PublicDeclarations};
 
 pub struct Program {
     pub name: String,
     pub funs: Vec<Function>,
-    pub pub_decls: HashMap<String, HirDeclaration>,
+    pub imports: Vec<Imports>,
+    pub pub_decls: PackageDeclarations,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
 }
 
 pub struct Function {
@@ -19,6 +27,15 @@ pub struct Function {
     pub body: Block,
     pub is_pub: bool,
     pub exposed: Option<String>,
+    pub fun_id: FunId,
+}
+
+pub struct FunctionPrototype {
+    pub ident: String,
+    pub param_t: Vec<Type>,
+    pub ret_t: Vec<Type>,
+    pub alias: Option<String>,
+    pub is_pub: bool,
     pub fun_id: FunId,
 }
 

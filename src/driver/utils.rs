@@ -1,7 +1,49 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast;
+use crate::hir;
+
+pub struct PublicDeclarations {
+    decls: HashMap<String, PackageDeclarations>,
+}
+
+impl PublicDeclarations {
+    pub fn new() -> Self {
+        Self {
+            decls: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, path: String, declarations: PackageDeclarations) {
+        self.decls.insert(path, declarations);
+    }
+
+    pub fn get(&self, path: &str) -> Option<&PackageDeclarations> {
+        self.decls.get(path)
+    }
+}
+
+/// A list of declarations in a given package.
+#[derive(Clone)]
+pub struct PackageDeclarations {
+    pub decls: HashMap<String, hir::Declaration>,
+    pub runtime_modules: HashSet<String>,
+}
+
+impl PackageDeclarations {
+    pub fn new() -> Self{
+        Self {
+            decls: HashMap::new(),
+            runtime_modules: HashSet::new(),
+        }
+    }
+
+    pub fn get(&self, name: &str) -> Option<&hir::Declaration> {
+        self.decls.get(name)
+    }
+}
 
 /// A list of packages known from the compiler and expected to be available.
 pub enum KnownPackage {
@@ -139,7 +181,7 @@ pub fn split_package_name(path: &str) -> Option<(String, Option<String>)> {
 fn validate_package_name(package_name: &str) -> bool {
     let mut is_first = true;
     for c in package_name.chars() {
-        if c == '_' || c =='-' {
+        if c == '_' || c == '-' {
             if is_first {
                 return false;
             }

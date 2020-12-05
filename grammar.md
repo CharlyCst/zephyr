@@ -7,12 +7,16 @@ The grammar is defined as follow, and parsed in recursive descent fashion.
 ```
 program        -> package declaration* EOF
 
-package        -> "standalone"? "package" STRING ";"
+package        -> "standalone"? "runtime"? "package" STRING ";"
 
-declaration    -> use | expose | function
+declaration    -> use | expose | function | imports
 use            -> "use" STRING ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
+imports        -> "from" IDENTIFIER "import" import_block ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+
+import_block   -> "{" import* "}"
+import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
 
 parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
 result         -> (":" IDENTIFIER)?

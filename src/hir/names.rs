@@ -1,7 +1,7 @@
-use crate::mir::Value as MirValue;
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
-use crate::ast::{BinaryOperator, UnaryOperator};
+use crate::ast::{BinaryOperator, Package, UnaryOperator};
 use crate::error::Location;
+use crate::mir::Value as MirValue;
 use std::fmt;
 
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
@@ -11,11 +11,18 @@ pub type FunId = u64;
 
 /// A type program, ready to be converted to MIR.
 pub struct ResolvedProgram {
-    pub name: String,
     pub funs: Vec<Function>,
+    pub imports: Vec<Imports>,
     pub names: NameStore,
     pub types: TypeVarStore,
     pub constraints: ConstraintStore,
+    pub package: Package,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
 }
 
 pub struct Function {
@@ -28,6 +35,15 @@ pub struct Function {
     pub loc: Location,
     pub n_id: NameId,
     pub fun_id: FunId,
+}
+
+pub struct FunctionPrototype {
+    pub ident: String,
+    pub n_id: NameId,
+    pub fun_id: FunId,
+    pub alias: Option<String>,
+    pub is_pub: bool,
+    pub loc: Location,
 }
 
 #[derive(Clone)]

@@ -1,37 +1,27 @@
 use crate::ast;
 use crate::cli::Config;
 use crate::error::ErrorHandler;
+use crate::driver::PublicDeclarations;
 
-use self::names::{NameStore, ResolvedProgram};
-use self::types::TypeStore;
-
-use std::collections::HashMap;
-
-pub use self::names::{Declaration, NameId, AsmStatement, AsmLocal, AsmMemory, AsmControl, AsmParametric};
+pub use self::names::{
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Declaration, NameId,
+};
 pub use self::types::TypeId;
+pub use crate::ast::Package;
+pub use hir::Program;
 pub use hir::*;
 
-mod ast_to_hir;
 mod asm_validate;
+mod ast_to_hir;
 mod hir;
 mod names;
 mod resolver;
 mod type_check;
 mod types;
 
-pub struct TypedProgram {
-    pub name: String,
-    pub funs: Vec<names::Function>,
-    pub names: NameStore,
-    pub types: TypeStore,
-    pub pub_decls: HashMap<String, Declaration>,
-}
-
-pub use hir::Program;
-
 pub fn to_hir<'a>(
     ast_program: ast::Program,
-    namespace: HashMap<String, HashMap<String, Declaration>>,
+    namespace: PublicDeclarations,
     error_handler: &mut ErrorHandler,
     config: &Config,
 ) -> hir::Program {

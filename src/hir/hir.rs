@@ -1,8 +1,8 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, Declaration, NameId};
+use super::names::{AsmStatement, NameId};
+use crate::driver::PackageDeclarations;
 use crate::error::Location;
 
-use std::collections::HashMap;
 use std::fmt;
 
 const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
@@ -12,6 +12,7 @@ const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
 const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
 pub use super::names::FunId;
+pub use crate::ast::Package;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
@@ -60,9 +61,16 @@ impl FunctionType {
 }
 
 pub struct Program {
-    pub name: String,
     pub funs: Vec<Function>,
-    pub pub_decls: HashMap<String, Declaration>,
+    pub imports: Vec<Imports>,
+    pub pub_decls: PackageDeclarations,
+    pub package: Package,
+}
+
+pub struct Imports {
+    pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
 }
 
 pub struct Function {
@@ -74,6 +82,15 @@ pub struct Function {
     pub loc: Location,
     pub is_pub: bool,
     pub exposed: Option<String>,
+    pub fun_id: FunId,
+}
+
+pub struct FunctionPrototype {
+    pub ident: String,
+    pub t: FunctionType,
+    pub alias: Option<String>,
+    pub is_pub: bool,
+    pub loc: Location,
     pub fun_id: FunId,
 }
 

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -31,7 +31,7 @@ pub struct Driver {
     file_id: u16,
     package_id: u32,
     err: error::ErrorHandler,
-    pub_decls: HashMap<String, HashMap<String, hir::Declaration>>, // package -> (decl -> type)
+    pub_decls: PublicDeclarations,
 }
 
 impl Driver {
@@ -47,7 +47,7 @@ impl Driver {
             file_id: 0,
             package_id: 0,
             err: error::ErrorHandler::new_no_file(),
-            pub_decls: HashMap::new(),
+            pub_decls: PublicDeclarations::new(),
         }
     }
 
@@ -111,18 +111,14 @@ impl Driver {
         let root = root.unwrap_or(&pkg_ast.package.name);
         // Prepare MIR
         let mut package_import = HashSet::new();
-        let mut namespaces = HashMap::new();
+        let mut namespaces = PublicDeclarations::new();
         let mut mir_funs = Vec::new();
+        let mut mir_imports = Vec::new();
+        let mut runtime_modules = HashSet::new();
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
             self.detect_circular_imports(&used.path, &imported);
-            // Warn for circular imports
-            if package_import.contains(&used.path) {
-                self.err.warn_no_loc(format!(
-                    "Package '{}' is imported multiple times from the same package.",
-                    &used.path
-                ));
-            }
+            self.detect_multiple_imports(&used.path, &package_import);
             package_import.insert(used.path.clone());
             // Collect dependencies
             // TODO: Should we hide exposed declarations of imported packages?
@@ -144,8 +140,11 @@ impl Driver {
                     self.err.merge(error_handler);
                     exit!(self);
                 };
+                // Merge package content
                 error_handler.merge(err_handler);
+                self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_mir.imports);
                 mir_funs.extend(sub_pkg_mir.funs);
+                mir_imports.extend(sub_pkg_mir.imports);
                 self.pub_decls
                     .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
                 sub_pkg_mir.pub_decls
@@ -165,6 +164,7 @@ impl Driver {
         let mut mir_program = mir::to_mir(hir_program, &mut error_handler, &self.config);
         // Insert imported functions
         mir_program.funs.extend(mir_funs);
+        mir_program.imports.extend(mir_imports);
         Ok((mir_program, error_handler))
     }
 
@@ -181,10 +181,11 @@ impl Driver {
                 KnownPackage::Core => "core",
             };
             path.push(suffix);
+            let root_path = path.clone();
             if let Some(subpackage_path) = subpackage_path {
                 path.extend(subpackage_path.split('/'));
             }
-            self.get_package_mir(path.clone(), Some(suffix), path, imported)
+            self.get_package_mir(path.clone(), Some(suffix), root_path, imported)
         } else {
             self.err.report_no_loc(format!(
                 "Can't localize standard packages, the environment variable {} is not set.",
@@ -195,6 +196,12 @@ impl Driver {
     }
 
     /// Returns the MIR of a subpackage
+    ///
+    /// params:
+    ///  - used: zephyr 'use' declaration
+    ///  - root: root of the package
+    ///  - root_path: the path to the package root
+    ///  - imported: a set of already imported packages
     fn get_subpackage_mir(
         &mut self,
         used: &ast::Use,
@@ -263,9 +270,10 @@ impl Driver {
         // Merge package ASTs
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
+        let mut imported = Vec::new();
         let mut used = Vec::new();
         let mut error_handler: Option<error::ErrorHandler> = None;
-        let mut expected_package_name: Option<String> = None;
+        let mut package_definition: Option<ast::Package> = None;
 
         // Iterate over ast_program of all zephyr files in the folder
         for (ast, err_handler, file_name) in ast_programs {
@@ -278,20 +286,7 @@ impl Driver {
                             path.parent().expect("Could not resolve parent directory"),
                         );
                     }
-                    // Ensure that there is only one standard package in a directory
-                    if let Some(ref expected_package_name) = expected_package_name {
-                        if expected_package_name != package_name {
-                            self.err.report_no_loc(
-                                format!(
-                                    "Expected package '{}', found '{}'. This may happen if you have multiple packages in the same directory.",
-                                    expected_package_name, package_name
-                                ),
-                            );
-                            exit!(self);
-                        }
-                    } else {
-                        expected_package_name = Some(ast.package.name.clone());
-                    }
+                    self.check_ast_coherence(&mut package_definition, &ast.package);
                     // Extend AST package
                     if let Some(ref mut error_handler) = error_handler {
                         error_handler.merge(err_handler);
@@ -312,29 +307,24 @@ impl Driver {
                             ))
                         }
                         error_handler = Some(err_handler);
-                        expected_package_name = Some(package_name.to_owned());
+                        package_definition = Some(ast.package);
                         funs.extend(ast.funs);
                         exposed.extend(ast.exposed);
+                        imported.extend(ast.imports);
                         used.extend(ast.used);
                     }
                 }
             }
         }
         // Validate and build final package
-        if let (Some(name), Some(error_handler)) = (expected_package_name, error_handler) {
-            // TODO: the package is no longer used, but still we should pass a valid one...
-            let package = ast::Package {
-                name,
-                loc: error::Location::dummy(),
-                t: ast::PackageType::Standard,
-            };
+        if let (Some(package), Some(error_handler)) = (package_definition, error_handler) {
             Ok((
                 ast::Program {
                     package,
                     exposed,
+                    imports: imported,
                     used,
                     funs,
-                    package_id,
                 },
                 error_handler,
             ))
@@ -354,7 +344,7 @@ impl Driver {
         package_id
     }
 
-    /// Match the package root against well known packages, such as 'core'.
+    /// Matches the package root against well known packages, such as 'core'.
     /// Return some if the package is known from the compiler.
     pub fn as_known_pachage(&self, package_root: &str) -> Option<KnownPackage> {
         if !self.with_known_packages {
@@ -421,6 +411,37 @@ impl Driver {
         files
     }
 
+    /// Raises an error if an AST package declare different package names or kinds.
+    ///
+    /// Params:
+    ///  - package_definition: The expected package caracteristics, or None
+    ///  - package_shard: A shard of the package (typically the content of a file)
+    ///
+    /// If `package_definition` is none, it will be set to `package_shard`
+    pub fn check_ast_coherence(
+        &mut self,
+        package_definition: &mut Option<ast::Package>,
+        package_shard: &ast::Package,
+    ) {
+        if let Some(package_def) = package_definition {
+            if &package_shard.name != &package_def.name {
+                self.err.report_no_loc(
+                    format!(
+                        "Expected package '{}', found '{}'. This may happen if you have multiple packages in the same directory.",
+                        &package_def.name,&package_shard.name
+                    ),
+                );
+                exit!(self);
+            }
+            if &package_shard.kind != &package_def.kind {
+                self.err.report_no_loc(String::from("All files of a package must share the same package kind (`package` or `runtime`)"));
+                exit!(self);
+            }
+        } else {
+            *package_definition = Some(package_shard.clone());
+        }
+    }
+
     /// Raises and error if a circular import is detected.
     ///
     /// Params:
@@ -433,6 +454,43 @@ impl Driver {
                 path
             ));
             exit!(self);
+        }
+    }
+
+    /// Creates a warning if a same dependency is imported multiple times.
+    ///
+    /// Params:
+    ///  - path: path to import (from 'use' statement)
+    ///  - package_imports: set of packages path already imported.
+    pub fn detect_multiple_imports(&mut self, path: &str, package_imports: &HashSet<String>) {
+        if package_imports.contains(path) {
+            self.err.warn_no_loc(format!(
+                "Package '{}' is imported multiple times from the same package.",
+                path
+            ));
+        }
+    }
+
+    /// Raises an error if a runtime module has already been defined in the `modules` set
+    /// and insert the newly defines modules into that set.
+    ///
+    /// params:
+    ///  - modules: a set of modules already imported.
+    ///  - imports: the new import definitions.
+    pub fn detect_duplicate_runtime_modules(
+        &mut self,
+        modules: &mut HashSet<String>,
+        imports: &Vec<mir::Imports>,
+    ) {
+        for import in imports {
+            if modules.contains(&import.from) {
+                self.err.report_no_loc(format!(
+                    "The runtime module '{}' is defined in multiple places.",
+                    &import.from
+                ));
+            } else {
+                modules.insert(import.from.clone());
+            }
         }
     }
 }
