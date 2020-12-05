@@ -15,13 +15,13 @@ fun memory_size(): i32 {
 }
 
 /// Reads an i32 from memory, expects an alignment of 32 at least.
-fun read_i32(addr: i32): i32 {
+pub fun read_i32(addr: i32): i32 {
     local.get addr
     i32.load 2 0
 }
 
 /// Set an i32 at the given memory address, expects an alignment of 32 at least.
-fun set_i32(addr: i32, val: i32) {
+pub fun set_i32(addr: i32, val: i32) {
     local.get addr
     local.get val
     i32.store 2 0

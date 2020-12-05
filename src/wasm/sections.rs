@@ -239,7 +239,7 @@ impl SectionExport {
         let mut exports = WasmVec::new();
 
         // Export functions
-        for (idx, fun) in funs.iter().enumerate() {
+        for fun in funs.iter() {
             if let Some(name) = &fun.exposed {
                 let mut data = Vec::new();
                 let encoded_name = name.as_bytes();
@@ -247,7 +247,7 @@ impl SectionExport {
                 data.extend(to_leb(encoded_name.len() as u64));
                 data.extend(encoded_name);
                 data.push(KIND_FUNC);
-                data.extend(to_leb(idx as u64));
+                data.extend(to_leb(fun.fun_id));
 
                 exports.extend_item(data);
             }
