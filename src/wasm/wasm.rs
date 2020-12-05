@@ -1,11 +1,13 @@
 use super::opcode;
 use super::opcode::to_leb;
+use crate::hir::FunId;
 
 pub struct Function {
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
     pub type_idx: usize, // Used by encode
     pub exposed: Option<String>,
+    pub fun_id: FunId,
     pub body: Vec<opcode::Instr>,
 }
 

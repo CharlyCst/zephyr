@@ -181,10 +181,11 @@ impl Driver {
                 KnownPackage::Core => "core",
             };
             path.push(suffix);
+            let root_path = path.clone();
             if let Some(subpackage_path) = subpackage_path {
                 path.extend(subpackage_path.split('/'));
             }
-            self.get_package_mir(path.clone(), Some(suffix), path, imported)
+            self.get_package_mir(path.clone(), Some(suffix), root_path, imported)
         } else {
             self.err.report_no_loc(format!(
                 "Can't localize standard packages, the environment variable {} is not set.",

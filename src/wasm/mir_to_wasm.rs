@@ -153,6 +153,7 @@ impl<'a> Compiler<'a> {
             ret_types: results,
             type_idx: std::usize::MAX,
             exposed: fun.exposed,
+            fun_id: *gs.funs.get(&fun.fun_id).unwrap() as u64,
             body: code,
         }
     }
