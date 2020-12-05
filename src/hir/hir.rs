@@ -91,6 +91,7 @@ pub struct FunctionPrototype {
     pub alias: Option<String>,
     pub is_pub: bool,
     pub loc: Location,
+    pub fun_id: FunId,
 }
 
 pub struct LocalVariable {

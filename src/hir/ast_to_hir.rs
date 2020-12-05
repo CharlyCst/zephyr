@@ -348,6 +348,7 @@ impl<'a> HirProducer<'a> {
             alias: proto.alias,
             is_pub: proto.is_pub,
             loc: proto.loc,
+            fun_id: proto.fun_id,
             t,
         })
     }

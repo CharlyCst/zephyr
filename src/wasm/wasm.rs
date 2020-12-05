@@ -9,6 +9,15 @@ pub struct Function {
     pub body: Vec<opcode::Instr>,
 }
 
+pub struct Import {
+    pub module: String,
+    pub name: String,
+    pub param_types: Vec<Type>,
+    pub ret_types: Vec<Type>,
+    pub kind: opcode::Kind,
+    pub type_idx: usize, // Used by encode
+}
+
 #[derive(Copy, Clone)]
 pub enum Type {
     I32,
