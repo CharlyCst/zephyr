@@ -99,11 +99,8 @@ fun get_real_block_size(size: i32): i32 {
     if size <= 8 {
         return 12
     }
-    let real_size = size + 4
-    if real_size & 0b111 == 0b100 { // Already aligned
-        return real_size
-    }
-    return real_size + 0b100 - (real_size & 0b11) + (0b100 & real_size)
+    let body_size = (size + 0b111) & -0b1000
+    return body_size + 4
 }
 
 /// Tell if a block is free given its header.
