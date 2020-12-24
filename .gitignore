@@ -1,6 +1,8 @@
-/target
 .vscode
+.vim
+/target
 /out/*.wasm
 /test_out/*.wasm
 /snapshots/*.wasm
+/examples/*.wasm
 .gdb*

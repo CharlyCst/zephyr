@@ -1,0 +1,3 @@
+# Classifies Zephyr files as WebAssembly for Github language statistics
+*.zph linguist-language=WebAssembly
+*.zasm linguist-language=WebAssembly

@@ -12,13 +12,27 @@
 
 You are early to the party 🎉 Zephyr is still a work in progress, feel free to try it out though!
 
-Zephyr is a language that compiles to WebAssembly, it aims at being **very portable** and **easy to integrate** with other wasm modules, possibly written in other languages.
+Zephyr is a language that compiles to WebAssembly, its main goal is to showcase the concept of `runtime interfaces` as a language feature to allow the exact same code to run on a wide variety of WebAssembly runtimes, or even to behave differently on the same runtime by choosing the underlying implementation of the runtime interfaces.
 
-To achieve these goals, the following features are currently explored:
+For instance what should `print` do when compiling to WebAssembly? It depends.
+When working on a CLI it should write to stdout, on the web to the console, on an arduino to an LCD screen or maybe send the logs back over the wire.
 
-- **Small runtime**, exploring a Rust-style automatic memory management system (no GC)
-- **Two module levels**: Zephyr-level imports/exports and WASM-level imports/exports
-- Introduce the notion of host **Runtime**, allowing to expose interfaces with multiple underneath implementations using host runtime specific hooks (starting with Web and WASI)
+Zephyr will eventually define a standard `Printer` runtime interface and let you choose or write the implementation that works for you, this way _you_ can choose how your code behave without waiting for someone to extend the compiler to support your use case.
+
+## Status
+
+| feature                     |     |
+| --------------------------- | --- |
+| Type inference              |  ✔️  |
+| Package system              |  ✔️  |
+| Runtime packages            |  ✔️  |
+| Runtime interfaces          |  ⏳ |
+| Memory allocator            |  ✔️  |
+| Automatic memory management |  ⏳ |
+| Structs                     |  🚧 |
+| Tuples (product types)      |  ⏳ |
+| Sum types                   |  ⏳ |
+
 
 ## Trying Zephyr
 
@@ -31,10 +45,18 @@ git clone git@github.com:CharlyCst/zephyr.git
 cd zephyr 
 ```
 
+Some programs may need the Zephyr standard library, you must set the `ZEPHYR_LIB` environment variable to the location of the `lib` folder for them to compiler properly:
+
+```bash
+export ZEPHYR_LIB=`pwd`/lib
+```
+
+If you plan on using Zephyr on a regular basis, add this export to your `.bashrc` (or equivalent).
+
 Then write a Zephyr program:
 
 ```rust
-package "pow"
+standalone package "pow"
 
 expose pow 
 
