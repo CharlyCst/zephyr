@@ -54,6 +54,7 @@ pub enum TokenType {
     Return,
     Runtime,
     Standalone,
+    Struct,
     True,
     Use,
     Var,

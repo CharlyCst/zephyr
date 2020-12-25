@@ -64,6 +64,7 @@ impl<'a> Parser<'a> {
             package,
             exposed,
             funs,
+            structs: vec![],
             imports: vec![],
             used: vec![],
         }

@@ -120,11 +120,13 @@ pub enum Declaration {
     Use(Use),
     Expose(Expose),
     Imports(Imports),
+    Struct(Struct),
 }
 
 pub struct Program {
     pub package: Package,
     pub funs: Vec<Function>,
+    pub structs: Vec<Struct>,
     /// Functions exposed to the host runtime.
     pub exposed: Vec<Expose>,
     ///Functions imported from the host runtime.
@@ -144,6 +146,20 @@ pub struct Package {
 pub struct Imports {
     pub from: String,
     pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
+}
+
+pub struct Struct {
+    pub ident: String,
+    pub fields: Vec<StructField>,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct StructField {
+    pub is_pub: bool,
+    pub ident: String,
+    pub t: String,
     pub loc: Location,
 }
 

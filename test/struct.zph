@@ -1,0 +1,12 @@
+standalone package "struct"
+
+expose main as _start
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fun main(): i32 {
+	return 42
+}
