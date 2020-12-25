@@ -35,6 +35,7 @@ impl<'a> Scanner<'a> {
             (String::from("return"), TokenType::Return),
             (String::from("runtime"), TokenType::Runtime),
             (String::from("standalone"), TokenType::Standalone),
+            (String::from("struct"), TokenType::Struct),
             (String::from("true"), TokenType::True),
             (String::from("use"), TokenType::Use),
             (String::from("var"), TokenType::Var),

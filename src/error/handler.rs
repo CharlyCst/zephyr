@@ -23,7 +23,7 @@ impl ErrorHandler {
         ErrorHandler {
             has_error: false,
             errors: Vec::new(),
-            codes: codes,
+            codes,
         }
     }
 
@@ -51,7 +51,17 @@ impl ErrorHandler {
             loc: None,
             t: ErrorType::Any,
             level: Level::Warning,
-            message: message,
+            message,
+        })
+    }
+
+    /// Report a warning.
+    pub fn warn(&mut self, loc: Location, message: String) {
+        self.errors.push(Error {
+            loc: Some(loc),
+            t: ErrorType::Any,
+            level: Level::Warning,
+            message,
         })
     }
 
@@ -62,7 +72,7 @@ impl ErrorHandler {
             loc: None,
             t: ErrorType::Any,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 
@@ -73,7 +83,7 @@ impl ErrorHandler {
             loc: Some(loc),
             t: ErrorType::Any,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 
@@ -84,7 +94,7 @@ impl ErrorHandler {
             loc: Some(loc),
             t: ErrorType::Internal,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 
@@ -95,7 +105,7 @@ impl ErrorHandler {
             loc: None,
             t: ErrorType::Internal,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 

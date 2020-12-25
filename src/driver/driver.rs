@@ -269,8 +269,9 @@ impl Driver {
 
         // Merge package ASTs
         let mut funs = Vec::new();
+        let mut structs = Vec::new();
         let mut exposed = Vec::new();
-        let mut imported = Vec::new();
+        let mut imports = Vec::new();
         let mut used = Vec::new();
         let mut error_handler: Option<error::ErrorHandler> = None;
         let mut package_definition: Option<ast::Package> = None;
@@ -294,7 +295,9 @@ impl Driver {
                         error_handler = Some(err_handler);
                     }
                     funs.extend(ast.funs);
+                    structs.extend(ast.structs);
                     exposed.extend(ast.exposed);
+                    imports.extend(ast.imports);
                     used.extend(ast.used);
                 }
                 ast::PackageType::Standalone => {
@@ -309,8 +312,9 @@ impl Driver {
                         error_handler = Some(err_handler);
                         package_definition = Some(ast.package);
                         funs.extend(ast.funs);
+                        structs.extend(ast.structs);
                         exposed.extend(ast.exposed);
-                        imported.extend(ast.imports);
+                        imports.extend(ast.imports);
                         used.extend(ast.used);
                     }
                 }
@@ -321,10 +325,11 @@ impl Driver {
             Ok((
                 ast::Program {
                     package,
-                    exposed,
-                    imports: imported,
-                    used,
                     funs,
+                    structs,
+                    exposed,
+                    imports,
+                    used,
                 },
                 error_handler,
             ))

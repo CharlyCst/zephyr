@@ -25,6 +25,7 @@ impl<'a> Parser<'a> {
     /// (functions, use, expose)
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
+        let mut structs = Vec::new();
         let mut exposed = Vec::new();
         let mut imports = Vec::new();
         let mut used = Vec::new();
@@ -33,7 +34,7 @@ impl<'a> Parser<'a> {
             Ok(pkg) => pkg,
             Err(()) => {
                 self.err.silent_report();
-                // TODO: In the future we may wan to parse the code anyway in order to provide feedback
+                // TODO: In the future we may want to parse the code anyway in order to provide feedback
                 // even though the `package` declaration is missing.
                 Package {
                     id: self.package_id,
@@ -53,6 +54,7 @@ impl<'a> Parser<'a> {
             match self.declaration() {
                 Ok(decl) => match decl {
                     Declaration::Function(fun) => funs.push(fun),
+                    Declaration::Struct(struc) => structs.push(struc),
                     Declaration::Use(uses) => used.push(uses),
                     Declaration::Expose(expose) => exposed.push(expose),
                     Declaration::Imports(import) => imports.push(import),
@@ -64,6 +66,7 @@ impl<'a> Parser<'a> {
         Program {
             package,
             funs,
+            structs,
             exposed,
             imports,
             used,
@@ -175,6 +178,24 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Expects the current token to be an identifier and consumes it, throws and exception and
+    /// synchronize to the next declaration if it's not.
+    fn expect_identifier(&mut self, error_message: &str) -> Result<String, ()> {
+        let token = self.advance();
+        if let Token {
+            t: TokenType::Identifier(ref ident),
+            ..
+        } = token
+        {
+            Ok(ident.clone())
+        } else {
+            let loc = token.loc;
+            self.err.report(loc, String::from(error_message));
+            self.synchronize_fun();
+            Err(())
+        }
+    }
+
     /* All the following functions try to parse a grammar element, and
     recursively parse all sub-elements as defined in the gammar of the
     language */
@@ -229,8 +250,10 @@ impl<'a> Parser<'a> {
             TokenType::Use => Ok(Declaration::Use(self._use()?)),
             TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
             TokenType::From => Ok(Declaration::Imports(self.imports()?)),
+            TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
             TokenType::Pub => match self.peekpeek().t {
                 TokenType::Fun => Ok(Declaration::Function(self.function()?)),
+                TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
                 _ => {
                     self.err.report(
                         self.peekpeek().loc,
@@ -302,44 +325,33 @@ impl<'a> Parser<'a> {
         let start = self.peek().loc;
         if !self.next_match_report(
             TokenType::Expose,
-            "Expose statement must start by 'expose' keyword",
+            "Expose statement must start with 'expose' keyword",
         ) {
             return Err(());
         }
-
-        let token = self.advance();
-        if let TokenType::Identifier(ref ident) = token.t {
-            let ident = ident.clone();
-            let alias = if self.next_match(TokenType::As) {
-                let token = self.advance();
-                if let TokenType::Identifier(ref alias_ident) = token.t {
-                    Some(alias_ident.clone())
-                } else {
-                    let loc = token.loc;
-                    self.err.report(
-                        loc,
-                        String::from("'as' should be followed by an identifier"),
-                    );
-                    return Err(());
-                }
+        let ident = self.expect_identifier("'expose' keyword must be followed by an identifier")?;
+        let alias = if self.next_match(TokenType::As) {
+            let token = self.advance();
+            if let TokenType::Identifier(ref alias_ident) = token.t {
+                Some(alias_ident.clone())
             } else {
-                None
-            };
-            let end = self.peek().loc;
-            self.consume_semi_colon();
-            Ok(Expose {
-                loc: start.merge(end),
-                ident,
-                alias,
-            })
+                let loc = token.loc;
+                self.err.report(
+                    loc,
+                    String::from("'as' should be followed by an identifier"),
+                );
+                return Err(());
+            }
         } else {
-            let loc = token.loc;
-            self.err.report(
-                loc,
-                String::from("'expose' keyword should be followed by an identifier"),
-            );
-            Err(())
-        }
+            None
+        };
+        let end = self.peek().loc;
+        self.consume_semi_colon();
+        Ok(Expose {
+            loc: start.merge(end),
+            ident,
+            alias,
+        })
     }
 
     /// Parses the 'imports' grammar element
@@ -352,20 +364,7 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let loc = self.peek().loc;
-        let from = if let Token {
-            t: TokenType::Identifier(ref ident),
-            ..
-        } = self.advance()
-        {
-            ident.clone()
-        } else {
-            self.err.report(
-                loc,
-                String::from("Expected a function identifier after 'import'"),
-            );
-            self.synchronize_fun();
-            return Err(());
-        };
+        let from = self.expect_identifier("Expected a function identifier after 'import'")?;
         let loc = self.peek().loc.merge(loc);
         if !self.next_match_report(
             TokenType::Import,
@@ -465,6 +464,89 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parses the 'struct" grammar element
+    fn _struct(&mut self) -> Result<Struct, ()> {
+        let is_pub = self.next_match(TokenType::Pub);
+        if !self.next_match_report(TokenType::Struct, "Unexpected top level declaration") {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let loc = self.peek().loc;
+        let ident = self.expect_identifier("Expected identifier after 'struct' keyword")?;
+        self.warn_if_struct_not_capitalized(&ident, loc);
+        let fields = self.struct_block()?;
+        self.consume_semi_colon();
+        Ok(Struct {
+            ident,
+            fields,
+            is_pub,
+            loc,
+        })
+    }
+
+    fn struct_block(&mut self) -> Result<Vec<StructField>, ()> {
+        if !self.next_match_report(
+            TokenType::LeftBrace,
+            "Expected a left brace '{' to open struct definition block",
+        ) {
+            self.synchronize_fun();
+            return Err(());
+        }
+        let mut fields = Vec::new();
+        while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
+            let next_expr = self.struct_field();
+            match next_expr {
+                Ok(field) => fields.push(field),
+                Err(()) => (),
+            }
+        }
+        Ok(fields)
+    }
+
+    fn struct_field(&mut self) -> Result<StructField, ()> {
+        let is_pub = self.next_match(TokenType::Pub);
+        let loc = self.peek().loc;
+        let ident = if let Token {
+            t: TokenType::Identifier(ref ident),
+            ..
+        } = self.advance()
+        {
+            ident.clone()
+        } else {
+            self.err
+                .report(loc, String::from("Expect an identifier for the field"));
+            self.synchronize();
+            return Err(());
+        };
+        if !self.next_match_report(
+            TokenType::Colon,
+            "Expect a colon (`:`) after field identifier",
+        ) {
+            self.synchronize();
+            return Err(());
+        }
+        let t_loc = self.peek().loc;
+        let t = if let Token {
+            t: TokenType::Identifier(ref t),
+            ..
+        } = self.advance()
+        {
+            t.clone()
+        } else {
+            self.err.report(t_loc, String::from("Expect a type"));
+            self.synchronize();
+            return Err(());
+        };
+        self.consume_semi_colon();
+        let loc = loc.merge(t_loc);
+        Ok(StructField {
+            is_pub,
+            ident,
+            t,
+            loc,
+        })
+    }
+
     /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
         let is_pub = self.next_match(TokenType::Pub);
@@ -473,18 +555,7 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let loc = self.peek().loc;
-        let ident = match self.advance() {
-            Token {
-                t: TokenType::Identifier(ref x),
-                ..
-            } => x.clone(),
-            _ => {
-                self.err
-                    .report(loc, String::from("Top level declaration must be functions"));
-                self.synchronize_fun();
-                return Err(());
-            }
-        };
+        let ident = self.expect_identifier("Expected identifier after 'fun' keyword")?;
         if !self.next_match_report(
             TokenType::LeftPar,
             "Parenthesis are expected after function declaration",
@@ -1058,5 +1129,18 @@ impl<'a> Parser<'a> {
         }
         self.back(); // expression consume one token when failing
         args
+    }
+
+    // Helper functions
+
+    fn warn_if_struct_not_capitalized(&mut self, ident: &str, loc: Location) {
+        if let Some(c) = ident.chars().next() {
+            if !c.is_uppercase() {
+                self.err.warn(
+                    loc,
+                    String::from("Struct identifier should start with a capital letter."),
+                );
+            }
+        }
     }
 }
