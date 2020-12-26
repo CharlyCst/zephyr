@@ -335,6 +335,8 @@ impl<'a> MIRProducer<'a> {
             Expr::CallIndirect { loc, .. } => self
                 .err
                 .report(*loc, String::from("Indirect call are not yet supported")),
+            Expr::Access { .. } => unimplemented!(),
+            Expr::Nop { .. } => (),
         }
         Ok(())
     }
@@ -562,5 +564,6 @@ fn try_into_mir_t(t: &HirType) -> Result<Type, String> {
         HirType::Scalar(t) => Ok(get_mir_t(t)),
         HirType::Fun(_) => Err(String::from("Function as value are not yet supported.")),
         HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
+        HirType::Struct(_) => unimplemented!(), // TODO!
     }
 }

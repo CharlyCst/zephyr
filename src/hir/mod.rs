@@ -1,10 +1,11 @@
 use crate::ast;
 use crate::cli::Config;
-use crate::error::ErrorHandler;
 use crate::driver::PublicDeclarations;
+use crate::error::ErrorHandler;
 
 pub use self::names::{
-    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Declaration, NameId,
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, NameId, TypeDeclaration,
+    ValueDeclaration,
 };
 pub use self::types::TypeId;
 pub use crate::ast::Package;

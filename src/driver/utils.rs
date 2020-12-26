@@ -28,20 +28,22 @@ impl PublicDeclarations {
 /// A list of declarations in a given package.
 #[derive(Clone)]
 pub struct PackageDeclarations {
-    pub decls: HashMap<String, hir::Declaration>,
+    pub val_decls: HashMap<String, hir::ValueDeclaration>,
+    pub type_decls: HashMap<String, hir::TypeDeclaration>,
     pub runtime_modules: HashSet<String>,
 }
 
 impl PackageDeclarations {
     pub fn new() -> Self{
         Self {
-            decls: HashMap::new(),
+            val_decls: HashMap::new(),
+            type_decls: HashMap::new(),
             runtime_modules: HashSet::new(),
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<&hir::Declaration> {
-        self.decls.get(name)
+    pub fn get(&self, name: &str) -> Option<&hir::ValueDeclaration> {
+        self.val_decls.get(name)
     }
 }
 

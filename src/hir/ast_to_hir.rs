@@ -297,6 +297,22 @@ impl<'a> HirProducer<'a> {
             Expr::CallIndirect { .. } => {
                 Err(String::from("Indirect calls are not yet implemented."))
             }
+            Expr::Access {
+                expr,
+                field,
+                t_id,
+                loc,
+            } => {
+                let expr = Box::new(self.reduce_expr(*expr, s)?);
+                let t = to_hir_t(s.types.get(t_id))?;
+                Ok(Expression::Access {
+                    expr,
+                    field,
+                    t,
+                    loc,
+                })
+            }
+            Expr::Namespace { loc, .. } => Ok(Expression::Nop { loc }),
         }
     }
 
@@ -405,6 +421,7 @@ fn to_hir_t(t: &ASTTypes) -> Result<Type, String> {
         ASTTypes::F32 => Ok(Type::Scalar(ScalarType::F32)),
         ASTTypes::F64 => Ok(Type::Scalar(ScalarType::F64)),
         ASTTypes::Bool => Ok(Type::Scalar(ScalarType::Bool)),
+        ASTTypes::Struct(s_id) => Ok(Type::Struct(*s_id)),
         ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
     }
 }
@@ -421,6 +438,7 @@ fn to_hir_scalar(t: &ASTTypes) -> Result<ScalarType, String> {
         ASTTypes::F64 => Ok(ScalarType::F64),
         ASTTypes::Bool => Ok(ScalarType::Bool),
         ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
+        ASTTypes::Struct(_) => Err(String::from("Expected a scalar type, got struct")),
     }
 }
 
