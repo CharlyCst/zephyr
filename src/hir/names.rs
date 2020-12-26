@@ -2,21 +2,35 @@ use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, Package, UnaryOperator};
 use crate::error::Location;
 use crate::mir::Value as MirValue;
+use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
 pub type NameId = usize;
 pub type FunId = u64;
+pub type StructId = u64;
+pub type TypeNamespace = HashMap<StructId, Struct>;
 
-/// A type program, ready to be converted to MIR.
+/// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
+    pub structs: HashMap<StructId, Struct>,
     pub names: NameStore,
     pub types: TypeVarStore,
     pub constraints: ConstraintStore,
     pub package: Package,
+}
+
+/// All the kind of values that can be found in the Value Namespace.
+pub enum ValueKind {
+    Function(FunId, NameId),
+}
+
+/// All the kind of types that can be found in the Type Namespace.
+pub enum TypeKind {
+    Struct(StructId),
 }
 
 pub struct Imports {
@@ -46,9 +60,28 @@ pub struct FunctionPrototype {
     pub loc: Location,
 }
 
+pub struct Struct {
+    pub ident: String,
+    pub s_id: StructId,
+    pub fields: HashMap<String, StructField>,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct StructField {
+    pub is_pub: bool,
+    pub t: Type,
+    pub loc: Location,
+}
+
 #[derive(Clone)]
-pub enum Declaration {
+pub enum ValueDeclaration {
     Function { t: Type, fun_id: FunId },
+}
+
+#[derive(Clone)]
+pub enum TypeDeclaration {
+    Struct { struct_id: StructId },
 }
 
 pub enum Body {
@@ -122,6 +155,16 @@ pub enum Expression {
         fun_id: FunId,
         loc: Location,
     },
+    Access {
+        expr: Box<Expression>,
+        field: String,
+        t_id: TypeId,
+        loc: Location,
+    },
+    Namespace {
+        ident: String,
+        loc: Location,
+    },
     Binary {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
@@ -162,6 +205,8 @@ impl Expression {
                 Value::Float { loc, .. } => *loc,
             },
             Expression::Function { loc, .. } => *loc,
+            Expression::Access { loc, .. } => *loc,
+            Expression::Namespace { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,

@@ -11,7 +11,7 @@ const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
 const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
 const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
-pub use super::names::FunId;
+pub use super::names::{FunId, StructId};
 pub use crate::ast::Package;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
@@ -21,6 +21,7 @@ pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
     Tuple(TupleType),
+    Struct(StructId),
 }
 
 #[derive(Clone, Copy)]
@@ -173,6 +174,15 @@ pub enum Expression {
         t: FunctionType,
         loc: Location,
     },
+    Access {
+        expr: Box<Expression>,
+        field: String,
+        t: Type,
+        loc: Location,
+    },
+    Nop {
+        loc: Location,
+    },
 }
 
 pub enum Local {
@@ -278,6 +288,8 @@ impl Expression {
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,
             Expression::CallIndirect { loc, .. } => *loc,
+            Expression::Access { loc, .. } => *loc,
+            Expression::Nop { loc } => *loc,
         }
     }
 }
@@ -339,6 +351,7 @@ impl fmt::Display for Type {
         match self {
             Type::Scalar(t) => write!(f, "{}", t),
             Type::Fun(t) => write!(f, "{}", t),
+            Type::Struct(s_id) => write!(f, "struct #{}", s_id),
             Type::Tuple(t) => write!(
                 f,
                 "({})",
@@ -505,6 +518,8 @@ impl fmt::Display for Expression {
                 expr_right,
                 ..
             } => write!(f, "({} {} {})", expr_left, binop, expr_right),
+            Expression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+            Expression::Nop { .. } => write!(f, "nop"),
         }
     }
 }

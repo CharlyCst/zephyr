@@ -1,7 +1,7 @@
 use super::names;
+use crate::driver::PackageDeclarations;
 use crate::error::Location;
 use crate::hir::Package;
-use crate::driver::PackageDeclarations;
 
 use std::fmt;
 
@@ -12,9 +12,10 @@ pub mod id {
     pub const T_ID_FLOAT: usize = 3;
     pub const T_ID_NUMERIC: usize = 4;
     pub const T_ID_BASIC: usize = 5;
+    pub const T_ID_UNIT: usize = 6;
 }
 // Please update this const when adding/removing default T_ID
-const NB_DEFAULT_T_ID: usize = 6;
+const NB_DEFAULT_T_ID: usize = 7;
 
 pub type TypeId = usize;
 
@@ -29,6 +30,7 @@ pub enum Type {
     Unit,
     Bug, // Used to signal that an error occurred somewhere
     Fun(Vec<Type>, Vec<Type>),
+    Struct(names::StructId),
 }
 
 pub struct TypedProgram {
@@ -43,6 +45,7 @@ pub struct TypedProgram {
 pub enum TypeConstraint {
     Arguments(Vec<TypeId>, TypeId, Vec<Location>, Location), // Arguments(args_types, fun_type, args_loc, call_loc)
     Equality(TypeId, TypeId, Location),
+    Field(TypeId, TypeId, String, Location),    // a: t_1, b: t_2 => a.b: t_2
     Included(TypeId, TypeId, Location), // Included(t_1, t_2) <=> t_1 ⊂ y_2
     Return(TypeId, TypeId, Location),   // Return(fun_type, returned_type)
 }
@@ -67,7 +70,7 @@ impl ConstraintStore {
 }
 
 pub struct TypeStore {
-    types: Vec<Type>,
+    types: Vec<Type>, // We may want to switch to a HashMap to get globally unique t_id
 }
 
 impl TypeStore {
@@ -78,7 +81,7 @@ impl TypeStore {
             types.push(Type::Bug)
         }
         types[id::T_ID_BOOL] = Type::Bool; // This one is actually used as a result value
-        TypeStore { types: types }
+        TypeStore { types }
     }
 
     pub fn get(&self, id: TypeId) -> &Type {
@@ -124,6 +127,7 @@ impl TypeVarStore {
             Location::dummy(),
             vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64],
         );
+        store.fresh(Location::dummy(), vec![Type::Unit]);
 
         store
     }
@@ -140,7 +144,7 @@ impl TypeVarStore {
         candidate.sort_unstable(); // Ensure sorted elements
         let id = self.types.len();
         self.types.push(TypeVariable {
-            loc: loc,
+            loc,
             types: candidate,
         });
         id
@@ -195,6 +199,7 @@ impl fmt::Display for Type {
                     .join(", ");
                 write!(f, "fun({}) {}", p_types, r_types)
             }
+            Type::Struct(id) => write!(f, "struct #{}", id),
         }
     }
 }
@@ -253,6 +258,9 @@ impl fmt::Display for ConstraintStore {
                         .collect::<Vec<String>>()
                         .join(", ");
                     store.push_str(&format!("  {:>4} λ {}\n", fun_t, args))
+                }
+                TypeConstraint::Field(obj_t, field_t, ref field, _) => {
+                    store.push_str(&format!("  {:>4} .{} {:>3}\n", obj_t, field, field_t))
                 }
             };
         }

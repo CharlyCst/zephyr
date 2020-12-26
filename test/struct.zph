@@ -10,3 +10,7 @@ struct Point {
 fun main(): i32 {
 	return 42
 }
+
+fun manhattan_distance(p: Point): i32 {
+    return p.x + p.y
+}
