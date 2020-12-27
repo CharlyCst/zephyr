@@ -3,7 +3,7 @@
 <h1>Zephyr</h1>
 
 <div align="center">
-  <img src="./assets/zephyr.png"/>
+  <img src="./assets/zephyr_transparent.png"/>
 </div>
 
 <strong>A language built for WebAssembly</strong>
