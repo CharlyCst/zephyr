@@ -66,13 +66,19 @@ impl Driver {
                 .expect("Could not resolve directory root")
                 .to_owned();
         }
-        let (pkg_mir, mut error_handler) =
-            if let Ok(res) = self.get_package_mir(path, None, root_path, HashSet::new()) {
+        let (pkg_hir, mut error_handler) =
+            if let Ok(res) = self.get_package_hir(path, None, root_path, HashSet::new()) {
                 res
             } else {
                 exit!(self);
             };
-        let name = pkg_mir.name.clone();
+        if self.config.check {
+            self.err.merge(error_handler);
+            self.err.flush();
+            std::process::exit(0);
+        }
+        let name = pkg_hir.package.name.clone();
+        let pkg_mir = mir::to_mir(pkg_hir, &mut error_handler, &self.config);
         let binary = wasm::to_wasm(pkg_mir, &mut error_handler, &self.config);
         let output = if let Some(output) = &self.config.output {
             output.clone()
@@ -83,7 +89,7 @@ impl Driver {
         match fs::write(&output, binary) {
             Ok(_) => {
                 self.err.flush();
-                std::process::exit(0)
+                std::process::exit(0);
             }
             Err(e) => {
                 self.err.report_no_loc(e.to_string());
@@ -92,28 +98,28 @@ impl Driver {
         }
     }
 
-    /// Returns the MIR of the package located at the given path.
+    /// Returns the HIR of the package located at the given path.
     ///
     /// Params:
     ///  - path: Path to the target file or directory
     ///  - root: The root of the corresponding package, if known
     ///  - root_path: The path to the root of the package
     ///  - imported: A set of already imported packages, to prevent circular imports
-    fn get_package_mir<P: AsRef<Path>>(
+    fn get_package_hir<P: AsRef<Path>>(
         &mut self,
         path: P,
         root: Option<&str>,
         root_path: P,
         imported: HashSet<String>,
-    ) -> Result<(mir::Program, error::ErrorHandler), ()> {
+    ) -> Result<(hir::Program, error::ErrorHandler), ()> {
         // Get AST
         let (mut pkg_ast, mut error_handler) = self.get_package_ast(path)?;
         let root = root.unwrap_or(&pkg_ast.package.name);
-        // Prepare MIR
+        // Prepare HIR
         let mut package_import = HashSet::new();
         let mut namespaces = PublicDeclarations::new();
-        let mut mir_funs = Vec::new();
-        let mut mir_imports = Vec::new();
+        let mut hir_funs = Vec::new();
+        let mut hir_imports = Vec::new();
         let mut runtime_modules = HashSet::new();
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
@@ -128,12 +134,12 @@ impl Driver {
             } else if let Some((package_root, subpackage_path)) = split_package_name(&used.path) {
                 let mut imported = imported.clone();
                 imported.insert(used.path.clone());
-                let (sub_pkg_mir, err_handler) = if package_root == root {
+                let (sub_pkg_hir, err_handler) = if package_root == root {
                     // Current package
-                    self.get_subpackage_mir(&used, root, root_path.as_ref().to_owned(), imported)?
+                    self.get_subpackage_hir(&used, root, root_path.as_ref().to_owned(), imported)?
                 } else if let Some(package) = self.as_known_pachage(&package_root) {
                     // Known package
-                    self.get_known_package_mir(package, subpackage_path, imported)?
+                    self.get_known_package_hir(package, subpackage_path, imported)?
                 } else {
                     self.err
                         .report_no_loc(format!("Unknown package '{}'.", &used.path));
@@ -142,12 +148,12 @@ impl Driver {
                 };
                 // Merge package content
                 error_handler.merge(err_handler);
-                self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_mir.imports);
-                mir_funs.extend(sub_pkg_mir.funs);
-                mir_imports.extend(sub_pkg_mir.imports);
+                self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_hir.imports);
+                hir_funs.extend(sub_pkg_hir.funs);
+                hir_imports.extend(sub_pkg_hir.imports);
                 self.pub_decls
-                    .insert(used.path.clone(), sub_pkg_mir.pub_decls.clone());
-                sub_pkg_mir.pub_decls
+                    .insert(used.path.clone(), sub_pkg_hir.pub_decls.clone());
+                sub_pkg_hir.pub_decls
             } else {
                 self.err
                     .report_no_loc(format!("Use path is not well formatted '{}'.", &used.path));
@@ -160,21 +166,20 @@ impl Driver {
                 namespaces.insert(get_alias(&used.path).to_owned(), pub_decls);
             }
         }
-        let hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
-        let mut mir_program = mir::to_mir(hir_program, &mut error_handler, &self.config);
+        let mut hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
         // Insert imported functions
-        mir_program.funs.extend(mir_funs);
-        mir_program.imports.extend(mir_imports);
-        Ok((mir_program, error_handler))
+        hir_program.funs.extend(hir_funs);
+        hir_program.imports.extend(hir_imports);
+        Ok((hir_program, error_handler))
     }
 
-    /// Returns the MIR of a known package.
-    fn get_known_package_mir(
+    /// Returns the HIR of a known package.
+    fn get_known_package_hir(
         &mut self,
         package: KnownPackage,
         subpackage_path: Option<String>,
         imported: HashSet<String>,
-    ) -> Result<(mir::Program, error::ErrorHandler), ()> {
+    ) -> Result<(hir::Program, error::ErrorHandler), ()> {
         if let Some(known_package_path) = &self.known_package_path {
             let mut path = known_package_path.clone();
             let suffix = match package {
@@ -185,7 +190,7 @@ impl Driver {
             if let Some(subpackage_path) = subpackage_path {
                 path.extend(subpackage_path.split('/'));
             }
-            self.get_package_mir(path.clone(), Some(suffix), root_path, imported)
+            self.get_package_hir(path.clone(), Some(suffix), root_path, imported)
         } else {
             self.err.report_no_loc(format!(
                 "Can't localize standard packages, the environment variable {} is not set.",
@@ -195,20 +200,20 @@ impl Driver {
         }
     }
 
-    /// Returns the MIR of a subpackage
+    /// Returns the HIR of a subpackage
     ///
     /// params:
     ///  - used: zephyr 'use' declaration
     ///  - root: root of the package
     ///  - root_path: the path to the package root
     ///  - imported: a set of already imported packages
-    fn get_subpackage_mir(
+    fn get_subpackage_hir(
         &mut self,
         used: &ast::Use,
         root: &str,
         root_path: PathBuf,
         mut imported: HashSet<String>,
-    ) -> Result<(mir::Program, error::ErrorHandler), ()> {
+    ) -> Result<(hir::Program, error::ErrorHandler), ()> {
         let mut package_path = root_path.clone();
         package_path.push(strip_root(&used.path));
         if !package_path.exists() {
@@ -229,7 +234,7 @@ impl Driver {
             }
         }
         imported.insert(used.path.clone());
-        self.get_package_mir(package_path, Some(root), root_path, imported)
+        self.get_package_hir(package_path, Some(root), root_path, imported)
     }
 
     /// Returns the AST of the package located at the given path.
@@ -485,7 +490,7 @@ impl Driver {
     pub fn detect_duplicate_runtime_modules(
         &mut self,
         modules: &mut HashSet<String>,
-        imports: &Vec<mir::Imports>,
+        imports: &Vec<hir::Imports>,
     ) {
         for import in imports {
             if modules.contains(&import.from) {

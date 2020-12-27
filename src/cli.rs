@@ -3,7 +3,7 @@ extern crate clap;
 use clap::Clap;
 use std::path::PathBuf;
 
-/// The Fork compiler.
+/// The Zephyr compiler.
 #[derive(Clap, Debug)]
 #[clap(version = "0.1.0")]
 pub struct Config {
@@ -18,6 +18,10 @@ pub struct Config {
     /// Output location
     #[clap(short, long, parse(from_os_str))]
     pub output: Option<PathBuf>,
+
+    /// Type check the package
+    #[clap(long)]
+    pub check: bool,
 
     /// Exclude standard packages (core, std...)
     #[clap(long)]
