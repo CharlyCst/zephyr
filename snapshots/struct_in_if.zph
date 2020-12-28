@@ -1,0 +1,11 @@
+standalone package "struct_in_if"
+
+struct S { x: i32 }
+
+fun main(): i32 {
+    if S { x: 0 } == 0 {
+        return 0
+    }
+    return 1
+}
+

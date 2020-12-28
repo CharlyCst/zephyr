@@ -137,14 +137,38 @@ impl<'a> Parser<'a> {
     }
 
     /// Same as `next_match` but report an error if the token doesn't match
-    fn next_match_report(&mut self, t: TokenType, err: &str) -> bool {
+    fn next_match_report(&mut self, t: TokenType, err: &str) -> Result<(), ()> {
         if self.peek().t == t {
             self.advance();
-            true
+            Ok(())
         } else {
             let loc = self.peek().loc;
             self.err.report(loc, String::from(err));
-            false
+            Err(())
+        }
+    }
+
+    /// Same as `next_match` but report an error and synchronize to the next statement if the
+    /// token doesn't match.
+    fn next_match_report_synchronize(&mut self, t: TokenType, err: &str) -> Result<(), ()> {
+        match self.next_match_report(t, err) {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                self.synchronize();
+                return Err(());
+            }
+        }
+    }
+
+    /// Same as `next_match` but report an error and synchronize to the next declaration if the
+    /// token doesn't match.
+    fn next_match_report_synchronize_decl(&mut self, t: TokenType, err: &str) -> Result<(), ()> {
+        match self.next_match_report(t, err) {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                self.synchronize_decl();
+                return Err(());
+            }
         }
     }
 
@@ -157,7 +181,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Consumes until the next top level declaration
-    fn synchronize_fun(&mut self) {
+    fn synchronize_decl(&mut self) {
         let mut token = self.advance();
         while token.t != TokenType::Fun && !self.is_at_end() {
             token = self.advance();
@@ -191,7 +215,7 @@ impl<'a> Parser<'a> {
         } else {
             let loc = token.loc;
             self.err.report(loc, String::from(error_message));
-            self.synchronize_fun();
+            self.synchronize_decl();
             Err(())
         }
     }
@@ -213,13 +237,10 @@ impl<'a> Parser<'a> {
         } else {
             PackageKind::Package
         };
-        if !self.next_match_report(
+        self.next_match_report(
             TokenType::Package,
             "Programs must start with a package declaration",
-        ) {
-            return Err(());
-        }
-
+        )?;
         let token = self.advance();
         if let TokenType::StringLit(ref string) = token.t {
             let string = string.clone();
@@ -281,10 +302,7 @@ impl<'a> Parser<'a> {
     /// Parses the 'use' grammar element
     fn _use(&mut self) -> Result<Use, ()> {
         let start = self.peek().loc;
-        if !self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword") {
-            return Err(());
-        }
-
+        self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword")?;
         let token = self.advance();
         if let TokenType::StringLit(ref string) = token.t {
             let string = string.clone();
@@ -323,12 +341,10 @@ impl<'a> Parser<'a> {
     /// Parses the 'expose' grammar element
     fn expose(&mut self) -> Result<Expose, ()> {
         let start = self.peek().loc;
-        if !self.next_match_report(
+        self.next_match_report(
             TokenType::Expose,
             "Expose statement must start with 'expose' keyword",
-        ) {
-            return Err(());
-        }
+        )?;
         let ident = self.expect_identifier("'expose' keyword must be followed by an identifier")?;
         let alias = if self.next_match(TokenType::As) {
             let token = self.advance();
@@ -356,23 +372,17 @@ impl<'a> Parser<'a> {
 
     /// Parses the 'imports' grammar element
     fn imports(&mut self) -> Result<Imports, ()> {
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::From,
             "Expected 'from' to start an import declaration",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let loc = self.peek().loc;
         let from = self.expect_identifier("Expected a function identifier after 'import'")?;
         let loc = self.peek().loc.merge(loc);
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::Import,
             "Expected 'import' keyword after 'from' identifier",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let prototypes = self.import_block()?;
         self.consume_semi_colon();
         Ok(Imports {
@@ -384,13 +394,10 @@ impl<'a> Parser<'a> {
 
     /// Parses the 'import_block' grammar element
     fn import_block(&mut self) -> Result<Vec<FunctionPrototype>, ()> {
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::LeftBrace,
             "Expected a left brace '{' to open import block",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let mut prototypes = Vec::new();
         while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
             let next_expr = self.import();
@@ -405,10 +412,7 @@ impl<'a> Parser<'a> {
     /// Parses the 'import' grammar element
     fn import(&mut self) -> Result<FunctionPrototype, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        if !self.next_match_report(TokenType::Fun, "Unexpected function prototype") {
-            self.synchronize_fun();
-            return Err(());
-        }
+        self.next_match_report_synchronize_decl(TokenType::Fun, "Unexpected function prototype")?;
         let loc = self.peek().loc;
         let ident = if let Token {
             t: TokenType::Identifier(ref ident),
@@ -421,21 +425,18 @@ impl<'a> Parser<'a> {
                 loc,
                 String::from("Expected a function identifier after 'import'"),
             );
-            self.synchronize_fun();
+            self.synchronize_decl();
             return Err(());
         };
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::LeftPar,
             "Parenthesis are expected after import identifier",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let params = self.parameters();
-        if !self.next_match_report(TokenType::RightPar, "Expected a right parenthesis ')'") {
-            self.synchronize_fun();
-            return Err(());
-        }
+        self.next_match_report_synchronize_decl(
+            TokenType::RightPar,
+            "Expected a right parenthesis ')'",
+        )?;
         let result = self.result();
         let alias = if self.next_match(TokenType::As) {
             let token = self.advance();
@@ -467,10 +468,10 @@ impl<'a> Parser<'a> {
     /// Parses the 'struct" grammar element
     fn _struct(&mut self) -> Result<Struct, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        if !self.next_match_report(TokenType::Struct, "Unexpected top level declaration") {
-            self.synchronize_fun();
-            return Err(());
-        }
+        self.next_match_report_synchronize_decl(
+            TokenType::Struct,
+            "Unexpected top level declaration",
+        )?;
         let loc = self.peek().loc;
         let ident = self.expect_identifier("Expected identifier after 'struct' keyword")?;
         self.warn_if_struct_not_capitalized(&ident, loc);
@@ -485,13 +486,10 @@ impl<'a> Parser<'a> {
     }
 
     fn struct_block(&mut self) -> Result<Vec<StructField>, ()> {
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::LeftBrace,
             "Expected a left brace '{' to open struct definition block",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let mut fields = Vec::new();
         while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
             let next_expr = self.struct_field();
@@ -518,13 +516,10 @@ impl<'a> Parser<'a> {
             self.synchronize();
             return Err(());
         };
-        if !self.next_match_report(
+        self.next_match_report_synchronize(
             TokenType::Colon,
             "Expect a colon (`:`) after field identifier",
-        ) {
-            self.synchronize();
-            return Err(());
-        }
+        )?;
         let t_loc = self.peek().loc;
         let t = if let Token {
             t: TokenType::Identifier(ref t),
@@ -550,37 +545,28 @@ impl<'a> Parser<'a> {
     /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        if !self.next_match_report(TokenType::Fun, "Unexpected top level declaration") {
-            self.synchronize_fun();
-            return Err(());
-        }
+        self.next_match_report_synchronize_decl(
+            TokenType::Fun,
+            "Unexpected top level declaration",
+        )?;
         let loc = self.peek().loc;
         let ident = self.expect_identifier("Expected identifier after 'fun' keyword")?;
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::LeftPar,
             "Parenthesis are expected after function declaration",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let params = self.parameters();
-        if !self.next_match_report(
+        self.next_match_report_synchronize_decl(
             TokenType::RightPar,
             "Parenthesis are expected after function declaration",
-        ) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        )?;
         let result = self.result();
         let error = if result.is_some() {
             "A left brace '{' is expected at the beginning of the function body."
         } else {
             "Expected a type (': MyType') or a brace ('{')."
         };
-        if !self.next_match_report(TokenType::LeftBrace, error) {
-            self.synchronize_fun();
-            return Err(());
-        }
+        self.next_match_report_synchronize_decl(TokenType::LeftBrace, error)?;
         let block = self.block()?;
         self.consume_semi_colon();
         Ok(Function {
@@ -603,12 +589,11 @@ impl<'a> Parser<'a> {
         {
             let ident = param.clone();
             let var_loc = *var_loc;
-            if !self.next_match_report(
+            self.next_match_report(
                 TokenType::Colon,
                 "Expected a type after parameter identifier",
-            ) {
-                return params;
-            }
+            )
+            .ok();
             let token = self.advance();
             let loc = token.loc;
 
@@ -685,10 +670,8 @@ impl<'a> Parser<'a> {
 
     /// Parses the 'expr_stmt' grammar element
     fn expr_stmt(&mut self) -> Result<Statement, ()> {
-        let expr = self.expression()?;
-        if !self.next_match_report(TokenType::SemiColon, "This statement is not complete") {
-            return Err(());
-        }
+        let expr = self.expression(true)?;
+        self.next_match_report(TokenType::SemiColon, "This statement is not complete")?;
         Ok(Statement::ExprStmt {
             expr: Box::new(expr),
         })
@@ -711,14 +694,11 @@ impl<'a> Parser<'a> {
             }
         };
         let loc = *loc;
-        if !self.next_match_report(
+        self.next_match_report_synchronize(
             TokenType::Equal,
             "Assignment identifier is not followed by an \"=\"",
-        ) {
-            self.synchronize();
-            return Err(());
-        }
-        let expr = self.expression()?;
+        )?;
+        let expr = self.expression(true)?;
         self.consume_semi_colon();
         Ok(Statement::AssignStmt {
             var: Box::new(Variable {
@@ -749,14 +729,11 @@ impl<'a> Parser<'a> {
                 return Err(());
             }
         };
-        if !self.next_match_report(
+        self.next_match_report_synchronize(
             TokenType::Equal,
             "Let statement requires an \"=\" after the identifier",
-        ) {
-            self.synchronize();
-            return Err(());
-        }
-        let expr = self.expression()?;
+        )?;
+        let expr = self.expression(true)?;
         self.consume_semi_colon();
         Ok(Statement::LetStmt {
             var: Box::new(Variable {
@@ -772,24 +749,20 @@ impl<'a> Parser<'a> {
     /// been consumed )
     fn if_stmt(&mut self) -> Result<Statement, ()> {
         // The `if` token must have been consumed
-        let expr = self.expression()?;
-        if !self.next_match_report(
+        let expr = self.expression(false)?;
+        self.next_match_report(
             TokenType::LeftBrace,
             "If statement requires an \"{\" after the condition",
-        ) {
-            return Err(());
-        };
+        )?;
         let block = self.block()?;
 
         // Check for else clause
         if self.peek().t == TokenType::Else {
             self.advance();
-            if !self.next_match_report(
+            self.next_match_report(
                 TokenType::LeftBrace,
                 "If statement requires an \"{\" after else clause",
-            ) {
-                return Err(());
-            };
+            )?;
             let else_block = self.block()?;
             self.consume_semi_colon();
             Ok(Statement::IfStmt {
@@ -811,13 +784,11 @@ impl<'a> Parser<'a> {
     /// been consumed )
     fn while_stmt(&mut self) -> Result<Statement, ()> {
         // The `while` token must have been consumed
-        let expr = self.expression()?;
-        if !self.next_match_report(
+        let expr = self.expression(false)?;
+        self.next_match_report(
             TokenType::LeftBrace,
             "While statement requires an \"{\" after the condition",
-        ) {
-            return Err(());
-        };
+        )?;
         let block = self.block()?;
         self.consume_semi_colon();
         Ok(Statement::WhileStmt {
@@ -831,7 +802,7 @@ impl<'a> Parser<'a> {
     fn return_stmt(&mut self) -> Result<Statement, ()> {
         // The `return` token must have been consumed
         let loc = self.previous().loc;
-        let expr = self.expression();
+        let expr = self.expression(true);
         match expr {
             Ok(e) => {
                 self.consume_semi_colon();
@@ -864,15 +835,18 @@ impl<'a> Parser<'a> {
     /// precedence are directly baked into the grammar: the lowest priority
     /// elements are processed first, and will recursively call elements of
     /// higher priority
-    fn expression(&mut self) -> Result<Expression, ()> {
-        self.logical_or()
+    ///
+    /// Struct literals may be disallowed inside some expressions to remove ambiguity (consider `if
+    /// x == MyStruct {} {}`), in that case `struct_lit` should be set to `false`.
+    fn expression(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        self.logical_or(struct_lit)
     }
 
-    fn logical_or(&mut self) -> Result<Expression, ()> {
-        let mut left_and = self.logical_and()?;
+    fn logical_or(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_and = self.logical_and(struct_lit)?;
 
         while self.next_match(TokenType::OrOr) {
-            let right_and = self.logical_and()?;
+            let right_and = self.logical_and(struct_lit)?;
             left_and = Expression::Binary {
                 expr_left: Box::new(left_and),
                 binop: BinaryOperator::Or,
@@ -882,11 +856,11 @@ impl<'a> Parser<'a> {
         Ok(left_and)
     }
 
-    fn logical_and(&mut self) -> Result<Expression, ()> {
-        let mut left_eq = self.equality()?;
+    fn logical_and(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_eq = self.equality(struct_lit)?;
 
         while self.next_match(TokenType::AndAnd) {
-            let right_eq = self.logical_and()?;
+            let right_eq = self.logical_and(struct_lit)?;
             left_eq = Expression::Binary {
                 expr_left: Box::new(left_eq),
                 binop: BinaryOperator::And,
@@ -896,8 +870,8 @@ impl<'a> Parser<'a> {
         Ok(left_eq)
     }
 
-    fn equality(&mut self) -> Result<Expression, ()> {
-        let mut left_comp = self.comparison()?;
+    fn equality(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_comp = self.comparison(struct_lit)?;
 
         loop {
             let binop = match self.peek().t {
@@ -906,7 +880,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance();
-            let right_comp = self.comparison()?;
+            let right_comp = self.comparison(struct_lit)?;
             left_comp = Expression::Binary {
                 expr_left: Box::new(left_comp),
                 binop,
@@ -916,8 +890,8 @@ impl<'a> Parser<'a> {
         Ok(left_comp)
     }
 
-    fn comparison(&mut self) -> Result<Expression, ()> {
-        let mut left_b_or = self.bitwise_or()?;
+    fn comparison(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_b_or = self.bitwise_or(struct_lit)?;
 
         loop {
             let binop = match self.peek().t {
@@ -928,7 +902,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance();
-            let right_b_or = self.bitwise_or()?;
+            let right_b_or = self.bitwise_or(struct_lit)?;
             left_b_or = Expression::Binary {
                 expr_left: Box::new(left_b_or),
                 binop,
@@ -938,11 +912,11 @@ impl<'a> Parser<'a> {
         Ok(left_b_or)
     }
 
-    fn bitwise_or(&mut self) -> Result<Expression, ()> {
-        let mut left_b_and = self.bitwise_xor()?;
+    fn bitwise_or(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_b_and = self.bitwise_xor(struct_lit)?;
 
         while self.next_match(TokenType::Or) {
-            let right_b_and = self.bitwise_xor()?;
+            let right_b_and = self.bitwise_xor(struct_lit)?;
             left_b_and = Expression::Binary {
                 expr_left: Box::new(left_b_and),
                 binop: BinaryOperator::BitwiseOr,
@@ -952,11 +926,11 @@ impl<'a> Parser<'a> {
         Ok(left_b_and)
     }
 
-    fn bitwise_xor(&mut self) -> Result<Expression, ()> {
-        let mut left_b_and = self.bitwise_and()?;
+    fn bitwise_xor(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_b_and = self.bitwise_and(struct_lit)?;
 
         while self.next_match(TokenType::Hat) {
-            let right_b_and = self.bitwise_and()?;
+            let right_b_and = self.bitwise_and(struct_lit)?;
             left_b_and = Expression::Binary {
                 expr_left: Box::new(left_b_and),
                 binop: BinaryOperator::BitwiseXor,
@@ -966,11 +940,11 @@ impl<'a> Parser<'a> {
         Ok(left_b_and)
     }
 
-    fn bitwise_and(&mut self) -> Result<Expression, ()> {
-        let mut left_add = self.addition()?;
+    fn bitwise_and(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_add = self.addition(struct_lit)?;
 
         while self.next_match(TokenType::And) {
-            let right_add = self.addition()?;
+            let right_add = self.addition(struct_lit)?;
             left_add = Expression::Binary {
                 expr_left: Box::new(left_add),
                 binop: BinaryOperator::BitwiseAnd,
@@ -980,8 +954,8 @@ impl<'a> Parser<'a> {
         Ok(left_add)
     }
 
-    fn addition(&mut self) -> Result<Expression, ()> {
-        let mut left_mult = self.multiplication()?;
+    fn addition(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_mult = self.multiplication(struct_lit)?;
 
         loop {
             let binop = match self.peek().t {
@@ -990,7 +964,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance();
-            let right_mult = self.multiplication()?;
+            let right_mult = self.multiplication(struct_lit)?;
             left_mult = Expression::Binary {
                 expr_left: Box::new(left_mult),
                 binop,
@@ -1000,8 +974,8 @@ impl<'a> Parser<'a> {
         Ok(left_mult)
     }
 
-    fn multiplication(&mut self) -> Result<Expression, ()> {
-        let mut left_unary = self.unary()?;
+    fn multiplication(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut left_unary = self.unary(struct_lit)?;
 
         loop {
             let binop = match self.peek().t {
@@ -1011,7 +985,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance();
-            let right_unary = self.unary()?;
+            let right_unary = self.unary(struct_lit)?;
             left_unary = Expression::Binary {
                 expr_left: Box::new(left_unary),
                 binop,
@@ -1021,7 +995,7 @@ impl<'a> Parser<'a> {
         Ok(left_unary)
     }
 
-    fn unary(&mut self) -> Result<Expression, ()> {
+    fn unary(&mut self, struct_lit: bool) -> Result<Expression, ()> {
         let token = self.peek();
 
         match token.t {
@@ -1029,31 +1003,28 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Expression::Unary {
                     unop: UnaryOperator::Not,
-                    expr: Box::new(self.unary()?),
+                    expr: Box::new(self.unary(struct_lit)?),
                 })
             }
             TokenType::Minus => {
                 self.advance();
                 Ok(Expression::Unary {
                     unop: UnaryOperator::Minus,
-                    expr: Box::new(self.unary()?),
+                    expr: Box::new(self.unary(struct_lit)?),
                 })
             }
-            _ => self.call(),
+            _ => self.call(struct_lit),
         }
     }
 
-    fn call(&mut self) -> Result<Expression, ()> {
-        let mut expr = self.access()?;
+    fn call(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut expr = self.access(struct_lit)?;
         while self.next_match(TokenType::LeftPar) {
             let args = self.arguments();
-            if !self.next_match_report(
+            self.next_match_report_synchronize(
                 TokenType::RightPar,
                 "Expected a closing parenthesis `)` to function call",
-            ) {
-                self.synchronize();
-                return Err(());
-            }
+            )?;
             expr = Expression::Call {
                 fun: Box::new(expr),
                 args,
@@ -1062,12 +1033,12 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn access(&mut self) -> Result<Expression, ()> {
-        let mut namespace = self.primary()?;
+    fn access(&mut self, struct_lit: bool) -> Result<Expression, ()> {
+        let mut namespace = self.primary(struct_lit)?;
 
         loop {
             if self.next_match(TokenType::Dot) {
-                let field = self.primary()?;
+                let field = self.primary(struct_lit)?;
                 namespace = Expression::Access {
                     namespace: Box::new(namespace),
                     field: Box::new(field),
@@ -1079,7 +1050,7 @@ impl<'a> Parser<'a> {
         Ok(namespace)
     }
 
-    fn primary(&mut self) -> Result<Expression, ()> {
+    fn primary(&mut self, struct_lit: bool) -> Result<Expression, ()> {
         let token = self.advance();
 
         match &token.t {
@@ -1101,18 +1072,40 @@ impl<'a> Parser<'a> {
                     loc: token.loc,
                 },
             }),
-            TokenType::Identifier(ref x) => Ok(Expression::Variable {
-                var: Variable {
-                    ident: x.clone(),
-                    t: None,
-                    loc: token.loc,
-                },
-            }),
-            TokenType::LeftPar => {
-                let expr = self.expression()?;
-                if !self.next_match_report(TokenType::RightPar, "Expected closing parenthesis") {
-                    return Err(());
+            TokenType::Identifier(ref x) => {
+                let ident = x.clone();
+                let loc = token.loc;
+                if struct_lit && self.next_match(TokenType::LeftBrace) {
+                    // Struct instantiation
+                    let loc = loc.merge(self.peek().loc);
+                    let mut fields = Vec::new();
+                    while let Ok(field) = self.field() {
+                        fields.push(field);
+                        if !self.next_match(TokenType::Comma) {
+                            break;
+                        }
+                    }
+                    self.next_match_report_synchronize(
+                        TokenType::RightBrace,
+                        "Expect closing brace '}' after struct instantiation",
+                    )?;
+                    Ok(Expression::Literal {
+                        value: Value::Struct { ident, fields, loc },
+                    })
+                } else {
+                    // Variable
+                    Ok(Expression::Variable {
+                        var: Variable {
+                            ident,
+                            loc,
+                            t: None,
+                        },
+                    })
                 }
+            }
+            TokenType::LeftPar => {
+                let expr = self.expression(true)?;
+                self.next_match_report(TokenType::RightPar, "Expected closing parenthesis")?;
                 Ok(expr)
             }
             _ => Err(()),
@@ -1121,7 +1114,7 @@ impl<'a> Parser<'a> {
 
     fn arguments(&mut self) -> Vec<Expression> {
         let mut args = Vec::new();
-        while let Ok(expr) = self.expression() {
+        while let Ok(expr) = self.expression(true) {
             args.push(expr);
             if !self.next_match(TokenType::Comma) {
                 return args;
@@ -1129,6 +1122,23 @@ impl<'a> Parser<'a> {
         }
         self.back(); // expression consume one token when failing
         args
+    }
+
+    fn field(&mut self) -> Result<FieldValue, ()> {
+        let token = self.advance();
+        let loc = token.loc;
+        let ident = if let TokenType::Identifier(ident) = &token.t {
+            ident.clone()
+        } else {
+            self.err.report(loc, String::from("Expected struct field"));
+            return Err(());
+        };
+        self.next_match_report(
+            TokenType::Colon,
+            "Expect a colon (':') after struct field identifier",
+        )?;
+        let expr = Box::new(self.expression(true)?);
+        return Ok(FieldValue { ident, expr, loc });
     }
 
     // Helper functions

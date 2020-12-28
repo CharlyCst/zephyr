@@ -30,8 +30,8 @@ statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
 expr_stmt      -> expression ";"
 assign_stmt    -> IDENTIFIER = expression ";"
 let_stmt       -> "let" IDENTIFIER = expression ";"
-if_stmt        -> "if" expression block ("else" block) ";"
-while_stmt     -> "while" expression block ";"
+if_stmt        -> "if" expression¹ block ("else" block) ";"
+while_stmt     -> "while" expression¹ block ";"
 return_stmt    -> "return" expression? ";"
 
 block          -> "{" statement* "}"
@@ -49,9 +49,14 @@ multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
 call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
-primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | "false"
-                | "true" | "(" expression ")"
+primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | struct_literal
+                | "false" | "true" | "(" expression ")"
+
 arguments      -> ( expression ( "," expression )* ","? )?
+struct_literal -> IDENTIFIER "{" (field ( "," field )* ","?)? "}"
+field          -> IDENTIFIER ":" expression
+
+// expression¹: except `struct_literal`, but `struct_literal` are allowed inside parentheses.
 ```
 
 It is worth noting that there is no semi-colon `;` in Zephyr, but some are inserted by the scanner following Go-like rules.
