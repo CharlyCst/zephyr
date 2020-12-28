@@ -19,9 +19,29 @@ pub enum PackageKind {
 }
 
 pub enum Value {
-    Integer { val: u64, loc: Location },
-    Float { val: f64, loc: Location },
-    Boolean { val: bool, loc: Location },
+    Integer {
+        val: u64,
+        loc: Location,
+    },
+    Float {
+        val: f64,
+        loc: Location,
+    },
+    Boolean {
+        val: bool,
+        loc: Location,
+    },
+    Struct {
+        ident: String,
+        fields: Vec<FieldValue>,
+        loc: Location,
+    },
+}
+
+pub struct FieldValue {
+    pub ident: String,
+    pub expr: Box<Expression>,
+    pub loc: Location,
 }
 
 #[derive(Copy, Clone)]
@@ -351,6 +371,16 @@ impl fmt::Display for Expression {
                 Value::Boolean { val: false, .. } => write!(f, "false"),
                 Value::Integer { val: n, .. } => write!(f, "{}", n),
                 Value::Float { val: x, .. } => write!(f, "{}", x),
+                Value::Struct { ident, fields, .. } => write!(
+                    f,
+                    "{} {{ {} }}",
+                    ident,
+                    fields
+                        .iter()
+                        .map(|FieldValue { ident, expr, .. }| format!("{}: {}", ident, expr))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ),
             },
             Expression::Call { fun, args } => write!(
                 f,

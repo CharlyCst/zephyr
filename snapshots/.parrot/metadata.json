@@ -143,6 +143,18 @@
       "exit_code": 65,
       "stdout": "unauthorized-import.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr struct_in_if.zph",
+      "name": "struct-in-if",
+      "description": "A struct literal expression inside an 'if' statement causes an ambiguity, and thus has been disallowed.\nThe final user may encounter this error from time to time, it is thus of great importance to output a precise error message explaining the situation. To fix is to put parenthesis around the struct literal.\n#grammar #parser",
+      "tags": [
+        "grammar",
+        "parser"
+      ],
+      "exit_code": 65,
+      "stdout": "struct-in-if.out",
+      "stderr": null
     }
   ]
 }

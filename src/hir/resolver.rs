@@ -580,6 +580,7 @@ impl<'a> NameResolver<'a> {
                     };
                     Ok((expr, T_ID_BOOL))
                 }
+                ast::Value::Struct { .. } => unimplemented!()
             },
             ast::Expression::Variable { var } => {
                 if let Some(value) = state.value_namespace.get(&var.ident) {
