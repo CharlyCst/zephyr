@@ -233,6 +233,7 @@ impl<'a> MIRProducer<'a> {
                 V::Bool(val, _) => stmts.push(Statement::Const {
                     val: Value::I32(if *val { 1 } else { 0 }),
                 }),
+                V::Struct { .. } => unimplemented!(),
             },
             Expr::Variable { var } => stmts.push(Statement::Local {
                 local: Local::Get(var.n_id),
