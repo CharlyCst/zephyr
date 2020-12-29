@@ -1,10 +1,14 @@
-    3 | struct S { x: i32 }
-                          [31m^[0m
-[31m[1mError:[0m[31m Expect statement ender, try to add a line break[0m
+    6 |     if S { x: 0 } == 0 {
+                    [31m^[0m
+[31m[1mError:[0m[31m This statement is not complete[0m
 
-    5 | fun main(): i32 {
-        [31m^^^[0m
-[31m[1mError:[0m[31m Expect an identifier for the field[0m
+    6 |     if S { x: 0 } == 0 {
+                        [31m^[0m
+[31m[1mError:[0m[31m This statement is not complete[0m
+
+    6 |     if S { x: 0 } == 0 {
+                          [31m^^[0m
+[31m[1mError:[0m[31m Expect statement ender, try to add a line break[0m
 
     9 |     return 1
             [31m^^^^^^[0m
