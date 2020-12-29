@@ -45,10 +45,17 @@ pub struct TypedProgram {
 pub enum TypeConstraint {
     Arguments(Vec<TypeId>, TypeId, Vec<Location>, Location), // Arguments(args_types, fun_type, args_loc, call_loc)
     Equality(TypeId, TypeId, Location),
-    Field(TypeId, TypeId, String, Location),    // a: t_1, b: t_2 => a.b: t_2
-    Included(TypeId, TypeId, Location), // Included(t_1, t_2) <=> t_1 ⊂ y_2
-    Return(TypeId, TypeId, Location),   // Return(fun_type, returned_type)
+    Field(TypeId, TypeId, String, Location), // a: t_1, b: t_2 => a.b: t_2
+    Included(TypeId, TypeId, Location),      // Included(t_1, t_2) <=> t_1 ⊂ y_2
+    Return(TypeId, TypeId, Location),        // Return(fun_type, returned_type)
+    StructLiteral {
+        struct_t_id: TypeId,
+        fields: Vec<FieldContstraint>, // ident, t_id, loc
+        loc: Location,
+    },
 }
+
+pub type FieldContstraint = (String, TypeId, Location);
 
 pub struct ConstraintStore {
     constraints: Vec<TypeConstraint>,
@@ -175,6 +182,16 @@ impl<'a> IntoIterator for &'a ConstraintStore {
     }
 }
 
+impl IntoIterator for ConstraintStore {
+    type Item = TypeConstraint;
+    type IntoIter = std::vec::IntoIter<TypeConstraint>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let c = self.constraints;
+        c.into_iter()
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -261,6 +278,15 @@ impl fmt::Display for ConstraintStore {
                 }
                 TypeConstraint::Field(obj_t, field_t, ref field, _) => {
                     store.push_str(&format!("  {:>4} .{} {:>3}\n", obj_t, field, field_t))
+                }
+                TypeConstraint::StructLiteral {
+                    struct_t_id,
+                    fields,
+                    ..
+                } => {
+                    for (ref field, t_id, _) in fields {
+                        store.push_str(&format!("  {:>4} .{} {:>3}\n", struct_t_id, field, t_id))
+                    }
                 }
             };
         }

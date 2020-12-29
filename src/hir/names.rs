@@ -142,6 +142,19 @@ pub enum Value {
         loc: Location,
         t_id: TypeId,
     },
+    Struct {
+        ident: String,
+        loc: Location,
+        fields: Vec<FieldValue>,
+        t_id: TypeId,
+    },
+}
+
+pub struct FieldValue {
+    pub ident: String,
+    pub expr: Box<Expression>,
+    pub loc: Location,
+    pub t_id: TypeId,
 }
 
 pub enum Expression {
@@ -203,6 +216,7 @@ impl Expression {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
                 Value::Float { loc, .. } => *loc,
+                Value::Struct { loc, .. } => *loc,
             },
             Expression::Function { loc, .. } => *loc,
             Expression::Access { loc, .. } => *loc,

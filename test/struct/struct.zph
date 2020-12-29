@@ -8,8 +8,8 @@ struct Point {
 }
 
 fun main(): i32 {
-    let p = Point { x: 40, y: 2 }
-	return 42
+    let coordinates = Point { x: 40, y: 2 }
+	return manhattan_distance(coordinates)
 }
 
 fun manhattan_distance(p: Point): i32 {

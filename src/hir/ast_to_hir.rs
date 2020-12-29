@@ -105,6 +105,7 @@ impl<'a> HirProducer<'a> {
                 ASTTypes::F32 => Type::Scalar(ScalarType::F32),
                 ASTTypes::F64 => Type::Scalar(ScalarType::F64),
                 ASTTypes::Bool => Type::Scalar(ScalarType::I32),
+                ASTTypes::Struct(s_id) => Type::Struct(*s_id),
                 _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
             };
             locals.push(LocalVariable {
@@ -193,6 +194,26 @@ impl<'a> HirProducer<'a> {
                     V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
                         ASTTypes::Bool => Value::Bool(val, loc),
                         _ => return Err(String::from("Boolean constant of non boolean type.")),
+                    },
+                    V::Struct {
+                        fields, t_id, loc, ..
+                    } => match s.types.get(t_id) {
+                        ASTTypes::Struct(struct_id) => {
+                            let mut hir_fields = Vec::with_capacity(fields.len());
+                            for field in fields {
+                                hir_fields.push(FieldValue {
+                                    ident: field.ident,
+                                    loc: field.loc,
+                                    expr: Box::new(self.reduce_expr(*field.expr, s)?),
+                                });
+                            }
+                            Value::Struct {
+                                struct_id: *struct_id,
+                                fields: hir_fields,
+                                loc,
+                            }
+                        }
+                        _ => return Err(String::from("Struct literal of non struct type.")),
                     },
                 },
             }),

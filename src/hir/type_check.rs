@@ -1,8 +1,12 @@
 use super::names::{
-    Function, Imports, NameStore, ResolvedProgram, TypeDeclaration, TypeNamespace, ValueDeclaration,
+    Function, Imports, NameStore, ResolvedProgram, Struct, TypeDeclaration, TypeNamespace,
+    ValueDeclaration,
 };
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
-use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore, TypedProgram};
+use super::types::{
+    ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
+    TypedProgram,
+};
 use crate::driver::PackageDeclarations;
 use crate::error::{ErrorHandler, Location};
 
@@ -32,7 +36,7 @@ impl<'a> TypeChecker<'a> {
         while constraints.len() > 0 && progress {
             let mut new_constraints = ConstraintStore::new();
             progress = false;
-            for constr in &constraints {
+            for constr in constraints.into_iter() {
                 match self.apply_constr(constr, &mut type_vars, &mut new_constraints, &prog.structs)
                 {
                     Progress::Some => progress = true,
@@ -148,12 +152,12 @@ impl<'a> TypeChecker<'a> {
     /// Progress can be made or not, depending on the state of the store.
     fn apply_constr(
         &mut self,
-        constr: &TypeConstraint,
+        constr: TypeConstraint,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
     ) -> Progress {
-        match *constr {
+        match constr {
             TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
                 self.constr_equality(t_id_1, t_id_2, loc, store, constraints)
             }
@@ -169,13 +173,18 @@ impl<'a> TypeChecker<'a> {
             TypeConstraint::Arguments(ref args_t_id, fun_t_id, ref locs, loc) => {
                 self.constr_arguments(&args_t_id, fun_t_id, &locs, loc, store, constraints)
             }
+            TypeConstraint::StructLiteral {
+                struct_t_id,
+                fields,
+                loc,
+            } => self.constr_struct(struct_t_id, fields, loc, store, constraints, types),
         }
     }
 
     fn constr_equality(
         &mut self,
-        t_id_1: usize,
-        t_id_2: usize,
+        t_id_1: TypeId,
+        t_id_2: TypeId,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
@@ -246,8 +255,8 @@ impl<'a> TypeChecker<'a> {
 
     fn constr_included(
         &mut self,
-        t_id_1: usize,
-        t_id_2: usize,
+        t_id_1: TypeId,
+        t_id_2: TypeId,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
@@ -305,8 +314,8 @@ impl<'a> TypeChecker<'a> {
 
     fn constr_return(
         &mut self,
-        t_id_fun: usize,
-        t_id: usize,
+        t_id_fun: TypeId,
+        t_id: TypeId,
         _loc: Location,
         store: &mut TypeVarStore,
         _constraints: &mut ConstraintStore,
@@ -368,40 +377,23 @@ impl<'a> TypeChecker<'a> {
 
     fn constr_field(
         &mut self,
-        struct_t_id: usize,
-        field_t_id: usize,
+        struct_t_id: TypeId,
+        field_t_id: TypeId,
         field: &String,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
     ) -> Progress {
-        let t_struct = store.get(struct_t_id);
-        if t_struct.types.len() > 1 {
-            self.err
-                .report(t_struct.loc, String::from("Ambiguous type"));
-        }
-        let t_struct = if let Some(t) = t_struct.types.first() {
-            t
-        } else {
-            self.err.report(loc, String::from("Could not infer type"));
-            return Progress::Error;
-        };
-        let s_id = match t_struct {
-            Type::Struct(s_id) => s_id,
-            _ => {
-                self.err.report(
-                    loc,
-                    String::from("Could not access field of non struct type"),
-                );
-                return Progress::Error;
-            }
-        };
-        let struc = if let Some(struc) = types.get(&s_id) {
+        let struc = if let Ok(struc) = self.get_struct_from_t_id(
+            struct_t_id,
+            loc,
+            "Can not access field of a non struct type",
+            types,
+            store,
+        ) {
             struc
         } else {
-            self.err
-                .report_internal(loc, format!("No types with id '{}'", s_id));
             return Progress::Error;
         };
         if let Some(field) = struc.fields.get(field) {
@@ -415,10 +407,73 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn constr_struct(
+        &mut self,
+        struct_t_id: TypeId,
+        fields: Vec<FieldContstraint>,
+        loc: Location,
+        store: &mut TypeVarStore,
+        constraints: &mut ConstraintStore,
+        types: &TypeNamespace,
+    ) -> Progress {
+        let struc = if let Ok(struc) = self.get_struct_from_t_id(
+            struct_t_id,
+            loc,
+            "Can not access field of a non struct type",
+            types,
+            store,
+        ) {
+            struc
+        } else {
+            return Progress::Error;
+        };
+        let mut ok = true;
+        let fields_len = fields.len();
+
+        // type check each field
+        for (field, f_t_id, field_loc) in &fields {
+            if let Some(field_def) = struc.fields.get(field) {
+                let t_id = store.fresh(*field_loc, vec![field_def.t.clone()]);
+                constraints.add(TypeConstraint::Equality(t_id, *f_t_id, *field_loc));
+            } else {
+                self.err
+                    .report(*field_loc, format!("Field '{}' does not exist", field));
+                ok = false;
+            }
+        }
+
+        // Missing fields
+        if fields_len < struc.fields.len() {
+            // Rare event, simple but not very efficient code
+            let fields = fields
+                .iter()
+                .map(|(field, _, _)| field.as_str())
+                .collect::<Vec<&str>>();
+            let mut missing_fields = Vec::new();
+            for (ref field, _) in &struc.fields {
+                if !fields.contains(&field.as_str()) {
+                    missing_fields.push((*field).to_owned());
+                }
+            }
+            missing_fields.sort();
+            self.err.report(
+                loc,
+                format!("Missing fields: '{}'", missing_fields.join("', '")),
+            );
+            return Progress::Error;
+        }
+
+        if ok {
+            Progress::Some
+        } else {
+            Progress::Error
+        }
+    }
+
     fn constr_arguments(
         &mut self,
-        args_t_id: &Vec<usize>,
-        fun_t_id: usize,
+        args_t_id: &Vec<TypeId>,
+        fun_t_id: TypeId,
         locs: &Vec<Location>, // Arguments location
         loc: Location,        // Function location
         store: &mut TypeVarStore,
@@ -459,5 +514,44 @@ impl<'a> TypeChecker<'a> {
             self.err.report(loc, String::from("Call a non-function"));
             Progress::Error
         }
+    }
+
+    /// Get a `&Struct` from a `TypeID` that is supposed to represent a struct.
+    /// This will raise an error if the type is ambiguous (more than 1 candidate), if there is no
+    /// candidate or if the type does not represent a struct.
+    fn get_struct_from_t_id<'t>(
+        &mut self,
+        struct_t_id: TypeId,
+        loc: Location,
+        error: &str,
+        types: &'t TypeNamespace,
+        store: &mut TypeVarStore,
+    ) -> Result<&'t Struct, ()> {
+        let t_struct = store.get(struct_t_id);
+        if t_struct.types.len() > 1 {
+            self.err
+                .report(t_struct.loc, String::from("Ambiguous type"));
+        }
+        let t_struct = if let Some(t) = t_struct.types.first() {
+            t
+        } else {
+            self.err.report(loc, String::from("Could not infer type"));
+            return Err(());
+        };
+        let s_id = match t_struct {
+            Type::Struct(s_id) => s_id,
+            _ => {
+                self.err.report(loc, String::from(error));
+                return Err(());
+            }
+        };
+        let struc = if let Some(struc) = types.get(&s_id) {
+            struc
+        } else {
+            self.err
+                .report_internal(loc, format!("No types with id '{}'", s_id));
+            return Err(());
+        };
+        Ok(struc)
     }
 }

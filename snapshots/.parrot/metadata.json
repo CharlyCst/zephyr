@@ -155,6 +155,28 @@
       "exit_code": 65,
       "stdout": "struct-in-if.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr missing_fields.zph",
+      "name": "missing-fields",
+      "description": "When instantiating a struct with fewer fields than needed, an error message should indicate the missing fields.\n#typing",
+      "tags": [
+        "typing"
+      ],
+      "exit_code": 65,
+      "stdout": "missing-fields.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr too_many_fields.zph",
+      "name": "too-many-fields",
+      "description": "When instantiating a struct with fields that does not exist, the compiler should indicate which fields should be removed.\n#typing",
+      "tags": [
+        "typing"
+      ],
+      "exit_code": 65,
+      "stdout": "too-many-fields.out",
+      "stderr": null
     }
   ]
 }

@@ -223,6 +223,17 @@ pub enum Value {
     F32(f32, Location),
     F64(f64, Location),
     Bool(bool, Location),
+    Struct {
+        struct_id: StructId,
+        fields: Vec<FieldValue>,
+        loc: Location,
+    },
+}
+
+pub struct FieldValue {
+    pub ident: String,
+    pub expr: Box<Expression>,
+    pub loc: Location,
 }
 
 /// The available unary operations, type represents operant type.
@@ -283,6 +294,7 @@ impl Expression {
                 Value::I64(_, loc) => *loc,
                 Value::I32(_, loc) => *loc,
                 Value::Bool(_, loc) => *loc,
+                Value::Struct { loc, .. } => *loc,
             },
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
@@ -573,6 +585,18 @@ impl fmt::Display for Value {
                     write!(f, "false")
                 }
             }
+            Value::Struct {
+                struct_id, fields, ..
+            } => write!(
+                f,
+                "struct #{} {{ {} }}",
+                struct_id,
+                fields
+                    .iter()
+                    .map(|f| f.ident.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", ")
+            ),
         }
     }
 }

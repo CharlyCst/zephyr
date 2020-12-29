@@ -1,0 +1,8 @@
+   10 |     let s = S { a: 0, b: 42, c: 14 }
+                              [31m^[0m
+[31m[1mError:[0m[31m Field 'b' does not exist[0m
+
+   10 |     let s = S { a: 0, b: 42, c: 14 }
+                                     [31m^[0m
+[31m[1mError:[0m[31m Field 'c' does not exist[0m
+

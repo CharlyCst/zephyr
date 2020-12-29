@@ -580,7 +580,37 @@ impl<'a> NameResolver<'a> {
                     };
                     Ok((expr, T_ID_BOOL))
                 }
-                ast::Value::Struct { .. } => unimplemented!()
+                ast::Value::Struct { ident, fields, loc } => {
+                    let t = self.get_type(&ident, *loc, state);
+                    let t_id = state.types.fresh(*loc, vec![t]);
+                    let n = fields.len();
+                    let mut hir_fields = Vec::with_capacity(n);
+                    let mut field_constraints = Vec::with_capacity(n);
+                    for field in fields {
+                        let (expr, field_t_id) = self.resolve_expression(&mut field.expr, state)?;
+                        hir_fields.push(FieldValue {
+                            ident: field.ident.clone(),
+                            expr: Box::new(expr),
+                            t_id: field_t_id,
+                            loc: field.loc,
+                        });
+                        field_constraints.push((field.ident.clone(), field_t_id, field.loc));
+                    }
+                    state.new_constraint(TypeConstraint::StructLiteral {
+                        struct_t_id: t_id,
+                        fields: field_constraints,
+                        loc: *loc,
+                    });
+                    let expr = Expression::Literal {
+                        value: Value::Struct {
+                            ident: ident.clone(),
+                            loc: *loc,
+                            fields: hir_fields,
+                            t_id,
+                        },
+                    };
+                    Ok((expr, t_id))
+                }
             },
             ast::Expression::Variable { var } => {
                 if let Some(value) = state.value_namespace.get(&var.ident) {
