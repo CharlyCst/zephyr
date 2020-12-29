@@ -706,14 +706,18 @@ impl<'a> NameResolver<'a> {
                         let (expr, _) = self.resolve_expression(field, state)?;
                         self.err.report(
                             expr.get_loc(),
-                            String::from("The left operand of an access must be an identifier."),
+                            String::from("The right operand of an access must be an identifier."),
                         );
                         return Err(());
                     }
                 };
                 let (expr, obj_t_id) = self.resolve_expression(namespace, state)?;
                 match expr {
-                    Expression::Variable { .. } | Expression::Access { .. } => {
+                    Expression::Variable { .. }
+                    | Expression::Access { .. }
+                    | Expression::Literal {
+                        value: Value::Struct { .. },
+                    } => {
                         // Access to a struct field
                         let field_t_id = state.types.fresh(loc_field, vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Field(
@@ -762,7 +766,7 @@ impl<'a> NameResolver<'a> {
                     _ => {
                         self.err.report(
                             expr.get_loc(),
-                            String::from("The left operand of an access must be an identifier."),
+                            String::from("The left operand of an access must be an identifier or struct literal."),
                         );
                         return Err(());
                     }

@@ -491,17 +491,20 @@ impl<'a> Parser<'a> {
             "Expected a left brace '{' to open struct definition block",
         )?;
         let mut fields = Vec::new();
-        while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
-            let next_expr = self.struct_field();
-            match next_expr {
-                Ok(field) => fields.push(field),
-                Err(()) => (),
+        while let Some(field) = self.struct_field() {
+            fields.push(field);
+            if !self.next_match(TokenType::Comma) && !self.next_match(TokenType::SemiColon) {
+                break;
             }
         }
+        self.next_match_report(
+            TokenType::RightBrace,
+            "Expect a right brace ('}') after a struct declaration",
+        )?;
         Ok(fields)
     }
 
-    fn struct_field(&mut self) -> Result<StructField, ()> {
+    fn struct_field(&mut self) -> Option<StructField> {
         let is_pub = self.next_match(TokenType::Pub);
         let loc = self.peek().loc;
         let ident = if let Token {
@@ -511,15 +514,17 @@ impl<'a> Parser<'a> {
         {
             ident.clone()
         } else {
-            self.err
-                .report(loc, String::from("Expect an identifier for the field"));
-            self.synchronize();
-            return Err(());
+            // Restore initial state
+            self.back();
+            if is_pub {
+                self.back();
+            }
+            return None
         };
         self.next_match_report_synchronize(
             TokenType::Colon,
             "Expect a colon (`:`) after field identifier",
-        )?;
+        ).ok()?;
         let t_loc = self.peek().loc;
         let t = if let Token {
             t: TokenType::Identifier(ref t),
@@ -530,11 +535,10 @@ impl<'a> Parser<'a> {
         } else {
             self.err.report(t_loc, String::from("Expect a type"));
             self.synchronize();
-            return Err(());
+            return None;
         };
-        self.consume_semi_colon();
         let loc = loc.merge(t_loc);
-        Ok(StructField {
+        Some(StructField {
             is_pub,
             ident,
             t,
@@ -1077,14 +1081,8 @@ impl<'a> Parser<'a> {
                 let loc = token.loc;
                 if struct_lit && self.next_match(TokenType::LeftBrace) {
                     // Struct instantiation
+                    let fields = self.struct_literal()?;
                     let loc = loc.merge(self.peek().loc);
-                    let mut fields = Vec::new();
-                    while let Ok(field) = self.field() {
-                        fields.push(field);
-                        if !self.next_match(TokenType::Comma) {
-                            break;
-                        }
-                    }
                     self.next_match_report_synchronize(
                         TokenType::RightBrace,
                         "Expect closing brace '}' after struct instantiation",
@@ -1124,21 +1122,34 @@ impl<'a> Parser<'a> {
         args
     }
 
-    fn field(&mut self) -> Result<FieldValue, ()> {
+    /// Expects that `IDENTIFIER` and `{` have been consumed, does not consume final `}`.
+    fn struct_literal(&mut self) -> Result<Vec<FieldValue>, ()> {
+        let mut fields = Vec::new();
+        while let Some(field) = self.field() {
+            fields.push(field);
+            if !self.next_match(TokenType::Comma) && !self.next_match(TokenType::SemiColon) {
+                break;
+            }
+        }
+        Ok(fields)
+    }
+
+    fn field(&mut self) -> Option<FieldValue> {
         let token = self.advance();
         let loc = token.loc;
         let ident = if let TokenType::Identifier(ident) = &token.t {
             ident.clone()
         } else {
-            self.err.report(loc, String::from("Expected struct field"));
-            return Err(());
+            // Restore initial state
+            self.back();
+            return None;
         };
         self.next_match_report(
             TokenType::Colon,
             "Expect a colon (':') after struct field identifier",
-        )?;
-        let expr = Box::new(self.expression(true)?);
-        return Ok(FieldValue { ident, expr, loc });
+        ).ok()?;
+        let expr = Box::new(self.expression(true).ok()?);
+        return Some(FieldValue { ident, expr, loc });
     }
 
     // Helper functions

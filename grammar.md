@@ -19,8 +19,8 @@ struct         -> "pub"? struct IDENTIFIER struct_block  ";"
 import_block   -> "{" import* "}"
 import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
 
-struct_block   -> "{" struct_field* "}"
-struct_field   -> "pub"? IDENTIFIER ":" IDENTIFIER ";"
+struct_block   -> "{" ( struct_field ( ("," | ";") struct_field )* ("," | ";")? )? "}"
+struct_field   -> "pub"? IDENTIFIER ":" IDENTIFIER
 
 parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
 result         -> (":" IDENTIFIER)?
@@ -53,7 +53,7 @@ primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | struct_literal
                 | "false" | "true" | "(" expression ")"
 
 arguments      -> ( expression ( "," expression )* ","? )?
-struct_literal -> IDENTIFIER "{" (field ( "," field )* ","?)? "}"
+struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"
 field          -> IDENTIFIER ":" expression
 
 // expression¹: except `struct_literal`, but `struct_literal` are allowed inside parentheses.
