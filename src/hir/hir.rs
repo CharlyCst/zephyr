@@ -16,7 +16,7 @@ pub use crate::ast::Package;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
@@ -24,7 +24,7 @@ pub enum Type {
     Struct(StructId),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ScalarType {
     I32,
     I64,
@@ -33,13 +33,13 @@ pub enum ScalarType {
     Bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum IntegerType {
     I32,
     I64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     I32,
     I64,
@@ -49,7 +49,7 @@ pub enum NumericType {
 
 pub type TupleType = Vec<Type>;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub ret: TupleType,
@@ -66,6 +66,15 @@ pub struct Program {
     pub imports: Vec<Imports>,
     pub pub_decls: PackageDeclarations,
     pub package: Package,
+}
+
+impl Program {
+    /// Merge external HIR declaration into this program, this is used typically to collect all
+    /// declarations before building the MIR.
+    pub fn merge(&mut self, funs: Vec<Function>, imports: Vec<Imports>) {
+        self.funs.extend(funs);
+        self.imports.extend(imports);
+    }
 }
 
 pub struct Imports {
