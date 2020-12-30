@@ -66,19 +66,27 @@ impl Driver {
                 .expect("Could not resolve directory root")
                 .to_owned();
         }
-        let (pkg_hir, mut error_handler) =
+        // Collect runtime functions and the package hir
+        let (core_hir, core_funs, core_error_handler) = if let Ok(res) = self.get_core_funs() {
+            res
+        } else {
+            exit!(self);
+        };
+        let (mut pkg_hir, mut error_handler) =
             if let Ok(res) = self.get_package_hir(path, None, root_path, HashSet::new()) {
                 res
             } else {
                 exit!(self);
             };
+        error_handler.merge(core_error_handler);
+        pkg_hir.merge(core_hir.funs, core_hir.imports);
         if self.config.check {
             self.err.merge(error_handler);
             self.err.flush();
             std::process::exit(0);
         }
         let name = pkg_hir.package.name.clone();
-        let pkg_mir = mir::to_mir(pkg_hir, &mut error_handler, &self.config);
+        let pkg_mir = mir::to_mir(pkg_hir, core_funs, &mut error_handler, &self.config);
         let binary = wasm::to_wasm(pkg_mir, &mut error_handler, &self.config);
         let output = if let Some(output) = &self.config.output {
             output.clone()
@@ -168,12 +176,16 @@ impl Driver {
         }
         let mut hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
         // Insert imported functions
-        hir_program.funs.extend(hir_funs);
-        hir_program.imports.extend(hir_imports);
+        hir_program.merge(hir_funs, hir_imports);
         Ok((hir_program, error_handler))
     }
 
     /// Returns the HIR of a known package.
+    ///
+    /// params:
+    ///  - package: the desired package.
+    ///  - subpackage_path: an optional path to a subpackage.
+    ///  - imported: a hashset of packages already imported, to avoid circular imports.
     fn get_known_package_hir(
         &mut self,
         package: KnownPackage,
@@ -273,12 +285,8 @@ impl Driver {
         }
 
         // Merge package ASTs
-        let mut funs = Vec::new();
-        let mut structs = Vec::new();
-        let mut exposed = Vec::new();
-        let mut imports = Vec::new();
-        let mut used = Vec::new();
         let mut error_handler: Option<error::ErrorHandler> = None;
+        let mut package: Option<ast::Program> = None;
         let mut package_definition: Option<ast::Package> = None;
 
         // Iterate over ast_program of all zephyr files in the folder
@@ -299,11 +307,11 @@ impl Driver {
                     } else {
                         error_handler = Some(err_handler);
                     }
-                    funs.extend(ast.funs);
-                    structs.extend(ast.structs);
-                    exposed.extend(ast.exposed);
-                    imports.extend(ast.imports);
-                    used.extend(ast.used);
+                    if let Some(ref mut pkg) = package {
+                        pkg.merge(ast);
+                    } else {
+                        package = Some(ast);
+                    }
                 }
                 ast::PackageType::Standalone => {
                     // Discard any standalone package if compiling the standard package of the directory
@@ -315,29 +323,18 @@ impl Driver {
                             ))
                         }
                         error_handler = Some(err_handler);
-                        package_definition = Some(ast.package);
-                        funs.extend(ast.funs);
-                        structs.extend(ast.structs);
-                        exposed.extend(ast.exposed);
-                        imports.extend(ast.imports);
-                        used.extend(ast.used);
+                        if let Some(ref mut pkg) = package {
+                            pkg.merge(ast);
+                        } else {
+                            package = Some(ast);
+                        }
                     }
                 }
             }
         }
         // Validate and build final package
-        if let (Some(package), Some(error_handler)) = (package_definition, error_handler) {
-            Ok((
-                ast::Program {
-                    package,
-                    funs,
-                    structs,
-                    exposed,
-                    imports,
-                    used,
-                },
-                error_handler,
-            ))
+        if let (Some(error_handler), Some(pkg)) = (error_handler, package) {
+            Ok((pkg, error_handler))
         } else {
             self.err.report_no_loc(format!(
                 "Could not find a valid package at '{}'.",
@@ -502,5 +499,23 @@ impl Driver {
                 modules.insert(import.from.clone());
             }
         }
+    }
+
+    /// Collect HIR of the `core` package and extract functions that are needed by the compiler.
+    ///
+    /// ! This must be called before parsing any other package and the resulting HIR must be merged
+    /// into the package HIR before the MIR phases (as it contains the needed functions).
+    ///
+    /// return:
+    ///  - hir::program: The HIR of the core module.
+    ///  - mir::KnownFunctions: the function IDs of functions expected by the compiler.
+    ///  - error:ErrorHandler: the handler that collected potential errors.
+    pub fn get_core_funs(
+        &mut self,
+    ) -> Result<(hir::Program, mir::KnownFunctions, error::ErrorHandler), ()> {
+        let (core_hir, mut error_handler) =
+            self.get_known_package_hir(KnownPackage::Core, None, HashSet::new())?;
+        let funs = mir::KnownFunctions::from_hir(&core_hir, &mut error_handler);
+        Ok((core_hir, funs, error_handler))
     }
 }

@@ -1,4 +1,5 @@
 use super::mir::*;
+use super::KnownFunctions;
 
 use crate::error::ErrorHandler;
 use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
@@ -33,11 +34,15 @@ impl State {
 
 pub struct MIRProducer<'a> {
     err: &'a mut ErrorHandler,
+    funs: KnownFunctions,
 }
 
 impl<'a> MIRProducer<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> MIRProducer {
-        MIRProducer { err: error_handler }
+    pub fn new(funs: KnownFunctions, error_handler: &mut ErrorHandler) -> MIRProducer {
+        MIRProducer {
+            funs,
+            err: error_handler,
+        }
     }
 
     /// Lower a typed program to MIR

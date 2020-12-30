@@ -154,6 +154,21 @@ pub struct Program {
     pub used: Vec<Use>,
 }
 
+impl Program {
+    /// Merges the properties of another AST into this one, this is used for instance when a
+    /// package spans multiples files to get back a single AST.
+    ///
+    /// The `Package` property is kept, it is the responsibility of the caller to ensure that
+    /// packages are merged in a coherent fashion.
+    pub fn merge(&mut self, other: Self) {
+        self.funs.extend(other.funs);
+        self.structs.extend(other.structs);
+        self.exposed.extend(other.exposed);
+        self.imports.extend(other.imports);
+        self.used.extend(other.used);
+    }
+}
+
 #[derive(Clone)]
 pub struct Package {
     pub id: u32,
