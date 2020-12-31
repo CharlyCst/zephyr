@@ -711,7 +711,7 @@ impl<'a> NameResolver<'a> {
                         return Err(());
                     }
                 };
-                let (expr, obj_t_id) = self.resolve_expression(namespace, state)?;
+                let (expr, struct_t_id) = self.resolve_expression(namespace, state)?;
                 match expr {
                     Expression::Variable { .. }
                     | Expression::Access { .. }
@@ -721,7 +721,7 @@ impl<'a> NameResolver<'a> {
                         // Access to a struct field
                         let field_t_id = state.types.fresh(loc_field, vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Field(
-                            obj_t_id,
+                            struct_t_id,
                             field_t_id,
                             field.clone(),
                             loc_field,
@@ -730,6 +730,7 @@ impl<'a> NameResolver<'a> {
                             expr: Box::new(expr),
                             loc: loc_field,
                             t_id: field_t_id,
+                            struct_t_id,
                             field,
                         };
                         Ok((expr, field_t_id))

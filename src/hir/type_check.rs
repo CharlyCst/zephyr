@@ -1,6 +1,6 @@
+use super::names;
 use super::names::{
-    Function, Imports, NameStore, ResolvedProgram, Struct, TypeDeclaration, TypeNamespace,
-    ValueDeclaration,
+    Function, Imports, NameStore, ResolvedProgram, TypeDeclaration, TypeNamespace, ValueDeclaration,
 };
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{
@@ -59,6 +59,7 @@ impl<'a> TypeChecker<'a> {
         TypedProgram {
             funs: prog.funs,
             imports: prog.imports,
+            structs: prog.structs,
             names: prog.names,
             types: store,
             pub_decls,
@@ -526,7 +527,7 @@ impl<'a> TypeChecker<'a> {
         error: &str,
         types: &'t TypeNamespace,
         store: &mut TypeVarStore,
-    ) -> Result<&'t Struct, ()> {
+    ) -> Result<&'t names::Struct, ()> {
         let t_struct = store.get(struct_t_id);
         if t_struct.types.len() > 1 {
             self.err

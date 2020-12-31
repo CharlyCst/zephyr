@@ -16,6 +16,6 @@ fun main(): i32 {
         y: 42, z: 5
     }
     let circle = Circle { radius: 3, center: p }
-	return 0
+	return 42
 }
 

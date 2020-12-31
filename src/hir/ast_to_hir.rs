@@ -2,12 +2,14 @@ use super::hir::*;
 use super::names::{
     Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun,
     FunctionPrototype as NameFunProto, Imports as NameImports, NameStore, Statement as S,
-    Value as V, Variable as NameVariable,
+    Struct as NameStruct, Value as V, Variable as NameVariable,
 };
 use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
 
 use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use crate::error::{ErrorHandler, Location};
+
+use std::collections::HashMap;
 
 struct State {
     pub names: NameStore,
@@ -34,6 +36,7 @@ impl<'a> HirProducer<'a> {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
         let mut imports = Vec::with_capacity(prog.imports.len());
+        let mut structs = HashMap::with_capacity(prog.structs.len());
 
         for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
@@ -49,9 +52,19 @@ impl<'a> HirProducer<'a> {
             }
         }
 
+        for (s_id, s) in prog.structs {
+            match self.reduce_struct(s) {
+                Ok(s) => {
+                    structs.insert(s_id, s);
+                }
+                Err(err) => self.err.report_internal_no_loc(err),
+            }
+        }
+
         Program {
             funs,
-            imports: imports,
+            imports,
+            structs,
             pub_decls: prog.pub_decls,
             package: prog.package,
         }
@@ -322,16 +335,24 @@ impl<'a> HirProducer<'a> {
                 expr,
                 field,
                 t_id,
+                struct_t_id,
                 loc,
             } => {
                 let expr = Box::new(self.reduce_expr(*expr, s)?);
                 let t = to_hir_t(s.types.get(t_id))?;
-                Ok(Expression::Access {
-                    expr,
-                    field,
-                    t,
-                    loc,
-                })
+                let struct_t = to_hir_t(s.types.get(struct_t_id))?;
+                if let Type::Struct(struct_id) = struct_t {
+                    Ok(Expression::Access {
+                        expr,
+                        field,
+                        struct_id,
+                        t,
+                        loc,
+                    })
+                } else {
+                    println!("expr: {}", expr);
+                    Err(String::from("Access of a non struct type"))
+                }
             }
             Expr::Namespace { loc, .. } => Ok(Expression::Nop { loc }),
         }
@@ -390,6 +411,28 @@ impl<'a> HirProducer<'a> {
         })
     }
 
+    fn reduce_struct(&mut self, struc: NameStruct) -> Result<Struct, String> {
+        let mut fields = HashMap::with_capacity(struc.fields.len());
+        for (f_name, field) in struc.fields {
+            let t = to_hir_t(&field.t)?;
+            fields.insert(
+                f_name,
+                StructField {
+                    t,
+                    is_pub: field.is_pub,
+                    loc: field.loc,
+                },
+            );
+        }
+        Ok(Struct {
+            fields,
+            ident: struc.ident,
+            s_id: struc.s_id,
+            is_pub: struc.is_pub,
+            loc: struc.loc,
+        })
+    }
+
     /// Verify that t is a boolean type, raises an error otherwhise.
     fn t_is_bool(&mut self, t: &ScalarType, loc: Location) {
         match t {
@@ -435,7 +478,7 @@ impl<'a> HirProducer<'a> {
 fn to_hir_t(t: &ASTTypes) -> Result<Type, String> {
     match t {
         ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
-            Err(format!("Invalid type in MIR generation: {}", t))
+            Err(format!("Invalid type in HIR generation: {}", t))
         }
         ASTTypes::I32 => Ok(Type::Scalar(ScalarType::I32)),
         ASTTypes::I64 => Ok(Type::Scalar(ScalarType::I64)),

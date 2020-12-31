@@ -79,7 +79,7 @@ impl Driver {
                 exit!(self);
             };
         error_handler.merge(core_error_handler);
-        pkg_hir.merge(core_hir.funs, core_hir.imports);
+        pkg_hir.merge(core_hir);
         if self.config.check {
             self.err.merge(error_handler);
             self.err.flush();
@@ -126,8 +126,7 @@ impl Driver {
         // Prepare HIR
         let mut package_import = HashSet::new();
         let mut namespaces = PublicDeclarations::new();
-        let mut hir_funs = Vec::new();
-        let mut hir_imports = Vec::new();
+        let mut used_hir: Option<hir::Program> = None;
         let mut runtime_modules = HashSet::new();
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
@@ -157,11 +156,15 @@ impl Driver {
                 // Merge package content
                 error_handler.merge(err_handler);
                 self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_hir.imports);
-                hir_funs.extend(sub_pkg_hir.funs);
-                hir_imports.extend(sub_pkg_hir.imports);
                 self.pub_decls
                     .insert(used.path.clone(), sub_pkg_hir.pub_decls.clone());
-                sub_pkg_hir.pub_decls
+                let pub_decls = sub_pkg_hir.pub_decls.clone();
+                if let Some(ref mut hir) = used_hir {
+                    hir.merge(sub_pkg_hir);
+                } else {
+                    used_hir = Some(sub_pkg_hir);
+                }
+                pub_decls
             } else {
                 self.err
                     .report_no_loc(format!("Use path is not well formatted '{}'.", &used.path));
@@ -176,7 +179,9 @@ impl Driver {
         }
         let mut hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
         // Insert imported functions
-        hir_program.merge(hir_funs, hir_imports);
+        if let Some(hir) = used_hir {
+            hir_program.merge(hir);
+        }
         Ok((hir_program, error_handler))
     }
 

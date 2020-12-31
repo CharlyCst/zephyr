@@ -3,6 +3,7 @@ use super::names::{AsmStatement, NameId};
 use crate::driver::PackageDeclarations;
 use crate::error::Location;
 
+use std::collections::HashMap;
 use std::fmt;
 
 const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
@@ -64,6 +65,7 @@ impl FunctionType {
 pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
+    pub structs: HashMap<StructId, Struct>,
     pub pub_decls: PackageDeclarations,
     pub package: Package,
 }
@@ -71,9 +73,10 @@ pub struct Program {
 impl Program {
     /// Merge external HIR declaration into this program, this is used typically to collect all
     /// declarations before building the MIR.
-    pub fn merge(&mut self, funs: Vec<Function>, imports: Vec<Imports>) {
-        self.funs.extend(funs);
-        self.imports.extend(imports);
+    pub fn merge(&mut self, other: Self) {
+        self.funs.extend(other.funs);
+        self.imports.extend(other.imports);
+        self.structs.extend(other.structs);
     }
 }
 
@@ -102,6 +105,20 @@ pub struct FunctionPrototype {
     pub is_pub: bool,
     pub loc: Location,
     pub fun_id: FunId,
+}
+
+pub struct Struct {
+    pub ident: String,
+    pub s_id: StructId,
+    pub fields: HashMap<String, StructField>,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct StructField {
+    pub is_pub: bool,
+    pub t: Type,
+    pub loc: Location,
 }
 
 pub struct LocalVariable {
@@ -186,6 +203,7 @@ pub enum Expression {
     Access {
         expr: Box<Expression>,
         field: String,
+        struct_id: StructId,
         t: Type,
         loc: Location,
     },
