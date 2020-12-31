@@ -6,9 +6,12 @@ use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
 use crate::hir::{
     Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, Function as HirFun,
     FunctionPrototype as HirFunProto, Imports as HirImports, IntegerType as HirIntergerType,
-    LocalVariable as HirLocalVariable, NumericType as HirNumericType, Program as HirProgram,
-    ScalarType as HirScalarType, Statement as S, Type as HirType, Unop as HirUnop, Value as V,
+    LocalId as HirLocalId, LocalVariable as HirLocalVariable, NumericType as HirNumericType,
+    Program as HirProgram, ScalarType as HirScalarType, Statement as S, Struct as HirStruct,
+    TupleType as HirTupleType, Type as HirType, Unop as HirUnop, Value as V,
 };
+
+use std::collections::HashMap;
 
 enum FromBinop {
     Binop(Binop),
@@ -16,40 +19,72 @@ enum FromBinop {
     Logical(Logical),
 }
 
-struct State {
+struct State<'a> {
     bb_id: BasicBlockId,
+    local_id: LocalId,
+    /// A mapping from HIR local variable ID to MIR local variable ID
+    locals: HashMap<HirLocalId, LocalId>,
+    structs: &'a HashMap<StructId, Struct>,
+    funs: KnownFunctions,
 }
 
-impl State {
-    pub fn new() -> State {
-        State { bb_id: 0 }
+impl<'a> State<'a> {
+    pub fn new(structs: &'a HashMap<StructId, Struct>, funs: KnownFunctions) -> State {
+        State {
+            bb_id: 0,
+            local_id: 0,
+            locals: HashMap::new(),
+            structs,
+            funs,
+        }
     }
 
+    /// Returns a globally unique basic block ID.
     pub fn fresh_bb_id(&mut self) -> BasicBlockId {
         let id = self.bb_id;
         self.bb_id += 1;
         id
     }
+
+    /// Returns a globally unique local variable ID.
+    pub fn fresh_local_id(&mut self) -> LocalId {
+        let id = self.local_id;
+        self.local_id += 1;
+        id
+    }
+
+    /// Returns the MIR local ID corresponding to an HIR ID, creates a fresh binding if necessary.
+    pub fn get_local_id(&mut self, id: HirLocalId) -> LocalId {
+        match self.locals.get(&id) {
+            Some(new_id) => *new_id,
+            None => self.remap_local_id(id),
+        }
+    }
+
+    /// Creates a fresh local variable ID and adds a mapping from HIR ID -> fresh MIR ID in the
+    /// `locals` map.
+    fn remap_local_id(&mut self, id: HirLocalId) -> LocalId {
+        let new_id = self.fresh_local_id();
+        self.locals.insert(id, new_id);
+        new_id
+    }
 }
 
 pub struct MIRProducer<'a> {
     err: &'a mut ErrorHandler,
-    funs: KnownFunctions,
 }
 
 impl<'a> MIRProducer<'a> {
-    pub fn new(funs: KnownFunctions, error_handler: &mut ErrorHandler) -> MIRProducer {
-        MIRProducer {
-            funs,
-            err: error_handler,
-        }
+    pub fn new(error_handler: &mut ErrorHandler) -> MIRProducer {
+        MIRProducer { err: error_handler }
     }
 
     /// Lower a typed program to MIR
-    pub fn reduce(&mut self, prog: HirProgram) -> Program {
-        let mut state = State::new();
+    pub fn reduce(&mut self, prog: HirProgram, known_funs: KnownFunctions) -> Program {
         let mut funs = Vec::with_capacity(prog.funs.len());
         let mut imports = Vec::with_capacity(prog.imports.len());
+        let structs = self.reduce_structs(prog.structs);
+        let mut state = State::new(&structs, known_funs);
 
         for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
@@ -68,8 +103,69 @@ impl<'a> MIRProducer<'a> {
             name: prog.package.name,
             funs,
             imports,
+            structs,
             pub_decls: prog.pub_decls,
         }
+    }
+
+    /// Decides of the memory layout of the structs.
+    ///
+    /// The memory blocks returned by malloc are guaranteed to have an alignment of 8, this
+    /// function should arrange all the fields so that all of them have an alignment suitable for
+    /// their types while minimizing unused space.
+    fn reduce_structs(
+        &mut self,
+        structs: HashMap<StructId, HirStruct>,
+    ) -> HashMap<StructId, Struct> {
+        let mut mir_struct = HashMap::with_capacity(structs.len());
+        let mut align_1 = Vec::new();
+        let mut align_4 = Vec::new();
+        let mut align_8 = Vec::new();
+        for (s_id, s) in structs {
+            let mut fields = HashMap::with_capacity(s.fields.len());
+            // Collect alignments and sizes
+            for (field_name, field) in s.fields {
+                // Compute memory layout of the field
+                let (t, layout) = match try_into_mir_layout(&field.t) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        self.err.report_internal_no_loc(e);
+                        continue;
+                    }
+                };
+                let (alignment, size) = get_aligment(&field.t);
+                match alignment {
+                    Aligment::A1 => align_1.push((field_name, size, t, layout)),
+                    Aligment::A4 => align_4.push((field_name, size, t, layout)),
+                    Aligment::A8 => align_8.push((field_name, size, t, layout)),
+                }
+            }
+            // Decide of the layout, this can be optimized in the future
+            let mut offset = 0;
+            for (field_name, size, t, layout) in align_8.drain(..) {
+                offset = align_offset(offset, 8);
+                fields.insert(field_name, StructField { offset, layout, t });
+                offset += size;
+            }
+            for (field_name, size, t, layout) in align_4.drain(..) {
+                offset = align_offset(offset, 4);
+                fields.insert(field_name, StructField { offset, layout, t });
+                offset += size;
+            }
+            for (field_name, size, t, layout) in align_1.drain(..) {
+                fields.insert(field_name, StructField { offset, layout, t });
+                offset += size;
+            }
+            // Layout is now fixed
+            mir_struct.insert(
+                s_id,
+                Struct {
+                    fields,
+                    size: offset,
+                },
+            );
+        }
+        mir_struct
     }
 
     fn reduce_fun(&mut self, fun: HirFun, s: &mut State) -> Result<Function, String> {
@@ -77,24 +173,35 @@ impl<'a> MIRProducer<'a> {
         let mut param_t = Vec::with_capacity(t.params.len());
         let mut ret_t = Vec::with_capacity(t.ret.len());
         let mut locals = Vec::with_capacity(fun.locals.len());
-        let params = fun.params;
-        let block = match fun.body {
-            HirBody::Zephyr(block) => self.reduce_block(block, s)?,
-            HirBody::Asm(stmts) => Block::Block {
-                id: s.fresh_bb_id(),
-                stmts: self.reduce_asm_statements(stmts, s)?,
-                t: None,
-            },
-        };
+        let mut params = Vec::with_capacity(fun.params.len());
+
+        // Convert params and return types
         for t in t.params {
             param_t.push(try_into_mir_t(&t)?);
         }
         for t in t.ret {
             ret_t.push(try_into_mir_t(&t)?);
         }
-        for l in fun.locals {
-            locals.push(self.reduce_local_variable(l)?);
+        // Register params and local variables
+        for param_local_id in fun.params {
+            params.push(s.remap_local_id(param_local_id));
         }
+        for l in fun.locals {
+            locals.push(self.reduce_local_variable(l, s)?);
+        }
+        // Reduce function body
+        let (block, block_locals) = match fun.body {
+            HirBody::Zephyr(block) => self.reduce_block(block, s)?,
+            HirBody::Asm(stmts) => (
+                Block::Block {
+                    id: s.fresh_bb_id(),
+                    stmts: self.reduce_asm_statements(stmts, s)?,
+                    t: None,
+                },
+                vec![],
+            ),
+        };
+        locals.extend(block_locals);
 
         Ok(Function {
             ident: fun.ident,
@@ -109,66 +216,64 @@ impl<'a> MIRProducer<'a> {
         })
     }
 
-    fn reduce_block(&mut self, block: HirBlock, s: &mut State) -> Result<Block, String> {
+    /// Reduces a block of statements, local variables may be created for the need of computations
+    /// and are returned along the reduced block.
+    fn reduce_block(
+        &mut self,
+        block: HirBlock,
+        s: &mut State,
+    ) -> Result<(Block, Vec<LocalVariable>), String> {
         let id = s.fresh_bb_id();
         let mut stmts = Vec::new();
-        self.reduce_block_rec(block, &mut stmts, s)?;
+        let mut locals = Vec::new();
+        self.reduce_block_rec(block, &mut stmts, &mut locals, s)?;
         let reduced_block = Block::Block { id, stmts, t: None };
-        Ok(reduced_block)
+        Ok((reduced_block, locals))
     }
 
     fn reduce_block_rec(
         &mut self,
         block: HirBlock,
         stmts: &mut Vec<Statement>,
+        locals: &mut Vec<LocalVariable>,
         s: &mut State,
     ) -> Result<(), String> {
         for statement in block.stmts.into_iter() {
             match statement {
                 S::AssignStmt { var, expr } => {
-                    self.reduce_expr(&expr, stmts, s)?;
-                    stmts.push(Statement::Local {
-                        local: Local::Set(var.n_id),
-                    });
+                    self.reduce_expr(&expr, stmts, locals, s)?;
+                    stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))));
                 }
                 S::LetStmt { var, expr } => {
-                    self.reduce_expr(&expr, stmts, s)?;
-                    stmts.push(Statement::Local {
-                        local: Local::Set(var.n_id),
-                    });
+                    self.reduce_expr(&expr, stmts, locals, s)?;
+                    stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))));
                 }
                 S::ExprStmt { expr } => {
-                    self.reduce_expr(&expr, stmts, s)?;
-                    // We may want to control the size of the stack here,
-                    // by dropping unused values for instance.
+                    let values = self.reduce_expr(&expr, stmts, locals, s)?;
+                    // drop unused values
+                    for _ in values {
+                        stmts.push(Statement::Parametric(Parametric::Drop));
+                    }
                 }
                 S::ReturnStmt { expr, .. } => {
                     if let Some(e) = expr {
-                        self.reduce_expr(&e, stmts, s)?;
+                        self.reduce_expr(&e, stmts, locals, s)?;
                     }
-                    stmts.push(Statement::Control {
-                        cntrl: Control::Return,
-                    })
+                    stmts.push(Statement::Control(Control::Return))
                 }
                 S::WhileStmt { expr, block } => {
                     let block_id = s.fresh_bb_id();
                     let loop_id = s.fresh_bb_id();
                     let mut loop_stmts = Vec::new();
 
-                    self.reduce_expr(&expr, &mut loop_stmts, s)?;
+                    self.reduce_expr(&expr, &mut loop_stmts, locals, s)?;
                     // If NOT expr, then jump to end of block
-                    loop_stmts.push(Statement::Const { val: Value::I32(1) });
-                    loop_stmts.push(Statement::Binop {
-                        binop: Binop::I32Xor,
-                    });
-                    loop_stmts.push(Statement::Control {
-                        cntrl: Control::BrIf(block_id),
-                    });
+                    loop_stmts.push(Statement::Const(Value::I32(1)));
+                    loop_stmts.push(Statement::Binop(Binop::I32Xor));
+                    loop_stmts.push(Statement::Control(Control::BrIf(block_id)));
 
-                    self.reduce_block_rec(block, &mut loop_stmts, s)?;
-                    loop_stmts.push(Statement::Control {
-                        cntrl: Control::Br(loop_id),
-                    });
+                    self.reduce_block_rec(block, &mut loop_stmts, locals, s)?;
+                    loop_stmts.push(Statement::Control(Control::Br(loop_id)));
                     let loop_block = Block::Loop {
                         id: loop_id,
                         stmts: loop_stmts,
@@ -176,27 +281,23 @@ impl<'a> MIRProducer<'a> {
                     };
                     let block_block = Block::Block {
                         id: block_id,
-                        stmts: vec![Statement::Block {
-                            block: Box::new(loop_block),
-                        }],
+                        stmts: vec![Statement::Block(Box::new(loop_block))],
                         t: None,
                     };
-                    stmts.push(Statement::Block {
-                        block: Box::new(block_block),
-                    });
+                    stmts.push(Statement::Block(Box::new(block_block)));
                 }
                 S::IfStmt {
                     expr,
                     block,
                     else_block,
                 } => {
-                    self.reduce_expr(&expr, stmts, s)?;
+                    self.reduce_expr(&expr, stmts, locals, s)?;
                     let if_id = s.fresh_bb_id();
                     let mut then_stmts = Vec::new();
-                    self.reduce_block_rec(block, &mut then_stmts, s)?;
+                    self.reduce_block_rec(block, &mut then_stmts, locals, s)?;
                     let mut else_stmts = Vec::new();
                     if let Some(else_block) = else_block {
-                        self.reduce_block_rec(else_block, &mut else_stmts, s)?;
+                        self.reduce_block_rec(else_block, &mut else_stmts, locals, s)?;
                     }
                     let if_block = Block::If {
                         id: if_id,
@@ -204,9 +305,7 @@ impl<'a> MIRProducer<'a> {
                         else_stmts,
                         t: None,
                     };
-                    stmts.push(Statement::Block {
-                        block: Box::new(if_block),
-                    });
+                    stmts.push(Statement::Block(Box::new(if_block)));
                 }
             }
         }
@@ -214,35 +313,82 @@ impl<'a> MIRProducer<'a> {
         Ok(())
     }
 
-    /// Push new statements that execute the given expression
+    /// Push new statements that execute the given expression and return the types of values added
+    /// on top of the heap.
     fn reduce_expr(
         &mut self,
         expression: &Expr,
         stmts: &mut Vec<Statement>,
+        locals: &mut Vec<LocalVariable>,
         s: &mut State,
-    ) -> Result<(), String> {
-        match expression {
+    ) -> Result<Vec<Type>, String> {
+        let types = match expression {
             Expr::Literal { value } => match value {
-                V::I32(val, _) => stmts.push(Statement::Const {
-                    val: Value::I32(*val),
-                }),
-                V::I64(val, _) => stmts.push(Statement::Const {
-                    val: Value::I64(*val),
-                }),
-                V::F32(val, _) => stmts.push(Statement::Const {
-                    val: Value::F32(*val),
-                }),
-                V::F64(val, _) => stmts.push(Statement::Const {
-                    val: Value::F64(*val),
-                }),
-                V::Bool(val, _) => stmts.push(Statement::Const {
-                    val: Value::I32(if *val { 1 } else { 0 }),
-                }),
-                V::Struct { .. } => unimplemented!(),
+                V::I32(val, _) => {
+                    stmts.push(Statement::Const(Value::I32(*val)));
+                    vec![Type::I32]
+                }
+                V::I64(val, _) => {
+                    stmts.push(Statement::Const(Value::I64(*val)));
+                    vec![Type::I64]
+                }
+                V::F32(val, _) => {
+                    stmts.push(Statement::Const(Value::F32(*val)));
+                    vec![Type::F32]
+                }
+                V::F64(val, _) => {
+                    stmts.push(Statement::Const(Value::F64(*val)));
+                    vec![Type::F64]
+                }
+                V::Bool(val, _) => {
+                    stmts.push(Statement::Const(Value::I32(if *val { 1 } else { 0 })));
+                    vec![Type::I32]
+                }
+                V::Struct {
+                    struct_id, fields, ..
+                } => {
+                    let struc = s.structs.get(struct_id).unwrap();
+                    // Allocate memory
+                    stmts.push(Statement::Const(Value::I32(struc.size as i32)));
+                    stmts.push(Statement::Call(Call::Direct(s.funs.malloc)));
+                    // Save the pointer in a local variable
+                    let pointer_l_id = s.fresh_local_id();
+                    locals.push(LocalVariable {
+                        t: Type::I32,
+                        id: pointer_l_id,
+                    });
+                    stmts.push(Statement::Local(Local::Set(pointer_l_id)));
+                    // Now fill the fields with their values
+                    for field in fields {
+                        let (layout, offset) = if let Some(f) = struc.fields.get(&field.ident) {
+                            (f.layout, f.offset)
+                        } else {
+                            self.err.report_internal_no_loc(format!(
+                                "Field does not exist in MIR struct: '{}'",
+                                &field.ident
+                            ));
+                            continue;
+                        };
+                        // Put memory location and value on top of stack
+                        stmts.push(Statement::Local(Local::Get(pointer_l_id)));
+                        let values_types = self.reduce_expr(&*field.expr, stmts, locals, s)?;
+                        if values_types.len() != 1 {
+                            self.err.report_internal_no_loc(format!("Fields can only be initialized with expressions producing exactly one value for now, got {}", values_types.len()));
+                            continue;
+                        }
+                        let t = values_types.first().unwrap();
+                        // Store the value
+                        stmts.push(Statement::Memory(get_store_instr(*t, layout, offset)?));
+                    }
+                    // Put the struct pointer on top of the stack
+                    stmts.push(Statement::Local(Local::Get(pointer_l_id)));
+                    vec![Type::I32]
+                }
             },
-            Expr::Variable { var } => stmts.push(Statement::Local {
-                local: Local::Get(var.n_id),
-            }),
+            Expr::Variable { var } => {
+                stmts.push(Statement::Local(Local::Get(s.get_local_id(var.n_id))));
+                vec![try_into_mir_t(&var.t)?]
+            }
             Expr::Binary {
                 expr_left,
                 binop,
@@ -252,47 +398,49 @@ impl<'a> MIRProducer<'a> {
                 let from_binop = get_binop(binop);
                 match from_binop {
                     FromBinop::Binop(binop) => {
-                        self.reduce_expr(expr_left, stmts, s)?;
-                        self.reduce_expr(expr_right, stmts, s)?;
-                        stmts.push(Statement::Binop { binop })
+                        let t = binop.get_t();
+                        self.reduce_expr(expr_left, stmts, locals, s)?;
+                        self.reduce_expr(expr_right, stmts, locals, s)?;
+                        stmts.push(Statement::Binop(binop));
+                        vec![t]
                     }
                     FromBinop::Relop(relop) => {
-                        self.reduce_expr(expr_left, stmts, s)?;
-                        self.reduce_expr(expr_right, stmts, s)?;
-                        stmts.push(Statement::Relop { relop })
+                        let t = relop.get_t();
+                        self.reduce_expr(expr_left, stmts, locals, s)?;
+                        self.reduce_expr(expr_right, stmts, locals, s)?;
+                        stmts.push(Statement::Relop(relop));
+                        vec![t]
                     }
                     FromBinop::Logical(logical) => match logical {
                         Logical::And => {
                             let if_id = s.fresh_bb_id();
                             let mut then_stmts = Vec::new();
-                            self.reduce_expr(expr_right, &mut then_stmts, s)?;
-                            let else_stmts = vec![Statement::Const { val: Value::I32(0) }];
+                            self.reduce_expr(expr_right, &mut then_stmts, locals, s)?;
+                            let else_stmts = vec![Statement::Const(Value::I32(0))];
                             let if_block = Block::If {
                                 id: if_id,
                                 then_stmts,
                                 else_stmts,
                                 t: Some(Type::I32),
                             };
-                            self.reduce_expr(expr_left, stmts, s)?;
-                            stmts.push(Statement::Block {
-                                block: Box::new(if_block),
-                            });
+                            self.reduce_expr(expr_left, stmts, locals, s)?;
+                            stmts.push(Statement::Block(Box::new(if_block)));
+                            vec![Type::I32]
                         }
                         Logical::Or => {
                             let if_id = s.fresh_bb_id();
-                            let then_stmts = vec![Statement::Const { val: Value::I32(1) }];
+                            let then_stmts = vec![Statement::Const(Value::I32(1))];
                             let mut else_stmts = Vec::new();
-                            self.reduce_expr(expr_right, &mut else_stmts, s)?;
+                            self.reduce_expr(expr_right, &mut else_stmts, locals, s)?;
                             let if_block = Block::If {
                                 id: if_id,
                                 then_stmts,
                                 else_stmts,
                                 t: Some(Type::I32),
                             };
-                            self.reduce_expr(expr_left, stmts, s)?;
-                            stmts.push(Statement::Block {
-                                block: Box::new(if_block),
-                            });
+                            self.reduce_expr(expr_left, stmts, locals, s)?;
+                            stmts.push(Statement::Block(Box::new(if_block)));
+                            vec![Type::I32]
                         }
                     },
                 }
@@ -300,56 +448,78 @@ impl<'a> MIRProducer<'a> {
             Expr::Unary { unop, expr, .. } => match unop {
                 HirUnop::Neg(t) => match t {
                     HirNumericType::I32 => {
-                        stmts.push(Statement::Const { val: Value::I32(0) });
-                        self.reduce_expr(expr, stmts, s)?;
-                        stmts.push(Statement::Binop {
-                            binop: Binop::I32Sub,
-                        });
+                        stmts.push(Statement::Const(Value::I32(0)));
+                        self.reduce_expr(expr, stmts, locals, s)?;
+                        stmts.push(Statement::Binop(Binop::I32Sub));
+                        vec![Type::I32]
                     }
                     HirNumericType::I64 => {
-                        stmts.push(Statement::Const { val: Value::I64(0) });
-                        self.reduce_expr(expr, stmts, s)?;
-                        stmts.push(Statement::Binop {
-                            binop: Binop::I64Sub,
-                        });
+                        stmts.push(Statement::Const(Value::I64(0)));
+                        self.reduce_expr(expr, stmts, locals, s)?;
+                        stmts.push(Statement::Binop(Binop::I64Sub));
+                        vec![Type::I64]
                     }
                     HirNumericType::F32 => {
-                        self.reduce_expr(expr, stmts, s)?;
-                        stmts.push(Statement::Unop { unop: Unop::F32Neg })
+                        self.reduce_expr(expr, stmts, locals, s)?;
+                        stmts.push(Statement::Unop(Unop::F32Neg));
+                        vec![Type::F32]
                     }
                     HirNumericType::F64 => {
-                        self.reduce_expr(expr, stmts, s)?;
-                        stmts.push(Statement::Unop { unop: Unop::F32Neg })
+                        self.reduce_expr(expr, stmts, locals, s)?;
+                        stmts.push(Statement::Unop(Unop::F32Neg));
+                        vec![Type::F64]
                     }
                 },
                 HirUnop::Not => {
-                    stmts.push(Statement::Const { val: Value::I32(1) });
-                    self.reduce_expr(expr, stmts, s)?;
-                    stmts.push(Statement::Binop {
-                        binop: Binop::I32Sub,
-                    });
+                    stmts.push(Statement::Const(Value::I32(1)));
+                    self.reduce_expr(expr, stmts, locals, s)?;
+                    stmts.push(Statement::Binop(Binop::I32Sub));
+                    vec![Type::I32]
                 }
             },
-            Expr::CallDirect { fun_id, args, .. } => {
+            Expr::CallDirect {
+                fun_id, args, t, ..
+            } => {
                 for arg in args {
-                    self.reduce_expr(arg, stmts, s)?;
+                    self.reduce_expr(arg, stmts, locals, s)?;
                 }
-                stmts.push(Statement::Call {
-                    call: Call::Direct(*fun_id),
-                })
+                stmts.push(Statement::Call(Call::Direct(*fun_id)));
+                try_into_mir_tuple_t(&t.ret)?
             }
-            Expr::CallIndirect { loc, .. } => self
-                .err
-                .report(*loc, String::from("Indirect call are not yet supported")),
-            Expr::Access { .. } => unimplemented!(),
-            Expr::Nop { .. } => (),
-        }
-        Ok(())
+            Expr::CallIndirect { loc, .. } => {
+                self.err
+                    .report(*loc, String::from("Indirect call are not yet supported"));
+                todo!()
+            }
+            Expr::Access {
+                expr,
+                field,
+                struct_id,
+                ..
+            } => {
+                let struc = s.structs.get(struct_id).unwrap();
+                let field = struc.fields.get(field).unwrap();
+                self.reduce_expr(expr, stmts, locals, s)?;
+                stmts.push(Statement::Memory(get_load_instr(
+                    field.t,
+                    field.layout,
+                    field.offset,
+                )?));
+                vec![field.t]
+            }
+            Expr::Nop { .. } => vec![],
+        };
+        Ok(types)
     }
 
-    fn reduce_local_variable(&mut self, local: HirLocalVariable) -> Result<LocalVariable, String> {
+    fn reduce_local_variable(
+        &mut self,
+        local: HirLocalVariable,
+        s: &mut State,
+    ) -> Result<LocalVariable, String> {
         let t = try_into_mir_t(&local.t)?;
-        Ok(LocalVariable { id: local.id, t })
+        let id = s.get_local_id(local.id);
+        Ok(LocalVariable { id, t })
     }
 
     fn reduce_asm_statements(
@@ -370,58 +540,50 @@ impl<'a> MIRProducer<'a> {
     fn reduce_asm_statement(
         &mut self,
         stmt: AsmStatement,
-        _s: &mut State,
+        s: &mut State,
     ) -> Result<Statement, String> {
         match stmt {
-            AsmStatement::Const { val, .. } => Ok(Statement::Const { val }),
+            AsmStatement::Const { val, .. } => Ok(Statement::Const(val)),
             AsmStatement::Local { local, .. } => match local {
-                AsmLocal::Get { var, .. } => Ok(Statement::Local {
-                    local: Local::Get(var.n_id),
-                }),
-                AsmLocal::Set { var } => Ok(Statement::Local {
-                    local: Local::Set(var.n_id),
-                }),
+                AsmLocal::Get { var, .. } => {
+                    Ok(Statement::Local(Local::Get(s.get_local_id(var.n_id))))
+                }
+                AsmLocal::Set { var } => Ok(Statement::Local(Local::Set(s.get_local_id(var.n_id)))),
             },
             AsmStatement::Control { cntrl, .. } => match cntrl {
-                AsmControl::Return => Ok(Statement::Control {
-                    cntrl: Control::Return,
-                }),
-                AsmControl::Unreachable => Ok(Statement::Control {
-                    cntrl: Control::Unreachable,
-                }),
+                AsmControl::Return => Ok(Statement::Control(Control::Return)),
+                AsmControl::Unreachable => Ok(Statement::Control(Control::Unreachable)),
             },
             AsmStatement::Parametric { param, .. } => match param {
-                AsmParametric::Drop => Ok(Statement::Parametric {
-                    param: Parametric::Drop,
-                }),
+                AsmParametric::Drop => Ok(Statement::Parametric(Parametric::Drop)),
             },
             AsmStatement::Memory { mem, .. } => match mem {
-                AsmMemory::Size => Ok(Statement::Memory { mem: Memory::Size }),
-                AsmMemory::Grow => Ok(Statement::Memory { mem: Memory::Grow }),
-                AsmMemory::I32Load { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::I32Load { align, offset },
-                }),
-                AsmMemory::I64Load { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::I64Load { align, offset },
-                }),
-                AsmMemory::F32Load { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::F32Load { align, offset },
-                }),
-                AsmMemory::F64Load { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::F64Load { align, offset },
-                }),
-                AsmMemory::I32Store { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::I32Store { align, offset },
-                }),
-                AsmMemory::I64Store { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::I64Store { align, offset },
-                }),
-                AsmMemory::F32Store { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::F32Store { align, offset },
-                }),
-                AsmMemory::F64Store { align, offset } => Ok(Statement::Memory {
-                    mem: Memory::F64Store { align, offset },
-                }),
+                AsmMemory::Size => Ok(Statement::Memory(Memory::Size)),
+                AsmMemory::Grow => Ok(Statement::Memory(Memory::Grow)),
+                AsmMemory::I32Load { align, offset } => {
+                    Ok(Statement::Memory(Memory::I32Load { align, offset }))
+                }
+                AsmMemory::I64Load { align, offset } => {
+                    Ok(Statement::Memory(Memory::I64Load { align, offset }))
+                }
+                AsmMemory::F32Load { align, offset } => {
+                    Ok(Statement::Memory(Memory::F32Load { align, offset }))
+                }
+                AsmMemory::F64Load { align, offset } => {
+                    Ok(Statement::Memory(Memory::F64Load { align, offset }))
+                }
+                AsmMemory::I32Store { align, offset } => {
+                    Ok(Statement::Memory(Memory::I32Store { align, offset }))
+                }
+                AsmMemory::I64Store { align, offset } => {
+                    Ok(Statement::Memory(Memory::I64Store { align, offset }))
+                }
+                AsmMemory::F32Store { align, offset } => {
+                    Ok(Statement::Memory(Memory::F32Store { align, offset }))
+                }
+                AsmMemory::F64Store { align, offset } => {
+                    Ok(Statement::Memory(Memory::F64Store { align, offset }))
+                }
             },
         }
     }
@@ -563,6 +725,26 @@ fn get_mir_t(t: &HirScalarType) -> Type {
     }
 }
 
+/// Convert a scalar value into its memory representation.
+fn get_mir_t_layout(t: &HirScalarType) -> MemoryLayout {
+    match t {
+        HirScalarType::I32 => MemoryLayout::I32,
+        HirScalarType::I64 => MemoryLayout::I64,
+        HirScalarType::F32 => MemoryLayout::F32,
+        HirScalarType::F64 => MemoryLayout::F64,
+        HirScalarType::Bool => MemoryLayout::U8,
+    }
+}
+
+/// Try to convert a hir typle type into its MIR representation.
+fn try_into_mir_tuple_t(t: &HirTupleType) -> Result<Vec<Type>, String> {
+    let mut mir_t = Vec::with_capacity(t.len());
+    for hir_t in t {
+        mir_t.push(try_into_mir_t(hir_t)?);
+    }
+    Ok(mir_t)
+}
+
 /// Try to convert an arbitrary HIR type to an MIR type.
 /// For now advanced types such as functions and tuples are not supported.
 fn try_into_mir_t(t: &HirType) -> Result<Type, String> {
@@ -570,6 +752,115 @@ fn try_into_mir_t(t: &HirType) -> Result<Type, String> {
         HirType::Scalar(t) => Ok(get_mir_t(t)),
         HirType::Fun(_) => Err(String::from("Function as value are not yet supported.")),
         HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
-        HirType::Struct(_) => unimplemented!(), // TODO!
+        // For now structs are always boxed and represented by a pointer to their location
+        HirType::Struct(_) => Ok(Type::I32),
+    }
+}
+
+fn try_into_mir_layout(t: &HirType) -> Result<(Type, MemoryLayout), String> {
+    match t {
+        HirType::Scalar(t) => Ok((get_mir_t(t), get_mir_t_layout(t))),
+        HirType::Fun(_) => Err(String::from("Functions as value are not yet supported.")),
+        HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
+        // For now structs are always boxed and represented by a pointer to their location
+        HirType::Struct(_) => Ok((Type::I32, MemoryLayout::I32)),
+    }
+}
+
+/// Returns the alignment and size a given type occupy in memory.
+fn get_aligment(t: &HirType) -> (Aligment, u32) {
+    match t {
+        HirType::Scalar(x) => match x {
+            HirScalarType::I32 => (Aligment::A4, 4),
+            HirScalarType::I64 => (Aligment::A8, 8),
+            HirScalarType::F32 => (Aligment::A4, 4),
+            HirScalarType::F64 => (Aligment::A8, 8),
+            HirScalarType::Bool => (Aligment::A1, 1),
+        },
+        HirType::Struct(_) => (Aligment::A4, 4), // Represented as a i32 pointer for now
+        _ => todo!("Only scalar and struct are supported inside structures at the time"), //
+    }
+}
+
+/// Get the load instruction that load `t` into its expected memory layout.
+fn get_load_instr(t: Type, l: MemoryLayout, offset: u32) -> Result<Memory, String> {
+    match t {
+        Type::I32 => match l {
+            MemoryLayout::U8 => Ok(Memory::I32Load8u { offset, align: 0 }),
+            MemoryLayout::I32 => Ok(Memory::I32Load { offset, align: 2 }),
+            _ => Err(format!("Unexpected memory layout for i32")),
+        },
+        Type::I64 => match l {
+            MemoryLayout::U8 => Ok(Memory::I64Load8u { offset, align: 0 }),
+            MemoryLayout::I64 => Ok(Memory::I64Load { offset, align: 3 }),
+            _ => Err(format!("Unexpected memory layout for i64")),
+        },
+        Type::F32 => match l {
+            MemoryLayout::F32 => Ok(Memory::F32Load { offset, align: 2 }),
+            _ => Err(format!("Unexpected memory layout for f32")),
+        },
+        Type::F64 => match l {
+            MemoryLayout::F64 => Ok(Memory::F64Load { offset, align: 3 }),
+            _ => Err(format!("Unexpected memory layout for f64")),
+        },
+    }
+}
+
+/// Get the store instruction that store `t` into its expected memory layout.
+fn get_store_instr(t: Type, l: MemoryLayout, offset: u32) -> Result<Memory, String> {
+    match t {
+        Type::I32 => match l {
+            MemoryLayout::U8 => Ok(Memory::I32Store8 { offset, align: 0 }),
+            MemoryLayout::I32 => Ok(Memory::I32Store { offset, align: 2 }),
+            _ => Err(format!("Unexpected memory layout for i32")),
+        },
+        Type::I64 => match l {
+            MemoryLayout::U8 => Ok(Memory::I64Store8 { offset, align: 0 }),
+            MemoryLayout::I64 => Ok(Memory::I64Store { offset, align: 3 }),
+            _ => Err(format!("Unexpected memory layout for i64")),
+        },
+        Type::F32 => match l {
+            MemoryLayout::F32 => Ok(Memory::F32Store { offset, align: 2 }),
+            _ => Err(format!("Unexpected memory layout for f32")),
+        },
+        Type::F64 => match l {
+            MemoryLayout::F64 => Ok(Memory::F64Store { offset, align: 3 }),
+            _ => Err(format!("Unexpected memory layout for f64")),
+        },
+    }
+}
+
+/// If the offset does not have the target alignment, increase the offset so that is has.
+fn align_offset(offset: u32, target_alignment: u32) -> u32 {
+    if offset % target_alignment == 0 {
+        offset
+    } else {
+        offset + (target_alignment - (offset % target_alignment))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn offset() {
+        assert_eq!(align_offset(0, 8), 0);
+        assert_eq!(align_offset(1, 8), 8);
+        assert_eq!(align_offset(5, 8), 8);
+        assert_eq!(align_offset(7, 8), 8);
+        assert_eq!(align_offset(8, 8), 8);
+        assert_eq!(align_offset(9, 8), 16);
+        assert_eq!(align_offset(20, 8), 24);
+
+        assert_eq!(align_offset(0, 4), 0);
+        assert_eq!(align_offset(1, 4), 4);
+        assert_eq!(align_offset(2, 4), 4);
+        assert_eq!(align_offset(3, 4), 4);
+        assert_eq!(align_offset(4, 4), 4);
+        assert_eq!(align_offset(5, 4), 8);
+
+        assert_eq!(align_offset(42, 1), 42);
+        assert_eq!(align_offset(43, 1), 43);
     }
 }

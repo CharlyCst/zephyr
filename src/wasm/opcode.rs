@@ -62,10 +62,16 @@ pub const INSTR_I32_LOAD: Instr = 0x28;
 pub const INSTR_I64_LOAD: Instr = 0x29;
 pub const INSTR_F32_LOAD: Instr = 0x2a;
 pub const INSTR_F64_LOAD: Instr = 0x2b;
+pub const INSTR_I32_LOAD8_S: Instr = 0x2c;
+pub const INSTR_I32_LOAD8_U: Instr = 0x2d;
+pub const INSTR_I64_LOAD8_S: Instr = 0x30;
+pub const INSTR_I64_LOAD8_U: Instr = 0x31;
 pub const INSTR_I32_STORE: Instr = 0x36;
 pub const INSTR_I64_STORE: Instr = 0x37;
 pub const INSTR_F32_STORE: Instr = 0x38;
 pub const INSTR_F64_STORE: Instr = 0x39;
+pub const INSTR_I32_STORE8: Instr = 0x3a;
+pub const INSTR_I64_STORE8: Instr = 0x3c;
 pub const INSTR_MEMORY_SIZE: Instr = 0x3f;
 pub const INSTR_MEMORY_GROW: Instr = 0x40;
 // Numerical Constants

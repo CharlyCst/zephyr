@@ -3,7 +3,10 @@ use crate::driver::PackageDeclarations;
 use crate::error::Location;
 use crate::hir::Package;
 
+use std::collections::HashMap;
 use std::fmt;
+
+pub use names::StructId;
 
 pub mod id {
     pub const _T_ID_BUG: usize = 0;
@@ -36,6 +39,7 @@ pub enum Type {
 pub struct TypedProgram {
     pub funs: Vec<names::Function>,
     pub imports: Vec<names::Imports>,
+    pub structs: HashMap<StructId, names::Struct>,
     pub names: names::NameStore,
     pub types: TypeStore,
     pub pub_decls: PackageDeclarations,

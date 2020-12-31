@@ -172,6 +172,7 @@ pub enum Expression {
         expr: Box<Expression>,
         field: String,
         t_id: TypeId,
+        struct_t_id : TypeId,
         loc: Location,
     },
     Namespace {
