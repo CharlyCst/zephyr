@@ -7,21 +7,6 @@ use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
 
-/// Unwrap a `Result` and return its content. In case of failure, silently report and error
-/// and `continue` to the next iteration.
-/// Takes `self` and a result as arguments.
-#[macro_use]
-macro_rules! unwrap {
-    ($v:expr, $result:expr) => {{
-        if let Ok(result) = $result {
-            result
-        } else {
-            $v.err.silent_report();
-            continue;
-        }
-    }};
-}
-
 struct State {
     names: NameStore,
     types: TypeVarStore,
@@ -277,115 +262,12 @@ impl<'a> NameResolver<'a> {
     ) -> Block {
         state.new_scope();
         let mut stmts = Vec::new();
-
-        // TODO: get rid of this `unwrap!` macro: create a new function `resolve_stmt` and simply
-        // use `?` operator.
         for stmt in block.stmts.into_iter() {
-            let named_stmt = match stmt {
-                ast::Statement::AssignStmt { mut target, mut expr } => {
-                    let (target, target_t_id) = unwrap!(self, self.resolve_expression(&mut target, state));
-                    let (expr, expr_id) = unwrap!(self, self.resolve_expression(&mut expr, state));
-                    let loc = target.get_loc().merge(expr.get_loc());
-                    state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
-                    Statement::AssignStmt {
-                        target: Box::new(target),
-                        expr: Box::new(expr),
-                    }
-                }
-                ast::Statement::LetStmt { var, mut expr } => {
-                    match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
-                        Ok((n_id, var_t_id)) => {
-                            locals.push(n_id);
-                            let (expr, expr_t_id) =
-                                unwrap!(self, self.resolve_expression(&mut expr, state));
-                            let loc = var.loc.merge(expr.get_loc());
-                            state
-                                .new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
-                            Statement::LetStmt {
-                                var: Box::new(Variable {
-                                    ident: var.ident,
-                                    loc: var.loc,
-                                    n_id,
-                                }),
-                                expr: Box::new(expr),
-                            }
-                        }
-                        Err(_decl_loc) => {
-                            // TODO: find a way to indicate line of duplicate
-                            let error =
-                                format!("Name {} already defined in current context", var.ident,);
-                            self.err.report(var.loc, error);
-                            continue;
-                        }
-                    }
-                }
-                ast::Statement::IfStmt {
-                    mut expr,
-                    block,
-                    else_block,
-                } => {
-                    let (expr, expr_t_id) =
-                        unwrap!(self, self.resolve_expression(&mut expr, state));
-                    state.new_constraint(TypeConstraint::Equality(
-                        expr_t_id,
-                        T_ID_BOOL,
-                        expr.get_loc(),
-                    ));
-                    let block = self.resolve_block(block, state, locals, fun_t_id);
-                    let else_block = if let Some(else_block) = else_block {
-                        let else_block = self.resolve_block(else_block, state, locals, fun_t_id);
-                        Some(else_block)
-                    } else {
-                        None
-                    };
-                    Statement::IfStmt {
-                        expr: Box::new(expr),
-                        block,
-                        else_block,
-                    }
-                }
-                ast::Statement::WhileStmt { mut expr, block } => {
-                    let (expr, expr_t_id) =
-                        unwrap!(self, self.resolve_expression(&mut expr, state));
-                    state.new_constraint(TypeConstraint::Equality(
-                        expr_t_id,
-                        T_ID_BOOL,
-                        expr.get_loc(),
-                    ));
-                    let block = self.resolve_block(block, state, locals, fun_t_id);
-                    Statement::WhileStmt {
-                        expr: Box::new(expr),
-                        block,
-                    }
-                }
-                ast::Statement::ReturnStmt { expr, loc } => {
-                    if let Some(mut ret_expr) = expr {
-                        let (expr, ret_t_id) =
-                            unwrap!(self, self.resolve_expression(&mut ret_expr, state));
-                        state.new_constraint(TypeConstraint::Return(
-                            fun_t_id,
-                            ret_t_id,
-                            expr.get_loc(),
-                        ));
-                        Statement::ReturnStmt {
-                            expr: Some(expr),
-                            loc,
-                        }
-                    } else {
-                        let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
-                        state.new_constraint(TypeConstraint::Return(
-                            fun_t_id,
-                            ret_t_id,
-                            Location::dummy(), // TODO: how to deal with empty expressions?
-                        ));
-                        Statement::ReturnStmt { expr: None, loc }
-                    }
-                }
-                ast::Statement::ExprStmt { mut expr } => {
-                    let (expr, _) = unwrap!(self, self.resolve_expression(&mut expr, state));
-                    Statement::ExprStmt {
-                        expr: Box::new(expr),
-                    }
+            let named_stmt = match self.resolve_stmt(stmt, state, locals, fun_t_id) {
+                Ok(stmt) => stmt,
+                Err(()) => {
+                    self.err.silent_report();
+                    continue;
                 }
             };
             stmts.push(named_stmt);
@@ -393,6 +275,121 @@ impl<'a> NameResolver<'a> {
 
         state.exit_scope();
         Block { stmts }
+    }
+
+    fn resolve_stmt(
+        &mut self,
+        stmt: ast::Statement,
+        state: &mut State,
+        locals: &mut Vec<NameId>,
+        fun_t_id: TypeId,
+    ) -> Result<Statement, ()> {
+        let stmt = match stmt {
+            ast::Statement::AssignStmt {
+                mut target,
+                mut expr,
+            } => {
+                let (target, target_t_id) = self.resolve_expression(&mut target, state)?;
+                let (expr, expr_id) = self.resolve_expression(&mut expr, state)?;
+                let loc = target.get_loc().merge(expr.get_loc());
+                state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
+                Statement::AssignStmt {
+                    target: Box::new(target),
+                    expr: Box::new(expr),
+                }
+            }
+            ast::Statement::LetStmt { var, mut expr } => {
+                match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
+                    Ok((n_id, var_t_id)) => {
+                        locals.push(n_id);
+                        let (expr, expr_t_id) = self.resolve_expression(&mut expr, state)?;
+                        let loc = var.loc.merge(expr.get_loc());
+                        state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
+                        Statement::LetStmt {
+                            var: Box::new(Variable {
+                                ident: var.ident,
+                                loc: var.loc,
+                                n_id,
+                            }),
+                            expr: Box::new(expr),
+                        }
+                    }
+                    Err(_decl_loc) => {
+                        // TODO: find a way to indicate line of duplicate
+                        let error =
+                            format!("Name {} already defined in current context", var.ident,);
+                        self.err.report(var.loc, error);
+                        return Err(());
+                    }
+                }
+            }
+            ast::Statement::IfStmt {
+                mut expr,
+                block,
+                else_block,
+            } => {
+                let (expr, expr_t_id) = self.resolve_expression(&mut expr, state)?;
+                state.new_constraint(TypeConstraint::Equality(
+                    expr_t_id,
+                    T_ID_BOOL,
+                    expr.get_loc(),
+                ));
+                let block = self.resolve_block(block, state, locals, fun_t_id);
+                let else_block = if let Some(else_block) = else_block {
+                    let else_block = self.resolve_block(else_block, state, locals, fun_t_id);
+                    Some(else_block)
+                } else {
+                    None
+                };
+                Statement::IfStmt {
+                    expr: Box::new(expr),
+                    block,
+                    else_block,
+                }
+            }
+            ast::Statement::WhileStmt { mut expr, block } => {
+                let (expr, expr_t_id) = self.resolve_expression(&mut expr, state)?;
+                state.new_constraint(TypeConstraint::Equality(
+                    expr_t_id,
+                    T_ID_BOOL,
+                    expr.get_loc(),
+                ));
+                let block = self.resolve_block(block, state, locals, fun_t_id);
+                Statement::WhileStmt {
+                    expr: Box::new(expr),
+                    block,
+                }
+            }
+            ast::Statement::ReturnStmt { expr, loc } => {
+                if let Some(mut ret_expr) = expr {
+                    let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state)?;
+                    state.new_constraint(TypeConstraint::Return(
+                        fun_t_id,
+                        ret_t_id,
+                        expr.get_loc(),
+                    ));
+                    Statement::ReturnStmt {
+                        expr: Some(expr),
+                        loc,
+                    }
+                } else {
+                    let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
+                    state.new_constraint(TypeConstraint::Return(
+                        fun_t_id,
+                        ret_t_id,
+                        Location::dummy(), // TODO: how to deal with empty expressions?
+                    ));
+                    Statement::ReturnStmt { expr: None, loc }
+                }
+            }
+            ast::Statement::ExprStmt { mut expr } => {
+                let (expr, _) = self.resolve_expression(&mut expr, state)?;
+                Statement::ExprStmt {
+                    expr: Box::new(expr),
+                }
+            }
+        };
+        Ok(stmt)
     }
 
     fn resolve_expression(
