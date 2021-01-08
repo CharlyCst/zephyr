@@ -142,10 +142,11 @@ impl<'a> HirProducer<'a> {
 
     fn reduce_stmt(&mut self, stmt: S, s: &State) -> Result<Statement, String> {
         match stmt {
-            S::AssignStmt { var, expr } => {
+            S::AssignStmt { target, expr } => {
                 let expr = Box::new(self.reduce_expr(*expr, s)?);
-                let var = Box::new(self.reduce_var(*var, s)?);
-                Ok(Statement::AssignStmt { var, expr })
+                let target = self.reduce_expr(*target, s)?;
+                let target = Box::new(self.as_place(target)?);
+                Ok(Statement::AssignStmt { target, expr })
             }
             S::LetStmt { var, expr } => {
                 let expr = Box::new(self.reduce_expr(*expr, s)?);
@@ -431,6 +432,28 @@ impl<'a> HirProducer<'a> {
             is_pub: struc.is_pub,
             loc: struc.loc,
         })
+    }
+
+    /// Try to convert an expression into a place, that is something that can hold a value (a
+    /// memory slot or a variable for instance).
+    fn as_place(&mut self, expr: Expression) -> Result<PlaceExpression, String> {
+        match expr {
+            Expression::Variable { var } => Ok(PlaceExpression::Variable { var }),
+            Expression::Access {
+                expr,
+                field,
+                struct_id,
+                t,
+                loc,
+            } => Ok(PlaceExpression::Access {
+                expr,
+                field,
+                struct_id,
+                t,
+                loc,
+            }),
+            _ => Err(String::from("Expected a place expression")),
+        }
     }
 
     /// Verify that t is a boolean type, raises an error otherwhise.

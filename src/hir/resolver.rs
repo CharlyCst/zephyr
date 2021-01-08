@@ -278,31 +278,17 @@ impl<'a> NameResolver<'a> {
         state.new_scope();
         let mut stmts = Vec::new();
 
+        // TODO: get rid of this `unwrap!` macro: create a new function `resolve_stmt` and simply
+        // use `?` operator.
         for stmt in block.stmts.into_iter() {
             let named_stmt = match stmt {
-                ast::Statement::AssignStmt { var, mut expr } => {
-                    let (var, var_t_id) = if let Some(name) = state.find_in_context(&var.ident) {
-                        let var = Variable {
-                            ident: var.ident,
-                            loc: var.loc,
-                            n_id: name.n_id,
-                        };
-                        (var, name.t_id)
-                    } else {
-                        self.err.report(
-                            var.loc,
-                            format!(
-                                "Variable name {} is not defined in current scope",
-                                var.ident
-                            ),
-                        );
-                        continue;
-                    };
-                    let (expr, t_id) = unwrap!(self, self.resolve_expression(&mut expr, state));
-                    let loc = var.loc.merge(expr.get_loc());
-                    state.new_constraint(TypeConstraint::Equality(var_t_id, t_id, loc));
+                ast::Statement::AssignStmt { mut target, mut expr } => {
+                    let (target, target_t_id) = unwrap!(self, self.resolve_expression(&mut target, state));
+                    let (expr, expr_id) = unwrap!(self, self.resolve_expression(&mut expr, state));
+                    let loc = target.get_loc().merge(expr.get_loc());
+                    state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
                     Statement::AssignStmt {
-                        var: Box::new(var),
+                        target: Box::new(target),
                         expr: Box::new(expr),
                     }
                 }
@@ -866,11 +852,8 @@ impl<'a> NameResolver<'a> {
 
             let mut results = Vec::new();
             if let Some((t, loc)) = &fun.result {
-                if let Some(known_t) = check_built_in_type(&t) {
-                    results.push(known_t);
-                } else {
-                    self.err.report(*loc, format!("Unknown result type: {}", t));
-                }
+                let t = self.get_type(t, *loc, state);
+                results.push(t);
             }
 
             let declaration =

@@ -28,7 +28,7 @@ result         -> (":" IDENTIFIER)?
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt
 expr_stmt      -> expression ";"
-assign_stmt    -> IDENTIFIER = expression ";"
+assign_stmt    -> expression = expression ";"
 let_stmt       -> "let" IDENTIFIER = expression ";"
 if_stmt        -> "if" expression¹ block ("else" block) ";"
 while_stmt     -> "while" expression¹ block ";"

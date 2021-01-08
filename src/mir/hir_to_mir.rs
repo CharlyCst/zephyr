@@ -7,8 +7,9 @@ use crate::hir::{
     Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, Function as HirFun,
     FunctionPrototype as HirFunProto, Imports as HirImports, IntegerType as HirIntergerType,
     LocalId as HirLocalId, LocalVariable as HirLocalVariable, NumericType as HirNumericType,
-    Program as HirProgram, ScalarType as HirScalarType, Statement as S, Struct as HirStruct,
-    TupleType as HirTupleType, Type as HirType, Unop as HirUnop, Value as V,
+    PlaceExpression as PlaceExpr, Program as HirProgram, ScalarType as HirScalarType,
+    Statement as S, Struct as HirStruct, TupleType as HirTupleType, Type as HirType,
+    Unop as HirUnop, Value as V,
 };
 
 use std::collections::HashMap;
@@ -240,9 +241,8 @@ impl<'a> MIRProducer<'a> {
     ) -> Result<(), String> {
         for statement in block.stmts.into_iter() {
             match statement {
-                S::AssignStmt { var, expr } => {
-                    self.reduce_expr(&expr, stmts, locals, s)?;
-                    stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))));
+                S::AssignStmt { target, expr } => {
+                    self.reduce_assign_stmt(*target, *expr, stmts, locals, s)?;
                 }
                 S::LetStmt { var, expr } => {
                     self.reduce_expr(&expr, stmts, locals, s)?;
@@ -512,6 +512,39 @@ impl<'a> MIRProducer<'a> {
         Ok(types)
     }
 
+    /// Reduces an assign statement (`target = expr`).
+    fn reduce_assign_stmt(
+        &mut self,
+        target: PlaceExpr,
+        expr: Expr,
+        stmts: &mut Vec<Statement>,
+        locals: &mut Vec<LocalVariable>,
+        s: &mut State,
+    ) -> Result<(), String> {
+        match target {
+            PlaceExpr::Variable { var } => {
+                self.reduce_expr(&expr, stmts, locals, s)?;
+                stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))))
+            }
+            PlaceExpr::Access {
+                expr: target_expr,
+                field,
+                struct_id,
+                ..
+            } => {
+                let struc = s.structs.get(&struct_id).unwrap();
+                let field = struc.fields.get(&field).unwrap();
+                let store_instr = get_store_instr(field.t, field.layout, field.offset)?;
+                // Push the address on the stack
+                self.reduce_expr(&target_expr, stmts, locals, s)?;
+                // Push the value on the stack
+                self.reduce_expr(&expr, stmts, locals, s)?;
+                stmts.push(Statement::Memory(store_instr));
+            }
+        }
+        Ok(())
+    }
+
     fn reduce_local_variable(
         &mut self,
         local: HirLocalVariable,
@@ -560,6 +593,7 @@ impl<'a> MIRProducer<'a> {
             AsmStatement::Memory { mem, .. } => match mem {
                 AsmMemory::Size => Ok(Statement::Memory(Memory::Size)),
                 AsmMemory::Grow => Ok(Statement::Memory(Memory::Grow)),
+                // Loads
                 AsmMemory::I32Load { align, offset } => {
                     Ok(Statement::Memory(Memory::I32Load { align, offset }))
                 }
@@ -572,6 +606,10 @@ impl<'a> MIRProducer<'a> {
                 AsmMemory::F64Load { align, offset } => {
                     Ok(Statement::Memory(Memory::F64Load { align, offset }))
                 }
+                AsmMemory::I32Load8u { align, offset } => {
+                    Ok(Statement::Memory(Memory::I32Load8u { align, offset }))
+                }
+                // Stores
                 AsmMemory::I32Store { align, offset } => {
                     Ok(Statement::Memory(Memory::I32Store { align, offset }))
                 }
@@ -583,6 +621,9 @@ impl<'a> MIRProducer<'a> {
                 }
                 AsmMemory::F64Store { align, offset } => {
                     Ok(Statement::Memory(Memory::F64Store { align, offset }))
+                }
+                AsmMemory::I32Store8 { align, offset } => {
+                    Ok(Statement::Memory(Memory::I32Store8 { align, offset }))
                 }
             },
         }
