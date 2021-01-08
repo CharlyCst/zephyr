@@ -102,7 +102,7 @@ pub enum Statement {
         expr: Box<Expression>,
     },
     AssignStmt {
-        var: Box<Variable>,
+        target: Box<Expression>,
         expr: Box<Expression>,
     },
     IfStmt {

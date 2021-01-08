@@ -519,12 +519,13 @@ impl<'a> Parser<'a> {
             if is_pub {
                 self.back();
             }
-            return None
+            return None;
         };
         self.next_match_report_synchronize(
             TokenType::Colon,
             "Expect a colon (`:`) after field identifier",
-        ).ok()?;
+        )
+        .ok()?;
         let t_loc = self.peek().loc;
         let t = if let Token {
             t: TokenType::Identifier(ref t),
@@ -664,54 +665,27 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.return_stmt()
             }
-            TokenType::Identifier(_) => match self.peekpeek().t {
-                TokenType::Equal => self.assign_stmt(),
-                _ => self.expr_stmt(),
-            },
-            _ => self.expr_stmt(),
+            _ => self.expr_or_assign_stmt(),
         }
     }
 
-    /// Parses the 'expr_stmt' grammar element
-    fn expr_stmt(&mut self) -> Result<Statement, ()> {
+    /// Parses the 'expr_stmt' or 'assign_stmt' grammar element, both are handled because thay
+    /// share a common prefix.
+    fn expr_or_assign_stmt(&mut self) -> Result<Statement, ()> {
         let expr = self.expression(true)?;
-        self.next_match_report(TokenType::SemiColon, "This statement is not complete")?;
-        Ok(Statement::ExprStmt {
-            expr: Box::new(expr),
-        })
-    }
-
-    /// Parses the 'assign_stmt' grammar element
-    fn assign_stmt(&mut self) -> Result<Statement, ()> {
-        let (ident, loc) = match self.advance() {
-            Token {
-                t: TokenType::Identifier(ref x),
-                loc,
-            } => (x.clone(), loc),
-            Token { loc, .. } => {
-                let loc = *loc;
-                self.err.report_internal(
-                    loc,
-                    String::from("Assignment statement does not start with an identifier"),
-                );
-                return Err(());
+        let stmt = if self.next_match(TokenType::Equal) {
+            let value = self.expression(true)?;
+            Statement::AssignStmt {
+                target: Box::new(expr),
+                expr: Box::new(value),
+            }
+        } else {
+            Statement::ExprStmt {
+                expr: Box::new(expr),
             }
         };
-        let loc = *loc;
-        self.next_match_report_synchronize(
-            TokenType::Equal,
-            "Assignment identifier is not followed by an \"=\"",
-        )?;
-        let expr = self.expression(true)?;
         self.consume_semi_colon();
-        Ok(Statement::AssignStmt {
-            var: Box::new(Variable {
-                ident,
-                t: None,
-                loc,
-            }),
-            expr: Box::new(expr),
-        })
+        Ok(stmt)
     }
 
     /// Parses the 'let_stmt' grammar element (assuming the `let` token has
@@ -1147,7 +1121,8 @@ impl<'a> Parser<'a> {
         self.next_match_report(
             TokenType::Colon,
             "Expect a colon (':') after struct field identifier",
-        ).ok()?;
+        )
+        .ok()?;
         let expr = Box::new(self.expression(true).ok()?);
         return Some(FieldValue { ident, expr, loc });
     }

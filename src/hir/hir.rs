@@ -145,7 +145,7 @@ pub enum Statement {
         expr: Box<Expression>,
     },
     AssignStmt {
-        var: Box<Variable>,
+        target: Box<PlaceExpression>,
         expr: Box<Expression>,
     },
     IfStmt {
@@ -170,6 +170,7 @@ pub struct Variable {
     pub t: Type,
 }
 
+/// An expression that produces a value.
 pub enum Expression {
     Variable {
         var: Variable,
@@ -208,6 +209,21 @@ pub enum Expression {
         loc: Location,
     },
     Nop {
+        loc: Location,
+    },
+}
+
+/// An expression that produces a place, that is a slot in which a value can be stored (memory
+/// address, variable index and so on).
+pub enum PlaceExpression {
+    Variable {
+        var: Variable,
+    },
+    Access {
+        expr: Box<Expression>,
+        field: String,
+        struct_id: StructId,
+        t: Type,
         loc: Location,
     },
 }
@@ -563,12 +579,21 @@ impl fmt::Display for Expression {
     }
 }
 
+impl fmt::Display for PlaceExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PlaceExpression::Variable { var: v, .. } => write!(f, "{}", v.ident),
+            PlaceExpression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+        }
+    }
+}
+
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
-            Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
+            Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
                 expr,
                 block,

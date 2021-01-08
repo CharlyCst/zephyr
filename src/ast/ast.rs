@@ -117,7 +117,7 @@ pub enum Statement {
         expr: Box<Expression>,
     },
     AssignStmt {
-        var: Box<Variable>,
+        target: Box<Expression>,
         expr: Box<Expression>,
     },
     IfStmt {
@@ -260,10 +260,12 @@ pub enum AsmMemory {
     I64Load { align: u32, offset: u32 },
     F32Load { align: u32, offset: u32 },
     F64Load { align: u32, offset: u32 },
+    I32Load8u { align: u32, offset: u32 },
     I32Store { align: u32, offset: u32 },
     I64Store { align: u32, offset: u32 },
     F32Store { align: u32, offset: u32 },
     F64Store { align: u32, offset: u32 },
+    I32Store8 { align: u32, offset: u32 },
 }
 
 pub enum AsmControl {
@@ -445,7 +447,7 @@ impl fmt::Display for Statement {
         match self {
             Statement::ExprStmt { expr } => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
-            Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
+            Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
                 expr,
                 block,
@@ -513,10 +515,14 @@ impl fmt::Display for AsmMemory {
             AsmMemory::I64Load { align, offset } => write!(f, "i64.load {}, {}", align, offset),
             AsmMemory::F32Load { align, offset } => write!(f, "f32.load {}, {}", align, offset),
             AsmMemory::F64Load { align, offset } => write!(f, "f64.load {}, {}", align, offset),
+            AsmMemory::I32Load8u { align, offset } => {
+                write!(f, "i32.load8_u {}, {}", align, offset)
+            }
             AsmMemory::I32Store { align, offset } => write!(f, "i32.store {}, {}", align, offset),
             AsmMemory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
             AsmMemory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
             AsmMemory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
+            AsmMemory::I32Store8 { align, offset } => write!(f, "i32.store8 {}, {}", align, offset),
         }
     }
 }
