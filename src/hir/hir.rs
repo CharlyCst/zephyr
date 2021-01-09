@@ -1,5 +1,6 @@
 #![allow(dead_code)] // Call::Indirect
 use super::names::{AsmStatement, NameId};
+use super::types::Type as NameType;
 use crate::driver::PackageDeclarations;
 use crate::error::Location;
 
@@ -327,6 +328,26 @@ pub enum Memory {
     I64Store { align: u32, offset: u32 },
     F32Store { align: u32, offset: u32 },
     F64Store { align: u32, offset: u32 },
+}
+
+/// Lift an HIR type into a name type.
+pub fn lift_t(t: &Type) -> NameType {
+    match t {
+        Type::Scalar(x) => match x {
+            ScalarType::I32 => NameType::I32,
+            ScalarType::I64 => NameType::I64,
+            ScalarType::F32 => NameType::F32,
+            ScalarType::F64 => NameType::F64,
+            ScalarType::Bool => NameType::Bool,
+        },
+        Type::Struct(s_id) => NameType::Struct(*s_id),
+        Type::Tuple(_) => todo!(), // Tuples are not yet supported
+        Type::Fun(fun) => {
+            let params = fun.params.iter().map(|p| lift_t(p)).collect();
+            let ret = fun.ret.iter().map(|r| lift_t(r)).collect();
+            NameType::Fun(params, ret)
+        }
+    }
 }
 
 impl Expression {
