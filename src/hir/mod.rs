@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::cli::Config;
-use crate::driver::PublicDeclarations;
+use crate::driver::{PublicDeclarations, Ctx};
 use crate::error::ErrorHandler;
 
 pub use self::names::{
@@ -23,6 +23,7 @@ mod types;
 pub fn to_hir<'a>(
     ast_program: ast::Program,
     namespace: PublicDeclarations,
+    ctx: &Ctx,
     error_handler: &mut ErrorHandler,
     config: &Config,
 ) -> hir::Program {
@@ -39,7 +40,7 @@ pub fn to_hir<'a>(
         println!("\n/// Type Checking ///\n");
     }
 
-    let mut type_checker = type_check::TypeChecker::new(error_handler);
+    let mut type_checker = type_check::TypeChecker::new(error_handler, ctx);
     let typed_program = type_checker.check(program);
 
     if config.verbose {

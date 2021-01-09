@@ -722,7 +722,7 @@ impl<'a> NameResolver<'a> {
                         // Namespace imported from another package
                         if let Some(namespace) = state.used_namespace.get(ident) {
                             let loc = loc_field;
-                            match namespace.get(&field) {
+                            match namespace.get_val(&field) {
                                 Some(ValueDeclaration::Function { fun_id, t }) => {
                                     let expr = Expression::Function {
                                         fun_id: *fun_id,

@@ -1,17 +1,19 @@
-use super::names;
+use super::hir;
 use super::names::{
-    Function, Imports, NameStore, ResolvedProgram, TypeDeclaration, TypeNamespace, ValueDeclaration,
+    Function, Imports, NameStore, ResolvedProgram, StructId, TypeDeclaration, TypeNamespace,
+    ValueDeclaration,
 };
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{
     ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
     TypedProgram,
 };
-use crate::driver::PackageDeclarations;
+use crate::driver::{Ctx, PackageDeclarations};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
 
+#[derive(Debug)]
 enum Progress {
     Some,
     None,
@@ -20,11 +22,15 @@ enum Progress {
 
 pub struct TypeChecker<'a> {
     err: &'a mut ErrorHandler,
+    ctx: &'a Ctx,
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> TypeChecker {
-        TypeChecker { err: error_handler }
+    pub fn new(error_handler: &'a mut ErrorHandler, ctx: &'a Ctx) -> TypeChecker<'a> {
+        TypeChecker {
+            err: error_handler,
+            ctx,
+        }
     }
 
     /// Type check a ResolvedProgram.
@@ -386,26 +392,21 @@ impl<'a> TypeChecker<'a> {
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
     ) -> Progress {
-        let struc = if let Ok(struc) = self.get_struct_from_t_id(
+        let field_t = if let Ok(t) = self.get_struct_field_t(
             struct_t_id,
+            field,
             loc,
             "Can not access field of a non struct type",
             types,
             store,
         ) {
-            struc
+            t
         } else {
             return Progress::Error;
         };
-        if let Some(field) = struc.fields.get(field) {
-            let t_id = store.fresh(loc, vec![field.t.clone()]);
-            constraints.add(TypeConstraint::Equality(t_id, field_t_id, loc));
-            Progress::Some
-        } else {
-            self.err
-                .report(loc, format!("No field named '{}' in struct", field));
-            return Progress::Error;
-        }
+        let t_id = store.fresh(loc, vec![field_t]);
+        constraints.add(TypeConstraint::Equality(t_id, field_t_id, loc));
+        Progress::Some
     }
 
     fn constr_struct(
@@ -417,43 +418,45 @@ impl<'a> TypeChecker<'a> {
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
     ) -> Progress {
-        let struc = if let Ok(struc) = self.get_struct_from_t_id(
-            struct_t_id,
-            loc,
-            "Can not access field of a non struct type",
-            types,
-            store,
-        ) {
-            struc
-        } else {
-            return Progress::Error;
-        };
         let mut ok = true;
         let fields_len = fields.len();
 
         // type check each field
         for (field, f_t_id, field_loc) in &fields {
-            if let Some(field_def) = struc.fields.get(field) {
-                let t_id = store.fresh(*field_loc, vec![field_def.t.clone()]);
-                constraints.add(TypeConstraint::Equality(t_id, *f_t_id, *field_loc));
+            let field_t = if let Ok(t) = self.get_struct_field_t(
+                struct_t_id,
+                field,
+                *field_loc,
+                "Can not access field of a non struct type",
+                types,
+                store,
+            ) {
+                t
             } else {
-                self.err
-                    .report(*field_loc, format!("Field '{}' does not exist", field));
                 ok = false;
-            }
+                continue;
+            };
+            let t_id = store.fresh(*field_loc, vec![field_t]);
+            constraints.add(TypeConstraint::Equality(t_id, *f_t_id, *field_loc));
         }
 
         // Missing fields
-        if fields_len < struc.fields.len() {
+        let n_fields = self
+            .get_struct_fields_len(struct_t_id, loc, types, store)
+            .unwrap(); // TODO: replace by `?`
+        if fields_len < n_fields {
             // Rare event, simple but not very efficient code
             let fields = fields
                 .iter()
                 .map(|(field, _, _)| field.as_str())
                 .collect::<Vec<&str>>();
             let mut missing_fields = Vec::new();
-            for (ref field, _) in &struc.fields {
+            let struc_fields = self
+                .get_struct_fields(struct_t_id, loc, types, store)
+                .unwrap(); // TODO: replace by `?`
+            for field in struc_fields {
                 if !fields.contains(&field.as_str()) {
-                    missing_fields.push((*field).to_owned());
+                    missing_fields.push(field);
                 }
             }
             missing_fields.sort();
@@ -517,17 +520,120 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    /// Get a `&Struct` from a `TypeID` that is supposed to represent a struct.
-    /// This will raise an error if the type is ambiguous (more than 1 candidate), if there is no
-    /// candidate or if the type does not represent a struct.
-    fn get_struct_from_t_id<'t>(
+    /// Return the type of a field from a t_id (that must resolve to a struct) and the field. An
+    /// error will be raise if the t_id does not map to a struct, if the field does not exist or if
+    /// the type can not be infered (multiple candidates).
+    fn get_struct_field_t(
+        &mut self,
+        struct_t_id: TypeId,
+        field: &str,
+        loc: Location,
+        error: &str,
+        types: &TypeNamespace,
+        store: &mut TypeVarStore,
+    ) -> Result<Type, Progress> {
+        let s_id = self.get_struct_id_from_t_id(struct_t_id, loc, store, error)?;
+        if let Some(struc) = types.get(&s_id) {
+            // Defined in the current package
+            match struc.fields.get(field) {
+                Some(f) => Ok(f.t.clone()),
+                None => {
+                    self.err.report(
+                        loc,
+                        format!("No such field '{}' in {}", field, &struc.ident),
+                    );
+                    Err(Progress::Error)
+                }
+            }
+        } else if let Some(struc) = self.ctx.get_t(s_id) {
+            // Defined in the global context
+            match struc.fields.get(field) {
+                Some(f) => Ok(lift_t(&f.t)),
+                None => {
+                    self.err.report(
+                        loc,
+                        format!("No such field '{}' in {}", field, &struc.ident),
+                    );
+                    Err(Progress::Error)
+                }
+            }
+        } else {
+            self.err
+                .report_internal(loc, format!("No type with id '{}'", s_id));
+            Err(Progress::Error)
+        }
+    }
+
+    /// Return the number of fields in the struct.
+    fn get_struct_fields_len(
         &mut self,
         struct_t_id: TypeId,
         loc: Location,
-        error: &str,
-        types: &'t TypeNamespace,
+        types: &TypeNamespace,
         store: &mut TypeVarStore,
-    ) -> Result<&'t names::Struct, ()> {
+    ) -> Result<usize, Progress> {
+        let s_id = self.get_struct_id_from_t_id(
+            struct_t_id,
+            loc,
+            store,
+            "Could not get number of fields",
+        )?;
+        if let Some(struc) = types.get(&s_id) {
+            // Defined in the current package
+            Ok(struc.fields.len())
+        } else if let Some(struc) = self.ctx.get_t(s_id) {
+            // Defined in the global context
+            Ok(struc.fields.len())
+        } else {
+            self.err
+                .report_internal(loc, format!("No type with id '{}'", s_id));
+            Err(Progress::Error)
+        }
+    }
+
+    /// Return a vec of fields names for this struct.
+    fn get_struct_fields(
+        &mut self,
+        struct_t_id: TypeId,
+        loc: Location,
+        types: &TypeNamespace,
+        store: &mut TypeVarStore,
+    ) -> Result<Vec<String>, Progress> {
+        let s_id = self.get_struct_id_from_t_id(
+            struct_t_id,
+            loc,
+            store,
+            "Could not get number of fields",
+        )?;
+        if let Some(struc) = types.get(&s_id) {
+            // Defined in the current package
+            Ok(struc
+                .fields
+                .iter()
+                .map(|(ident, _)| ident.clone())
+                .collect())
+        } else if let Some(struc) = self.ctx.get_t(s_id) {
+            // Defined in the global context
+            Ok(struc
+                .fields
+                .iter()
+                .map(|(ident, _)| ident.clone())
+                .collect())
+        } else {
+            self.err
+                .report_internal(loc, format!("No type with id '{}'", s_id));
+            Err(Progress::Error)
+        }
+    }
+
+    /// Retrieve a struct_id from a type_id, raise an error if type_id does not map to a struct.
+    fn get_struct_id_from_t_id(
+        &mut self,
+        struct_t_id: TypeId,
+        loc: Location,
+        store: &mut TypeVarStore,
+        error: &str,
+    ) -> Result<StructId, Progress> {
         let t_struct = store.get(struct_t_id);
         if t_struct.types.len() > 1 {
             self.err
@@ -537,22 +643,30 @@ impl<'a> TypeChecker<'a> {
             t
         } else {
             self.err.report(loc, String::from("Could not infer type"));
-            return Err(());
+            return Err(Progress::Error);
         };
-        let s_id = match t_struct {
-            Type::Struct(s_id) => s_id,
+        match t_struct {
+            Type::Struct(s_id) => Ok(*s_id),
             _ => {
                 self.err.report(loc, String::from(error));
-                return Err(());
+                Err(Progress::Error)
             }
-        };
-        let struc = if let Some(struc) = types.get(&s_id) {
-            struc
-        } else {
-            self.err
-                .report_internal(loc, format!("No types with id '{}'", s_id));
-            return Err(());
-        };
-        Ok(struc)
+        }
+    }
+}
+
+/// Lift an HIR type into a name type.
+fn lift_t(t: &hir::Type) -> Type {
+    match t {
+        hir::Type::Scalar(x) => match x {
+            hir::ScalarType::I32 => Type::I32,
+            hir::ScalarType::I64 => Type::I64,
+            hir::ScalarType::F32 => Type::F32,
+            hir::ScalarType::F64 => Type::F64,
+            hir::ScalarType::Bool => Type::Bool,
+        },
+        hir::Type::Struct(s_id) => Type::Struct(*s_id),
+        hir::Type::Tuple(_) => todo!(), // Tuples are not yet supported
+        hir::Type::Fun(_) => todo!(),   // Function as a value are not yet supported
     }
 }

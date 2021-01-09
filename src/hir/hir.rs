@@ -107,6 +107,7 @@ pub struct FunctionPrototype {
     pub fun_id: FunId,
 }
 
+#[derive(Clone)]
 pub struct Struct {
     pub ident: String,
     pub s_id: StructId,
@@ -115,6 +116,7 @@ pub struct Struct {
     pub loc: Location,
 }
 
+#[derive(Clone)]
 pub struct StructField {
     pub is_pub: bool,
     pub t: Type,
