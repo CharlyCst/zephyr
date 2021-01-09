@@ -715,8 +715,9 @@ impl<'a> Parser<'a> {
         self.consume_semi_colon();
         Ok(Statement::LetStmt {
             var: Box::new(Variable {
-                ident,
+                namespace: None,
                 t: None,
+                ident,
                 loc,
             }),
             expr: Box::new(expr),
@@ -1062,15 +1063,21 @@ impl<'a> Parser<'a> {
                         "Expect closing brace '}' after struct instantiation",
                     )?;
                     Ok(Expression::Literal {
-                        value: Value::Struct { ident, fields, loc },
+                        value: Value::Struct {
+                            namespace: None,
+                            ident,
+                            fields,
+                            loc,
+                        },
                     })
                 } else {
                     // Variable
                     Ok(Expression::Variable {
                         var: Variable {
+                            namespace: None,
+                            t: None,
                             ident,
                             loc,
-                            t: None,
                         },
                     })
                 }

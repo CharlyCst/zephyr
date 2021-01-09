@@ -1,4 +1,4 @@
-use super::hir;
+use super::hir::lift_t;
 use super::names::{
     Function, Imports, NameStore, ResolvedProgram, StructId, TypeDeclaration, TypeNamespace,
     ValueDeclaration,
@@ -13,11 +13,10 @@ use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
 
-#[derive(Debug)]
+/// Indicates if some progress has been made.
 enum Progress {
     Some,
     None,
-    Error,
 }
 
 pub struct TypeChecker<'a> {
@@ -45,9 +44,11 @@ impl<'a> TypeChecker<'a> {
             for constr in constraints.into_iter() {
                 match self.apply_constr(constr, &mut type_vars, &mut new_constraints, &prog.structs)
                 {
-                    Progress::Some => progress = true,
-                    Progress::None => (),
-                    Progress::Error => (),
+                    Ok(p) => match p {
+                        Progress::Some => progress = true,
+                        Progress::None => (),
+                    },
+                    Err(_) => self.err.silent_report(),
                 }
             }
             constraints = new_constraints;
@@ -163,7 +164,7 @@ impl<'a> TypeChecker<'a> {
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         match constr {
             TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
                 self.constr_equality(t_id_1, t_id_2, loc, store, constraints)
@@ -195,7 +196,7 @@ impl<'a> TypeChecker<'a> {
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
         let c = TypeConstraint::Equality(t_id_1, t_id_2, loc);
@@ -204,17 +205,17 @@ impl<'a> TypeChecker<'a> {
         if t_1.len() > 0 && t_1[0] == Type::Any {
             if t_2.len() > 0 && t_2[0] == Type::Any {
                 constraints.add(c);
-                return Progress::None;
+                return Ok(Progress::None);
             }
             let t = t_2.clone();
             store.replace(t_id_1, t);
             constraints.add(c);
-            return Progress::Some;
+            return Ok(Progress::Some);
         } else if t_2.len() > 0 && t_2[0] == Type::Any {
             let t = t_1.clone();
             store.replace(t_id_2, t);
             constraints.add(c);
-            return Progress::Some;
+            return Ok(Progress::Some);
         }
 
         // Can not infer types
@@ -223,7 +224,7 @@ impl<'a> TypeChecker<'a> {
                 loc,
                 String::from("Could not infer a type satisfying constraints"),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         let mut t = Vec::new();
@@ -254,9 +255,9 @@ impl<'a> TypeChecker<'a> {
         store.replace(t_id_1, t.clone());
         store.replace(t_id_2, t);
         if progress {
-            Progress::Some
+            Ok(Progress::Some)
         } else {
-            Progress::None
+            Ok(Progress::None)
         }
     }
 
@@ -267,7 +268,7 @@ impl<'a> TypeChecker<'a> {
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
         let c = TypeConstraint::Included(t_id_1, t_id_2, loc);
@@ -276,11 +277,11 @@ impl<'a> TypeChecker<'a> {
         if t_1.len() > 0 && t_1[0] == Type::Any {
             if t_2.len() > 0 && t_2[0] == Type::Any {
                 constraints.add(c);
-                return Progress::None;
+                return Ok(Progress::None);
             }
             let t = t_2.clone();
             store.replace(t_id_1, t);
-            return Progress::Some;
+            return Ok(Progress::Some);
         }
 
         let mut t = Vec::new();
@@ -313,9 +314,9 @@ impl<'a> TypeChecker<'a> {
 
         store.replace(t_id_1, t);
         if progress {
-            Progress::Some
+            Ok(Progress::Some)
         } else {
-            Progress::None
+            Ok(Progress::None)
         }
     }
 
@@ -326,7 +327,7 @@ impl<'a> TypeChecker<'a> {
         _loc: Location,
         store: &mut TypeVarStore,
         _constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let t_fun = store.get(t_id_fun);
         let ts = store.get(t_id);
 
@@ -335,7 +336,7 @@ impl<'a> TypeChecker<'a> {
                 t_fun.loc,
                 String::from("Return type constraint with ambiguous fun type"),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         let ret_t = match &t_fun.types[0] {
@@ -345,27 +346,27 @@ impl<'a> TypeChecker<'a> {
                     t_fun.loc,
                     String::from("Return type constraint used on a non function type"),
                 );
-                return Progress::Error;
+                return Err(());
             }
         };
 
         if ret_t.len() == 0 {
             if ts.types.len() == 0 {
-                return Progress::Some;
+                return Ok(Progress::Some);
             } else if ts.types[0] == Type::Any {
                 // TODO: do we accept type any?
-                return Progress::Some;
+                return Ok(Progress::Some);
             } else {
                 self.err
                     .report(t_fun.loc, String::from("Function returns no value"));
-                return Progress::Error;
+                return Err(());
             }
         } else if ret_t.len() != 1 {
             self.err.report_internal(
                 t_fun.loc,
                 String::from("Function returning multiple values are not yet supported"),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         let ret_t = &ret_t[0];
@@ -373,13 +374,13 @@ impl<'a> TypeChecker<'a> {
             if t == ret_t || *t == Type::Any {
                 let typ = vec![ret_t.clone()];
                 store.replace(t_id, typ);
-                return Progress::Some;
+                return Ok(Progress::Some);
             }
         }
 
         self.err
             .report(ts.loc, String::from("Return value has wrong type"));
-        return Progress::Error;
+        return Err(());
     }
 
     fn constr_field(
@@ -391,7 +392,7 @@ impl<'a> TypeChecker<'a> {
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let field_t = if let Ok(t) = self.get_struct_field_t(
             struct_t_id,
             field,
@@ -402,11 +403,11 @@ impl<'a> TypeChecker<'a> {
         ) {
             t
         } else {
-            return Progress::Error;
+            return Err(());
         };
         let t_id = store.fresh(loc, vec![field_t]);
         constraints.add(TypeConstraint::Equality(t_id, field_t_id, loc));
-        Progress::Some
+        Ok(Progress::Some)
     }
 
     fn constr_struct(
@@ -417,7 +418,7 @@ impl<'a> TypeChecker<'a> {
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
         types: &TypeNamespace,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let mut ok = true;
         let fields_len = fields.len();
 
@@ -441,9 +442,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         // Missing fields
-        let n_fields = self
-            .get_struct_fields_len(struct_t_id, loc, types, store)
-            .unwrap(); // TODO: replace by `?`
+        let n_fields = self.get_struct_fields_len(struct_t_id, loc, types, store)?;
         if fields_len < n_fields {
             // Rare event, simple but not very efficient code
             let fields = fields
@@ -464,13 +463,13 @@ impl<'a> TypeChecker<'a> {
                 loc,
                 format!("Missing fields: '{}'", missing_fields.join("', '")),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         if ok {
-            Progress::Some
+            Ok(Progress::Some)
         } else {
-            Progress::Error
+            Err(())
         }
     }
 
@@ -482,12 +481,12 @@ impl<'a> TypeChecker<'a> {
         loc: Location,        // Function location
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()>{
         let t_fun = store.get(fun_t_id);
 
         if t_fun.types.len() != 1 {
             self.err.report(loc, String::from("Call a non-function"));
-            return Progress::Error;
+            return Err(());
         }
 
         if let Type::Fun(ref f_args, _) = t_fun.types[0].clone() {
@@ -500,7 +499,7 @@ impl<'a> TypeChecker<'a> {
                         args_t_id.len()
                     ),
                 );
-                return Progress::Error;
+                return Err(());
             }
             if f_args.len() != locs.len() {
                 self.err.report_internal(
@@ -513,10 +512,10 @@ impl<'a> TypeChecker<'a> {
                 let fresh_t_id = store.fresh(*loc, candidate);
                 constraints.add(TypeConstraint::Equality(*t_arg, fresh_t_id, *loc));
             }
-            Progress::Some
+            Ok(Progress::Some)
         } else {
             self.err.report(loc, String::from("Call a non-function"));
-            Progress::Error
+           Err(())
         }
     }
 
@@ -531,7 +530,7 @@ impl<'a> TypeChecker<'a> {
         error: &str,
         types: &TypeNamespace,
         store: &mut TypeVarStore,
-    ) -> Result<Type, Progress> {
+    ) -> Result<Type, ()> {
         let s_id = self.get_struct_id_from_t_id(struct_t_id, loc, store, error)?;
         if let Some(struc) = types.get(&s_id) {
             // Defined in the current package
@@ -542,7 +541,7 @@ impl<'a> TypeChecker<'a> {
                         loc,
                         format!("No such field '{}' in {}", field, &struc.ident),
                     );
-                    Err(Progress::Error)
+                    Err(())
                 }
             }
         } else if let Some(struc) = self.ctx.get_t(s_id) {
@@ -554,13 +553,13 @@ impl<'a> TypeChecker<'a> {
                         loc,
                         format!("No such field '{}' in {}", field, &struc.ident),
                     );
-                    Err(Progress::Error)
+                    Err(())
                 }
             }
         } else {
             self.err
                 .report_internal(loc, format!("No type with id '{}'", s_id));
-            Err(Progress::Error)
+            Err(())
         }
     }
 
@@ -571,7 +570,7 @@ impl<'a> TypeChecker<'a> {
         loc: Location,
         types: &TypeNamespace,
         store: &mut TypeVarStore,
-    ) -> Result<usize, Progress> {
+    ) -> Result<usize, ()> {
         let s_id = self.get_struct_id_from_t_id(
             struct_t_id,
             loc,
@@ -587,7 +586,7 @@ impl<'a> TypeChecker<'a> {
         } else {
             self.err
                 .report_internal(loc, format!("No type with id '{}'", s_id));
-            Err(Progress::Error)
+            Err(())
         }
     }
 
@@ -598,7 +597,7 @@ impl<'a> TypeChecker<'a> {
         loc: Location,
         types: &TypeNamespace,
         store: &mut TypeVarStore,
-    ) -> Result<Vec<String>, Progress> {
+    ) -> Result<Vec<String>, ()> {
         let s_id = self.get_struct_id_from_t_id(
             struct_t_id,
             loc,
@@ -622,7 +621,7 @@ impl<'a> TypeChecker<'a> {
         } else {
             self.err
                 .report_internal(loc, format!("No type with id '{}'", s_id));
-            Err(Progress::Error)
+            Err(())
         }
     }
 
@@ -633,7 +632,7 @@ impl<'a> TypeChecker<'a> {
         loc: Location,
         store: &mut TypeVarStore,
         error: &str,
-    ) -> Result<StructId, Progress> {
+    ) -> Result<StructId, ()> {
         let t_struct = store.get(struct_t_id);
         if t_struct.types.len() > 1 {
             self.err
@@ -643,30 +642,15 @@ impl<'a> TypeChecker<'a> {
             t
         } else {
             self.err.report(loc, String::from("Could not infer type"));
-            return Err(Progress::Error);
+            return Err(());
         };
         match t_struct {
             Type::Struct(s_id) => Ok(*s_id),
             _ => {
                 self.err.report(loc, String::from(error));
-                Err(Progress::Error)
+                Err(())
             }
         }
     }
 }
 
-/// Lift an HIR type into a name type.
-fn lift_t(t: &hir::Type) -> Type {
-    match t {
-        hir::Type::Scalar(x) => match x {
-            hir::ScalarType::I32 => Type::I32,
-            hir::ScalarType::I64 => Type::I64,
-            hir::ScalarType::F32 => Type::F32,
-            hir::ScalarType::F64 => Type::F64,
-            hir::ScalarType::Bool => Type::Bool,
-        },
-        hir::Type::Struct(s_id) => Type::Struct(*s_id),
-        hir::Type::Tuple(_) => todo!(), // Tuples are not yet supported
-        hir::Type::Fun(_) => todo!(),   // Function as a value are not yet supported
-    }
-}

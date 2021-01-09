@@ -194,7 +194,7 @@ impl<'a> NameResolver<'a> {
         };
 
         for param in fun.params.into_iter() {
-            let t = vec![self.get_type(&param.t, param.loc, state)];
+            let t = vec![self.get_type(&param.t, None, param.loc, state)];
 
             match state.declare(param.ident.clone(), t, param.loc) {
                 Ok((n_id, _)) => fun_params.push(Variable {
@@ -285,12 +285,9 @@ impl<'a> NameResolver<'a> {
         fun_t_id: TypeId,
     ) -> Result<Statement, ()> {
         let stmt = match stmt {
-            ast::Statement::AssignStmt {
-                mut target,
-                mut expr,
-            } => {
-                let (target, target_t_id) = self.resolve_expression(&mut target, state)?;
-                let (expr, expr_id) = self.resolve_expression(&mut expr, state)?;
+            ast::Statement::AssignStmt { target, expr } => {
+                let (target, target_t_id) = self.resolve_expression(*target, state)?;
+                let (expr, expr_id) = self.resolve_expression(*expr, state)?;
                 let loc = target.get_loc().merge(expr.get_loc());
                 state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
                 Statement::AssignStmt {
@@ -298,11 +295,11 @@ impl<'a> NameResolver<'a> {
                     expr: Box::new(expr),
                 }
             }
-            ast::Statement::LetStmt { var, mut expr } => {
+            ast::Statement::LetStmt { var, expr } => {
                 match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
                     Ok((n_id, var_t_id)) => {
                         locals.push(n_id);
-                        let (expr, expr_t_id) = self.resolve_expression(&mut expr, state)?;
+                        let (expr, expr_t_id) = self.resolve_expression(*expr, state)?;
                         let loc = var.loc.merge(expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
                         Statement::LetStmt {
@@ -324,11 +321,11 @@ impl<'a> NameResolver<'a> {
                 }
             }
             ast::Statement::IfStmt {
-                mut expr,
+                expr,
                 block,
                 else_block,
             } => {
-                let (expr, expr_t_id) = self.resolve_expression(&mut expr, state)?;
+                let (expr, expr_t_id) = self.resolve_expression(*expr, state)?;
                 state.new_constraint(TypeConstraint::Equality(
                     expr_t_id,
                     T_ID_BOOL,
@@ -347,8 +344,8 @@ impl<'a> NameResolver<'a> {
                     else_block,
                 }
             }
-            ast::Statement::WhileStmt { mut expr, block } => {
-                let (expr, expr_t_id) = self.resolve_expression(&mut expr, state)?;
+            ast::Statement::WhileStmt { expr, block } => {
+                let (expr, expr_t_id) = self.resolve_expression(*expr, state)?;
                 state.new_constraint(TypeConstraint::Equality(
                     expr_t_id,
                     T_ID_BOOL,
@@ -361,8 +358,8 @@ impl<'a> NameResolver<'a> {
                 }
             }
             ast::Statement::ReturnStmt { expr, loc } => {
-                if let Some(mut ret_expr) = expr {
-                    let (expr, ret_t_id) = self.resolve_expression(&mut ret_expr, state)?;
+                if let Some(ret_expr) = expr {
+                    let (expr, ret_t_id) = self.resolve_expression(ret_expr, state)?;
                     state.new_constraint(TypeConstraint::Return(
                         fun_t_id,
                         ret_t_id,
@@ -382,8 +379,8 @@ impl<'a> NameResolver<'a> {
                     Statement::ReturnStmt { expr: None, loc }
                 }
             }
-            ast::Statement::ExprStmt { mut expr } => {
-                let (expr, _) = self.resolve_expression(&mut expr, state)?;
+            ast::Statement::ExprStmt { expr } => {
+                let (expr, _) = self.resolve_expression(*expr, state)?;
                 Statement::ExprStmt {
                     expr: Box::new(expr),
                 }
@@ -394,19 +391,19 @@ impl<'a> NameResolver<'a> {
 
     fn resolve_expression(
         &mut self,
-        expr: &mut ast::Expression,
+        expr: ast::Expression,
         state: &mut State,
     ) -> Result<(Expression, TypeId), ()> {
         match expr {
             ast::Expression::Unary { unop, expr } => {
-                let (expr, op_t_id) = self.resolve_expression(expr, state)?;
+                let (expr, op_t_id) = self.resolve_expression(*expr, state)?;
                 match unop {
                     ast::UnaryOperator::Minus => {
                         let loc = expr.get_loc();
                         state.new_constraint(TypeConstraint::Included(op_t_id, T_ID_NUMERIC, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
-                            unop: *unop,
+                            unop,
                             loc,
                             op_t_id,
                         };
@@ -417,7 +414,7 @@ impl<'a> NameResolver<'a> {
                         state.new_constraint(TypeConstraint::Included(op_t_id, T_ID_BOOL, loc));
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
-                            unop: *unop,
+                            unop,
                             loc,
                             op_t_id,
                         };
@@ -430,8 +427,8 @@ impl<'a> NameResolver<'a> {
                 binop,
                 expr_right,
             } => {
-                let (left_expr, left_t_id) = self.resolve_expression(expr_left, state)?;
-                let (right_expr, right_t_id) = self.resolve_expression(expr_right, state)?;
+                let (left_expr, left_t_id) = self.resolve_expression(*expr_left, state)?;
+                let (right_expr, right_t_id) = self.resolve_expression(*expr_right, state)?;
                 let loc = left_expr.get_loc().merge(right_expr.get_loc());
                 match binop {
                     ast::BinaryOperator::Remainder
@@ -446,7 +443,7 @@ impl<'a> NameResolver<'a> {
                         ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
-                            binop: *binop,
+                            binop,
                             expr_right: Box::new(right_expr),
                             loc,
                             t_id: left_t_id,
@@ -466,7 +463,7 @@ impl<'a> NameResolver<'a> {
                         ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
-                            binop: *binop,
+                            binop,
                             expr_right: Box::new(right_expr),
                             loc,
                             t_id: left_t_id,
@@ -486,7 +483,7 @@ impl<'a> NameResolver<'a> {
                         ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
-                            binop: *binop,
+                            binop,
                             expr_right: Box::new(right_expr),
                             loc,
                             t_id: T_ID_BOOL,
@@ -503,7 +500,7 @@ impl<'a> NameResolver<'a> {
                         ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
-                            binop: *binop,
+                            binop,
                             expr_right: Box::new(right_expr),
                             loc,
                             t_id: T_ID_BOOL,
@@ -520,7 +517,7 @@ impl<'a> NameResolver<'a> {
                         ));
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
-                            binop: *binop,
+                            binop,
                             expr_right: Box::new(right_expr),
                             loc,
                             t_id: T_ID_BOOL,
@@ -532,22 +529,22 @@ impl<'a> NameResolver<'a> {
             }
             ast::Expression::Literal { value } => match value {
                 ast::Value::Integer { val, loc } => {
-                    let fresh_t_id = state.types.fresh(*loc, vec![Type::I32, Type::I64]);
+                    let fresh_t_id = state.types.fresh(loc, vec![Type::I32, Type::I64]);
                     let expr = Expression::Literal {
                         value: Value::Integer {
-                            val: *val,
-                            loc: *loc,
+                            val,
+                            loc,
                             t_id: fresh_t_id,
                         },
                     };
                     Ok((expr, fresh_t_id))
                 }
                 ast::Value::Float { val, loc } => {
-                    let fresh_t_id = state.types.fresh(*loc, vec![Type::F32, Type::F64]);
+                    let fresh_t_id = state.types.fresh(loc, vec![Type::F32, Type::F64]);
                     let expr = Expression::Literal {
                         value: Value::Float {
-                            val: *val,
-                            loc: *loc,
+                            val,
+                            loc,
                             t_id: fresh_t_id,
                         },
                     };
@@ -556,21 +553,26 @@ impl<'a> NameResolver<'a> {
                 ast::Value::Boolean { val, loc } => {
                     let expr = Expression::Literal {
                         value: Value::Boolean {
-                            val: *val,
-                            loc: *loc,
+                            val,
+                            loc,
                             t_id: T_ID_BOOL,
                         },
                     };
                     Ok((expr, T_ID_BOOL))
                 }
-                ast::Value::Struct { ident, fields, loc } => {
-                    let t = self.get_type(&ident, *loc, state);
-                    let t_id = state.types.fresh(*loc, vec![t]);
+                ast::Value::Struct {
+                    namespace,
+                    ident,
+                    fields,
+                    loc,
+                } => {
+                    let t = self.get_type(&ident, namespace.as_deref(), loc, state);
+                    let t_id = state.types.fresh(loc, vec![t]);
                     let n = fields.len();
                     let mut hir_fields = Vec::with_capacity(n);
                     let mut field_constraints = Vec::with_capacity(n);
                     for field in fields {
-                        let (expr, field_t_id) = self.resolve_expression(&mut field.expr, state)?;
+                        let (expr, field_t_id) = self.resolve_expression(*field.expr, state)?;
                         hir_fields.push(FieldValue {
                             ident: field.ident.clone(),
                             expr: Box::new(expr),
@@ -582,12 +584,12 @@ impl<'a> NameResolver<'a> {
                     state.new_constraint(TypeConstraint::StructLiteral {
                         struct_t_id: t_id,
                         fields: field_constraints,
-                        loc: *loc,
+                        loc,
                     });
                     let expr = Expression::Literal {
                         value: Value::Struct {
                             ident: ident.clone(),
-                            loc: *loc,
+                            loc,
                             fields: hir_fields,
                             t_id,
                         },
@@ -596,17 +598,9 @@ impl<'a> NameResolver<'a> {
                 }
             },
             ast::Expression::Variable { var } => {
-                if let Some(value) = state.value_namespace.get(&var.ident) {
-                    match value {
-                        ValueKind::Function(fun_id, n_id) => {
-                            let expr = Expression::Function {
-                                fun_id: *fun_id,
-                                loc: var.loc,
-                            };
-                            let t_id = state.names.get(*n_id).t_id;
-                            Ok((expr, t_id))
-                        }
-                    }
+                let value = self.get_value(&var.ident, var.namespace.as_deref(), var.loc, state)?;
+                if let Some((expr, t_id)) = value {
+                    Ok((expr, t_id))
                 } else if let Some(name) = state.find_in_context(&var.ident) {
                     let expr = Expression::Variable {
                         var: Variable {
@@ -641,7 +635,7 @@ impl<'a> NameResolver<'a> {
                     resolved_args.push(arg);
                     args_t.push(arg_t);
                 }
-                let (fun, fun_t_id) = self.resolve_expression(fun, state)?;
+                let (fun, fun_t_id) = self.resolve_expression(*fun, state)?;
                 let loc = if n > 0 {
                     fun.get_loc().merge(resolved_args[n - 1].get_loc())
                 } else {
@@ -683,28 +677,31 @@ impl<'a> NameResolver<'a> {
                 }
             }
             ast::Expression::Access { namespace, field } => {
-                let (field, loc_field) = match &(**field) {
-                    ast::Expression::Variable { var } => (var.ident.clone(), var.loc),
-                    _ => {
-                        let (expr, _) = self.resolve_expression(field, state)?;
-                        self.err.report(
-                            expr.get_loc(),
-                            String::from("The right operand of an access must be an identifier."),
-                        );
-                        return Err(());
-                    }
-                };
-                let (expr, struct_t_id) = self.resolve_expression(namespace, state)?;
+                let (expr, access_obj_t_id) = self.resolve_expression(*namespace, state)?;
                 match expr {
                     Expression::Variable { .. }
                     | Expression::Access { .. }
                     | Expression::Literal {
                         value: Value::Struct { .. },
                     } => {
-                        // Access to a struct field
+                        // Reduce the field
+                        let (field, loc_field) = match &*field {
+                            ast::Expression::Variable { var } => (var.ident.clone(), var.loc),
+                            _ => {
+                                let (expr, _) = self.resolve_expression(*field, state)?;
+                                self.err.report(
+                                    expr.get_loc(),
+                                    String::from(
+                                        "The right operand of an access must be an identifier.",
+                                    ),
+                                );
+                                return Err(());
+                            }
+                        };
+                        // Handle the access
                         let field_t_id = state.types.fresh(loc_field, vec![Type::Any]);
                         state.new_constraint(TypeConstraint::Field(
-                            struct_t_id,
+                            access_obj_t_id,
                             field_t_id,
                             field.clone(),
                             loc_field,
@@ -713,39 +710,14 @@ impl<'a> NameResolver<'a> {
                             expr: Box::new(expr),
                             loc: loc_field,
                             t_id: field_t_id,
-                            struct_t_id,
+                            struct_t_id: access_obj_t_id,
                             field,
                         };
                         Ok((expr, field_t_id))
                     }
-                    Expression::Namespace { ref ident, loc } => {
+                    Expression::Namespace { ident, loc } => {
                         // Namespace imported from another package
-                        if let Some(namespace) = state.used_namespace.get(ident) {
-                            let loc = loc_field;
-                            match namespace.get_val(&field) {
-                                Some(ValueDeclaration::Function { fun_id, t }) => {
-                                    let expr = Expression::Function {
-                                        fun_id: *fun_id,
-                                        loc,
-                                    };
-                                    let t_id = state.types.fresh(loc, vec![t.clone()]);
-                                    Ok((expr, t_id))
-                                }
-                                _ => {
-                                    self.err.report(
-                                        loc_field,
-                                        format!("'{}' is not a member of '{}'.", &field, &ident),
-                                    );
-                                    return Err(());
-                                }
-                            }
-                        } else {
-                            self.err.report_internal(
-                                loc,
-                                format!("Namespace '{}' does not exist", ident),
-                            );
-                            return Err(());
-                        }
+                        self.resolve_namespace_expr(ident, loc, *field, state)
                     }
                     _ => {
                         self.err.report(
@@ -756,6 +728,56 @@ impl<'a> NameResolver<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Resolves a namespace expression by re-resolving the 'field' expression inside the new
+    /// namespace.
+    fn resolve_namespace_expr(
+        &mut self,
+        namespace_ident: String,
+        namespace_loc: Location,
+        field: ast::Expression,
+        state: &mut State,
+    ) -> Result<(Expression, TypeId), ()> {
+        if let Some(_) = state.used_namespace.get(&namespace_ident) {
+            match field {
+                ast::Expression::Variable { var } => {
+                    let var = ast::Variable {
+                        namespace: Some(namespace_ident),
+                        ident: var.ident,
+                        t: var.t,
+                        loc: var.loc,
+                    };
+                    self.resolve_expression(ast::Expression::Variable { var }, state)
+                }
+                ast::Expression::Literal {
+                    value:
+                        ast::Value::Struct {
+                            ident, fields, loc, ..
+                        },
+                } => {
+                    let value = ast::Value::Struct {
+                        namespace: Some(namespace_ident),
+                        ident,
+                        fields,
+                        loc,
+                    };
+                    self.resolve_expression(ast::Expression::Literal { value }, state)
+                }
+
+                _ => {
+                    self.err
+                        .report(namespace_loc, String::from("Invalid access"));
+                    Err(())
+                }
+            }
+        } else {
+            self.err.report_internal(
+                namespace_loc,
+                format!("Namespace '{}' does not exist", namespace_ident),
+            );
+            return Err(());
         }
     }
 
@@ -844,12 +866,12 @@ impl<'a> NameResolver<'a> {
         for fun in funs {
             let mut params = Vec::new();
             for param in fun.params.iter() {
-                params.push(self.get_type(&param.t, param.loc, state));
+                params.push(self.get_type(&param.t, None, param.loc, state));
             }
 
             let mut results = Vec::new();
             if let Some((t, loc)) = &fun.result {
-                let t = self.get_type(t, *loc, state);
+                let t = self.get_type(t, None, *loc, state);
                 results.push(t);
             }
 
@@ -1003,7 +1025,7 @@ impl<'a> NameResolver<'a> {
         for field in struc.fields {
             let loc = field.loc;
             let is_pub = field.is_pub;
-            let t = self.get_type(&field.t, loc, state);
+            let t = self.get_type(&field.t, None, loc, state);
             fields.insert(field.ident, StructField { t, loc, is_pub });
         }
 
@@ -1041,9 +1063,91 @@ impl<'a> NameResolver<'a> {
         exposed_funs
     }
 
-    fn get_type(&mut self, t: &str, loc: Location, state: &State) -> Type {
+    /// Look for a value in either the given namespace of the local one.
+    ///
+    /// If no namespace is passed, this function does not raise any error (which allows to fall
+    /// back to the local variables without presenting an error to the user).
+    fn get_value(
+        &mut self,
+        val: &str,
+        namespace: Option<&str>,
+        loc: Location,
+        state: &mut State,
+    ) -> Result<Option<(Expression, TypeId)>, ()> {
+        if let Some(namespace) = namespace {
+            // Look for a value in used namespace
+            if let Some(declarations) = state.used_namespace.get(namespace) {
+                if let Some(val) = declarations.val_decls.get(val) {
+                    match val {
+                        ValueDeclaration::Function { fun_id, t } => {
+                            let expr = Expression::Function {
+                                fun_id: *fun_id,
+                                loc,
+                            };
+                            let t_id = state.types.fresh(loc, vec![t.clone()]);
+                            Ok(Some((expr, t_id)))
+                        }
+                    }
+                } else {
+                    self.err.report(
+                        loc,
+                        format!("Value '{}' does not exists in '{}'", val, namespace),
+                    );
+                    Err(())
+                }
+            } else {
+                self.err
+                    .report(loc, format!("Namespace '{}' does not exisist", namespace));
+                Err(())
+            }
+        } else {
+            if let Some(value) = state.value_namespace.get(val) {
+                match value {
+                    ValueKind::Function(fun_id, n_id) => {
+                        let expr = Expression::Function {
+                            fun_id: *fun_id,
+                            loc,
+                        };
+                        let t_id = state.names.get(*n_id).t_id;
+                        Ok(Some((expr, t_id)))
+                    }
+                }
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    /// Get a type from a (possibly namespaced) string.
+    fn get_type(&mut self, t: &str, namespace: Option<&str>, loc: Location, state: &State) -> Type {
         if let Some(t) = check_built_in_type(t) {
-            t
+            return t;
+        }
+        if let Some(namespace) = namespace {
+            // Look for type in used namespace
+            if let Some(declarations) = state.used_namespace.get(namespace) {
+                if let Some(t) = declarations.type_decls.get(t) {
+                    match t {
+                        TypeDeclaration::Struct { struct_id } => Type::Struct(*struct_id),
+                    }
+                } else {
+                    self.err.report(
+                        loc,
+                        format!("Type '{}' does not exist in '{}'", t, namespace),
+                    );
+                    Type::Bug
+                }
+            } else {
+                // Look for type in local namespace
+                if let Some(t) = state.type_namespace.get(t) {
+                    match t {
+                        TypeKind::Struct(s_id) => Type::Struct(*s_id),
+                    }
+                } else {
+                    self.err.report(loc, format!("Unknown type: '{}'", t));
+                    Type::Bug
+                }
+            }
         } else {
             if let Some(t) = state.type_namespace.get(t) {
                 match t {

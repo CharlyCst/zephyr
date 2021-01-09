@@ -67,10 +67,6 @@ impl PackageDeclarations {
             runtime_modules: HashSet::new(),
         }
     }
-
-    pub fn get_val(&self, name: &str) -> Option<&hir::ValueDeclaration> {
-        self.val_decls.get(name)
-    }
 }
 
 /// A list of packages known from the compiler and expected to be available.

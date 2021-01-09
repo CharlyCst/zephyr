@@ -32,6 +32,7 @@ pub enum Value {
         loc: Location,
     },
     Struct {
+        namespace: Option<String>,
         ident: String,
         fields: Vec<FieldValue>,
         loc: Location,
@@ -77,6 +78,7 @@ pub struct Parameter {
 }
 
 pub struct Variable {
+    pub namespace: Option<String>,
     pub ident: String,
     pub t: Option<String>,
     pub loc: Location,
