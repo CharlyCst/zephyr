@@ -32,6 +32,7 @@ pub struct Driver {
     package_id: u32,
     err: error::ErrorHandler,
     pub_decls: PublicDeclarations,
+    ctx: Ctx,
 }
 
 impl Driver {
@@ -48,6 +49,7 @@ impl Driver {
             package_id: 0,
             err: error::ErrorHandler::new_no_file(),
             pub_decls: PublicDeclarations::new(),
+            ctx: Ctx::new(),
         }
     }
 
@@ -156,6 +158,7 @@ impl Driver {
                 // Merge package content
                 error_handler.merge(err_handler);
                 self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_hir.imports);
+                self.ctx.extend(sub_pkg_hir.structs.clone());
                 self.pub_decls
                     .insert(used.path.clone(), sub_pkg_hir.pub_decls.clone());
                 let pub_decls = sub_pkg_hir.pub_decls.clone();
@@ -177,7 +180,13 @@ impl Driver {
                 namespaces.insert(get_alias(&used.path).to_owned(), pub_decls);
             }
         }
-        let mut hir_program = hir::to_hir(pkg_ast, namespaces, &mut error_handler, &self.config);
+        let mut hir_program = hir::to_hir(
+            pkg_ast,
+            namespaces,
+            &self.ctx,
+            &mut error_handler,
+            &self.config,
+        );
         // Insert imported functions
         if let Some(hir) = used_hir {
             hir_program.merge(hir);

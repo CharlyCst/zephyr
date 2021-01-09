@@ -5,6 +5,31 @@ use std::path::{Path, PathBuf};
 use crate::ast;
 use crate::hir;
 
+pub type TypeStore = HashMap<hir::StructId, hir::Struct>;
+
+/// The global compilation context.
+pub struct Ctx {
+    types: TypeStore,
+}
+
+impl Ctx {
+    pub fn new() -> Self {
+        Self {
+            types: HashMap::new(),
+        }
+    }
+
+    /// Insert types into the context.
+    pub fn extend(&mut self, types: TypeStore) {
+        self.types.extend(types);
+    }
+
+    pub fn get_t(&self, t_id: hir::StructId) -> Option<&hir::Struct> {
+        self.types.get(&t_id)
+    }
+}
+
+/// A namespaced collection of public declarations and collection of all type definitions.
 pub struct PublicDeclarations {
     decls: HashMap<String, PackageDeclarations>,
 }
@@ -20,12 +45,13 @@ impl PublicDeclarations {
         self.decls.insert(path, declarations);
     }
 
+    /// Returns the exposed declaration of a package at `path`.
     pub fn get(&self, path: &str) -> Option<&PackageDeclarations> {
         self.decls.get(path)
     }
 }
 
-/// A list of declarations in a given package.
+/// A list of public declarations in a given package.
 #[derive(Clone)]
 pub struct PackageDeclarations {
     pub val_decls: HashMap<String, hir::ValueDeclaration>,
@@ -34,7 +60,7 @@ pub struct PackageDeclarations {
 }
 
 impl PackageDeclarations {
-    pub fn new() -> Self{
+    pub fn new() -> Self {
         Self {
             val_decls: HashMap::new(),
             type_decls: HashMap::new(),
@@ -42,7 +68,7 @@ impl PackageDeclarations {
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<&hir::ValueDeclaration> {
+    pub fn get_val(&self, name: &str) -> Option<&hir::ValueDeclaration> {
         self.val_decls.get(name)
     }
 }
