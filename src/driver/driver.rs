@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::utils::*;
+use super::Ctx;
 use crate::ast;
 use crate::cli::Config;
 use crate::error;
@@ -36,7 +37,7 @@ pub struct Driver {
 }
 
 impl Driver {
-    pub fn new(config: Config) -> Driver {
+    pub fn new(config: Config) -> Self {
         let known_package_path = std::env::var(ZEPHYR_LIB)
             .ok()
             .map(|path| PathBuf::from(path));
@@ -158,7 +159,7 @@ impl Driver {
                 // Merge package content
                 error_handler.merge(err_handler);
                 self.detect_duplicate_runtime_modules(&mut runtime_modules, &sub_pkg_hir.imports);
-                self.ctx.extend(sub_pkg_hir.structs.clone());
+                self.ctx.extend_structs(sub_pkg_hir.structs.clone());
                 self.pub_decls
                     .insert(used.path.clone(), sub_pkg_hir.pub_decls.clone());
                 let pub_decls = sub_pkg_hir.pub_decls.clone();
