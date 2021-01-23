@@ -544,7 +544,7 @@ impl<'a> TypeChecker<'a> {
                     Err(())
                 }
             }
-        } else if let Some(struc) = self.ctx.get_t(s_id) {
+        } else if let Some(struc) = self.ctx.get_s(s_id) {
             // Defined in the global context
             match struc.fields.get(field) {
                 Some(f) => Ok(lift_t(&f.t)),
@@ -580,7 +580,7 @@ impl<'a> TypeChecker<'a> {
         if let Some(struc) = types.get(&s_id) {
             // Defined in the current package
             Ok(struc.fields.len())
-        } else if let Some(struc) = self.ctx.get_t(s_id) {
+        } else if let Some(struc) = self.ctx.get_s(s_id) {
             // Defined in the global context
             Ok(struc.fields.len())
         } else {
@@ -611,7 +611,7 @@ impl<'a> TypeChecker<'a> {
                 .iter()
                 .map(|(ident, _)| ident.clone())
                 .collect())
-        } else if let Some(struc) = self.ctx.get_t(s_id) {
+        } else if let Some(struc) = self.ctx.get_s(s_id) {
             // Defined in the global context
             Ok(struc
                 .fields

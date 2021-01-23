@@ -5,30 +5,6 @@ use std::path::{Path, PathBuf};
 use crate::ast;
 use crate::hir;
 
-pub type TypeStore = HashMap<hir::StructId, hir::Struct>;
-
-/// The global compilation context.
-pub struct Ctx {
-    types: TypeStore,
-}
-
-impl Ctx {
-    pub fn new() -> Self {
-        Self {
-            types: HashMap::new(),
-        }
-    }
-
-    /// Insert types into the context.
-    pub fn extend(&mut self, types: TypeStore) {
-        self.types.extend(types);
-    }
-
-    pub fn get_t(&self, t_id: hir::StructId) -> Option<&hir::Struct> {
-        self.types.get(&t_id)
-    }
-}
-
 /// A namespaced collection of public declarations and collection of all type definitions.
 pub struct PublicDeclarations {
     decls: HashMap<String, PackageDeclarations>,

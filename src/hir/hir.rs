@@ -87,6 +87,19 @@ pub struct Imports {
     pub loc: Location,
 }
 
+// TODO: switch from Imports to Import, the prototypes should be stored with functions using
+// `FunKind`.
+pub struct Import {
+    pub from: String,
+    pub prototypes: Vec<FunId>,
+    pub loc: Location,
+}
+
+pub enum FunKind {
+    Fun(Function),
+    Extern(FunctionPrototype),
+}
+
 pub struct Function {
     pub ident: String,
     pub params: Vec<LocalId>,
