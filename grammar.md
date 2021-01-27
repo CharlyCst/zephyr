@@ -7,10 +7,10 @@ The grammar is defined as follow, and parsed in recursive descent fashion.
 ```
 program        -> package declaration* EOF
 
-package        -> "standalone"? "runtime"? "package" STRING ";"
+package        -> "standalone"? "runtime"? "package" IDENTIFIER ";"
 
 declaration    -> use | expose | function | struct | imports
-use            -> "use" STRING ( "as" IDENTIFIER)? ";"
+use            -> "use" path ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 imports        -> "from" IDENTIFIER "import" import_block ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
@@ -56,6 +56,8 @@ arguments      -> ( expression ( "," expression )* ","? )?
 struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"
 field          -> IDENTIFIER ":" expression
 
+path           -> IDENTIFIER ( "." IDENTIFIER )*
+
 // expression¹: except `struct_literal`, but `struct_literal` are allowed inside parentheses.
 ```
 
@@ -68,7 +70,7 @@ This grammar is used by the zasm front end, it is much simpler and closer to was
 ```
 program     -> package declaration* EOF
 
-package     -> "package" STRING ";"
+package     -> "package" IDENTIFIER ";"
 declaration -> expose | function
 expose      -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 function    -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"

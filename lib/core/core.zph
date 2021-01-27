@@ -1,7 +1,7 @@
 /// Core is package exposing the runtime functionnalities of Zephyr, it is
 /// known from the compiler.
-package "core"
+package core
 
-use "core/mem"
-use "core/utils"
+use core.mem
+use core.utils
 

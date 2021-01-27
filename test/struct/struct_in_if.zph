@@ -1,4 +1,4 @@
-standalone package "struct_in_if"
+standalone package struct_in_if
 // A struct literal in a if (or while statement) may cause an ambiguity in the grammar
 // if not handled properly, but should work just fine inside parenthesis.
 

@@ -1,4 +1,4 @@
-standalone package "return"
+standalone package _return
 
 expose main as _start
 

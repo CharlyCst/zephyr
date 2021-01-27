@@ -1,4 +1,3 @@
-use crate::cli::Config;
 use crate::error::ErrorHandler;
 use crate::mir;
 
@@ -10,9 +9,9 @@ mod wasm;
 pub fn to_wasm<'a>(
     mir_program: mir::Program,
     error_handler: &'a mut ErrorHandler,
-    config: &Config,
+    verbose: bool,
 ) -> Vec<u8> {
-    if config.verbose {
+    if verbose {
         println!("\n/// Compiling ///\n");
     }
 

@@ -1,7 +1,7 @@
 /// Implementation of strings for Zephyr.
-package "str"
+package str
 
-use "core/mem"
+use core.mem
 
 /// A String object, composed of a buffer holding the data and a len.
 pub struct String {

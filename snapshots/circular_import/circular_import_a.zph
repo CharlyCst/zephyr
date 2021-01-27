@@ -1,6 +1,6 @@
-standalone package "circular_import_a"
+standalone package circular_import_a
 
-use "circular_import/circular_import_b"
+use circular_import.circular_import_b
 
 fun main(): i32 {
     return 42

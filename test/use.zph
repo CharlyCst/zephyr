@@ -1,6 +1,6 @@
-standalone package "use"
+standalone package _use
 
-use "core"
+use core
 
 expose main as _start
 

@@ -1,4 +1,4 @@
-standalone package "empty_struct"
+standalone package empty_struct
 
 expose main as _start
 

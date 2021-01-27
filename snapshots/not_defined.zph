@@ -1,4 +1,4 @@
-standalone package "not_defined"
+standalone package not_defined
 
 fun main(): i32 {
     return x

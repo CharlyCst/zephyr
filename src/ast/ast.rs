@@ -1,3 +1,4 @@
+pub use crate::driver::ModulePath;
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 use std::fmt;
@@ -226,8 +227,14 @@ pub struct Expose {
 
 #[derive(Clone)]
 pub struct Use {
-    pub path: String,
+    pub path: ModulePath,
     pub alias: Option<String>,
+    pub loc: Location,
+}
+
+pub struct Path {
+    pub root: String,
+    pub path: Vec<String>,
     pub loc: Location,
 }
 

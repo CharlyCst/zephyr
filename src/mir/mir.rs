@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::PackageKind;
-pub use crate::driver::{PackageDeclarations, PublicDeclarations};
+pub use crate::driver::{ModuleDeclarations, PublicDeclarations};
 pub use crate::hir::{FunId, StructId};
 
 pub struct Program {
@@ -11,7 +11,6 @@ pub struct Program {
     pub funs: Vec<Function>,
     pub structs: HashMap<StructId, Struct>,
     pub imports: Vec<Imports>,
-    pub pub_decls: PackageDeclarations,
 }
 
 pub struct Imports {
@@ -110,6 +109,7 @@ pub enum Control {
     BrIf(BasicBlockId),
 }
 
+#[derive(Clone)]
 pub enum Value {
     I32(i32),
     I64(i64),
