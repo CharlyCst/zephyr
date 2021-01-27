@@ -1,4 +1,4 @@
-standalone package "equal_typing_rules"
+standalone package equal_typing_rules
 
 fun main(): i32 {
     if 1 == true {

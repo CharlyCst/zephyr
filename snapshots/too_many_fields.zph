@@ -1,4 +1,4 @@
-standalone package "too_many_fields"
+standalone package too_many_fields
 
 expose main as _start
 

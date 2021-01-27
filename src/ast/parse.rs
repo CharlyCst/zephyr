@@ -242,14 +242,14 @@ impl<'a> Parser<'a> {
             "Programs must start with a package declaration",
         )?;
         let token = self.advance();
-        if let TokenType::StringLit(ref string) = token.t {
-            let string = string.clone();
+        if let TokenType::Identifier(ref ident) = token.t {
+            let ident = ident.clone();
             let end = self.peek().loc;
             self.consume_semi_colon();
             Ok(Package {
                 id: self.package_id,
                 loc: start.merge(end),
-                name: string,
+                name: ident,
                 t: package_type,
                 kind: package_kind,
             })
@@ -258,7 +258,7 @@ impl<'a> Parser<'a> {
             self.synchronize();
             self.err.report(
                 loc,
-                String::from("'package' keyword should be followed by a double quoted path"),
+                String::from("'package' keyword should be followed by the name of the package"),
             );
             Err(())
         }
@@ -303,39 +303,32 @@ impl<'a> Parser<'a> {
     fn _use(&mut self) -> Result<Use, ()> {
         let start = self.peek().loc;
         self.next_match_report(TokenType::Use, "Use statement must start by 'use' keyword")?;
-        let token = self.advance();
-        if let TokenType::StringLit(ref string) = token.t {
-            let string = string.clone();
-            let alias = if self.next_match(TokenType::As) {
-                let token = self.advance();
-                if let TokenType::Identifier(ref ident) = token.t {
-                    Some(ident.clone())
-                } else {
-                    let loc = token.loc;
-                    self.err.report(
-                        loc,
-                        String::from("'as' should be followed by an identifier"),
-                    );
-                    return Err(());
-                }
+        let path = self.path()?;
+        let alias = if self.next_match(TokenType::As) {
+            let token = self.advance();
+            if let TokenType::Identifier(ref ident) = token.t {
+                Some(ident.clone())
             } else {
-                None
-            };
-            let end = self.peek().loc;
-            self.consume_semi_colon();
-            Ok(Use {
-                loc: start.merge(end),
-                path: string,
-                alias,
-            })
+                let loc = token.loc;
+                self.err.report(
+                    loc,
+                    String::from("'as' should be followed by an identifier"),
+                );
+                return Err(());
+            }
         } else {
-            let loc = token.loc;
-            self.err.report(
-                loc,
-                String::from("'use' keyword should be followed by a double quoted path"),
-            );
-            Err(())
-        }
+            None
+        };
+        let end = self.peek().loc;
+        self.consume_semi_colon();
+        Ok(Use {
+            loc: start.merge(end),
+            path: ModulePath {
+                root: path.root,
+                path: path.path,
+            },
+            alias,
+        })
     }
 
     /// Parses the 'expose' grammar element
@@ -1132,6 +1125,45 @@ impl<'a> Parser<'a> {
         .ok()?;
         let expr = Box::new(self.expression(true).ok()?);
         return Some(FieldValue { ident, expr, loc });
+    }
+
+    fn path(&mut self) -> Result<Path, ()> {
+        let token = self.advance();
+        let (ident, loc) = if let Token {
+            t: TokenType::Identifier(ident),
+            loc,
+        } = token
+        {
+            (ident.clone(), *loc)
+        } else {
+            let loc = token.loc;
+            self.err.report(loc, String::from("Expected an identifier"));
+            self.synchronize();
+            return Err(());
+        };
+        let mut path = Path {
+            root: ident,
+            path: Vec::new(),
+            loc,
+        };
+        while self.next_match(TokenType::Dot) {
+            let token = self.advance();
+            let (ident, loc) = if let Token {
+                t: TokenType::Identifier(ident),
+                loc,
+            } = token
+            {
+                (ident.clone(), *loc)
+            } else {
+                let loc = token.loc;
+                self.err.report(loc, String::from("Expected an identifier"));
+                self.synchronize();
+                return Err(());
+            };
+            path.path.push(ident);
+            path.loc = path.loc.merge(loc);
+        }
+        Ok(path)
     }
 
     // Helper functions

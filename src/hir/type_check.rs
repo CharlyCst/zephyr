@@ -8,7 +8,7 @@ use super::types::{
     ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
     TypedProgram,
 };
-use crate::driver::{Ctx, PackageDeclarations};
+use crate::driver::{Ctx, ModuleDeclarations};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
@@ -115,8 +115,8 @@ impl<'a> TypeChecker<'a> {
         funs: &Vec<Function>,
         imports: &Vec<Imports>,
         type_namespace: &TypeNamespace,
-    ) -> PackageDeclarations {
-        let mut pub_decls = PackageDeclarations::new();
+    ) -> ModuleDeclarations {
+        let mut pub_decls = ModuleDeclarations::new();
         for fun in funs {
             if fun.is_pub {
                 let name = names.get(fun.n_id);

@@ -1,13 +1,14 @@
 use super::mir::*;
-use super::KnownFunctions;
+use crate::driver::KnownFunctions;
 
+use crate::driver::Ctx;
 use crate::error::ErrorHandler;
 use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
 use crate::hir::{
-    Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, Function as HirFun,
-    FunctionPrototype as HirFunProto, Imports as HirImports, IntegerType as HirIntergerType,
-    LocalId as HirLocalId, LocalVariable as HirLocalVariable, NumericType as HirNumericType,
-    PlaceExpression as PlaceExpr, Program as HirProgram, ScalarType as HirScalarType,
+    Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, FunKind,
+    Function as HirFun, FunctionPrototype as HirFunProto, Import as HirImport,
+    IntegerType as HirIntergerType, LocalId as HirLocalId, LocalVariable as HirLocalVariable,
+    NumericType as HirNumericType, PlaceExpression as PlaceExpr, ScalarType as HirScalarType,
     Statement as S, Struct as HirStruct, TupleType as HirTupleType, Type as HirType,
     Unop as HirUnop, Value as V,
 };
@@ -26,12 +27,12 @@ struct State<'a> {
     /// A mapping from HIR local variable ID to MIR local variable ID
     locals: HashMap<HirLocalId, LocalId>,
     structs: &'a HashMap<StructId, Struct>,
-    funs: KnownFunctions,
+    funs: &'a KnownFunctions,
 }
 
 impl<'a> State<'a> {
-    pub fn new(structs: &'a HashMap<StructId, Struct>, funs: KnownFunctions) -> State {
-        State {
+    pub fn new(structs: &'a HashMap<StructId, Struct>, funs: &'a KnownFunctions) -> Self {
+        Self {
             bb_id: 0,
             local_id: 0,
             locals: HashMap::new(),
@@ -81,31 +82,36 @@ impl<'a> MIRProducer<'a> {
     }
 
     /// Lower a typed program to MIR
-    pub fn reduce(&mut self, prog: HirProgram, known_funs: KnownFunctions) -> Program {
-        let mut funs = Vec::with_capacity(prog.funs.len());
-        let mut imports = Vec::with_capacity(prog.imports.len());
-        let structs = self.reduce_structs(prog.structs);
+    pub fn reduce(&mut self, ctx: &Ctx, known_funs: &KnownFunctions) -> Program {
+        let hir_funs = ctx.hir_funs();
+        let hir_structs = ctx.hir_structs();
+        let hir_imports = ctx.hir_imports();
+        let mut funs = Vec::with_capacity(hir_funs.len());
+        let mut imports = Vec::with_capacity(hir_imports.len());
+        let structs = self.reduce_structs(hir_structs);
         let mut state = State::new(&structs, known_funs);
 
-        for fun in prog.funs {
-            match self.reduce_fun(fun, &mut state) {
-                Ok(fun) => funs.push(fun),
-                Err(err) => self.err.report_internal_no_loc(err),
+        for (_, fun) in hir_funs {
+            match fun {
+                FunKind::Fun(fun) => match self.reduce_fun(fun, &mut state) {
+                    Ok(fun) => funs.push(fun),
+                    Err(err) => self.err.report_internal_no_loc(err),
+                },
+                FunKind::Extern(_) => (),
             }
         }
-        for import in prog.imports {
-            match self.reduce_import(import) {
+        for import in hir_imports {
+            match self.reduce_import(import, ctx) {
                 Ok(import) => imports.push(import),
                 Err(err) => self.err.report_internal_no_loc(err),
             }
         }
 
         Program {
-            name: prog.package.name,
+            name: ctx.get_name().to_owned(),
             funs,
             imports,
             structs,
-            pub_decls: prog.pub_decls,
         }
     }
 
@@ -116,7 +122,7 @@ impl<'a> MIRProducer<'a> {
     /// their types while minimizing unused space.
     fn reduce_structs(
         &mut self,
-        structs: HashMap<StructId, HirStruct>,
+        structs: &HashMap<StructId, HirStruct>,
     ) -> HashMap<StructId, Struct> {
         let mut mir_struct = HashMap::with_capacity(structs.len());
         let mut align_1 = Vec::new();
@@ -125,7 +131,7 @@ impl<'a> MIRProducer<'a> {
         for (s_id, s) in structs {
             let mut fields = HashMap::with_capacity(s.fields.len());
             // Collect alignments and sizes
-            for (field_name, field) in s.fields {
+            for (field_name, field) in &s.fields {
                 // Compute memory layout of the field
                 let (t, layout) = match try_into_mir_layout(&field.t) {
                     Ok(t) => t,
@@ -145,21 +151,21 @@ impl<'a> MIRProducer<'a> {
             let mut offset = 0;
             for (field_name, size, t, layout) in align_8.drain(..) {
                 offset = align_offset(offset, 8);
-                fields.insert(field_name, StructField { offset, layout, t });
+                fields.insert(field_name.to_owned(), StructField { offset, layout, t });
                 offset += size;
             }
             for (field_name, size, t, layout) in align_4.drain(..) {
                 offset = align_offset(offset, 4);
-                fields.insert(field_name, StructField { offset, layout, t });
+                fields.insert(field_name.to_owned(), StructField { offset, layout, t });
                 offset += size;
             }
             for (field_name, size, t, layout) in align_1.drain(..) {
-                fields.insert(field_name, StructField { offset, layout, t });
+                fields.insert(field_name.to_owned(), StructField { offset, layout, t });
                 offset += size;
             }
             // Layout is now fixed
             mir_struct.insert(
-                s_id,
+                *s_id,
                 Struct {
                     fields,
                     size: offset,
@@ -169,29 +175,29 @@ impl<'a> MIRProducer<'a> {
         mir_struct
     }
 
-    fn reduce_fun(&mut self, fun: HirFun, s: &mut State) -> Result<Function, String> {
-        let t = fun.t;
+    fn reduce_fun(&mut self, fun: &HirFun, s: &mut State) -> Result<Function, String> {
+        let t = &fun.t;
         let mut param_t = Vec::with_capacity(t.params.len());
         let mut ret_t = Vec::with_capacity(t.ret.len());
         let mut locals = Vec::with_capacity(fun.locals.len());
         let mut params = Vec::with_capacity(fun.params.len());
 
         // Convert params and return types
-        for t in t.params {
+        for t in &t.params {
             param_t.push(try_into_mir_t(&t)?);
         }
-        for t in t.ret {
+        for t in &t.ret {
             ret_t.push(try_into_mir_t(&t)?);
         }
         // Register params and local variables
-        for param_local_id in fun.params {
-            params.push(s.remap_local_id(param_local_id));
+        for param_local_id in &fun.params {
+            params.push(s.remap_local_id(*param_local_id));
         }
-        for l in fun.locals {
+        for l in &fun.locals {
             locals.push(self.reduce_local_variable(l, s)?);
         }
         // Reduce function body
-        let (block, block_locals) = match fun.body {
+        let (block, block_locals) = match &fun.body {
             HirBody::Zephyr(block) => self.reduce_block(block, s)?,
             HirBody::Asm(stmts) => (
                 Block::Block {
@@ -205,14 +211,14 @@ impl<'a> MIRProducer<'a> {
         locals.extend(block_locals);
 
         Ok(Function {
-            ident: fun.ident,
+            ident: fun.ident.clone(),
             params,
             param_t,
             ret_t,
             locals,
             body: block,
             is_pub: fun.is_pub,
-            exposed: fun.exposed,
+            exposed: fun.exposed.clone(),
             fun_id: fun.fun_id,
         })
     }
@@ -221,7 +227,7 @@ impl<'a> MIRProducer<'a> {
     /// and are returned along the reduced block.
     fn reduce_block(
         &mut self,
-        block: HirBlock,
+        block: &HirBlock,
         s: &mut State,
     ) -> Result<(Block, Vec<LocalVariable>), String> {
         let id = s.fresh_bb_id();
@@ -234,15 +240,15 @@ impl<'a> MIRProducer<'a> {
 
     fn reduce_block_rec(
         &mut self,
-        block: HirBlock,
+        block: &HirBlock,
         stmts: &mut Vec<Statement>,
         locals: &mut Vec<LocalVariable>,
         s: &mut State,
     ) -> Result<(), String> {
-        for statement in block.stmts.into_iter() {
+        for statement in &block.stmts {
             match statement {
                 S::AssignStmt { target, expr } => {
-                    self.reduce_assign_stmt(*target, *expr, stmts, locals, s)?;
+                    self.reduce_assign_stmt(target, expr, stmts, locals, s)?;
                 }
                 S::LetStmt { var, expr } => {
                     self.reduce_expr(&expr, stmts, locals, s)?;
@@ -272,7 +278,7 @@ impl<'a> MIRProducer<'a> {
                     loop_stmts.push(Statement::Binop(Binop::I32Xor));
                     loop_stmts.push(Statement::Control(Control::BrIf(block_id)));
 
-                    self.reduce_block_rec(block, &mut loop_stmts, locals, s)?;
+                    self.reduce_block_rec(&block, &mut loop_stmts, locals, s)?;
                     loop_stmts.push(Statement::Control(Control::Br(loop_id)));
                     let loop_block = Block::Loop {
                         id: loop_id,
@@ -294,10 +300,10 @@ impl<'a> MIRProducer<'a> {
                     self.reduce_expr(&expr, stmts, locals, s)?;
                     let if_id = s.fresh_bb_id();
                     let mut then_stmts = Vec::new();
-                    self.reduce_block_rec(block, &mut then_stmts, locals, s)?;
+                    self.reduce_block_rec(&block, &mut then_stmts, locals, s)?;
                     let mut else_stmts = Vec::new();
                     if let Some(else_block) = else_block {
-                        self.reduce_block_rec(else_block, &mut else_stmts, locals, s)?;
+                        self.reduce_block_rec(&else_block, &mut else_stmts, locals, s)?;
                     }
                     let if_block = Block::If {
                         id: if_id,
@@ -515,8 +521,8 @@ impl<'a> MIRProducer<'a> {
     /// Reduces an assign statement (`target = expr`).
     fn reduce_assign_stmt(
         &mut self,
-        target: PlaceExpr,
-        expr: Expr,
+        target: &PlaceExpr,
+        expr: &Expr,
         stmts: &mut Vec<Statement>,
         locals: &mut Vec<LocalVariable>,
         s: &mut State,
@@ -533,7 +539,7 @@ impl<'a> MIRProducer<'a> {
                 ..
             } => {
                 let struc = s.structs.get(&struct_id).unwrap();
-                let field = struc.fields.get(&field).unwrap();
+                let field = struc.fields.get(field).unwrap();
                 let store_instr = get_store_instr(field.t, field.layout, field.offset)?;
                 // Push the address on the stack
                 self.reduce_expr(&target_expr, stmts, locals, s)?;
@@ -547,7 +553,7 @@ impl<'a> MIRProducer<'a> {
 
     fn reduce_local_variable(
         &mut self,
-        local: HirLocalVariable,
+        local: &HirLocalVariable,
         s: &mut State,
     ) -> Result<LocalVariable, String> {
         let t = try_into_mir_t(&local.t)?;
@@ -557,7 +563,7 @@ impl<'a> MIRProducer<'a> {
 
     fn reduce_asm_statements(
         &mut self,
-        stmts: Vec<AsmStatement>,
+        stmts: &Vec<AsmStatement>,
         s: &mut State,
     ) -> Result<Vec<Statement>, String> {
         let mut reduced_stmts = Vec::with_capacity(stmts.len());
@@ -572,11 +578,11 @@ impl<'a> MIRProducer<'a> {
 
     fn reduce_asm_statement(
         &mut self,
-        stmt: AsmStatement,
+        stmt: &AsmStatement,
         s: &mut State,
     ) -> Result<Statement, String> {
         match stmt {
-            AsmStatement::Const { val, .. } => Ok(Statement::Const(val)),
+            AsmStatement::Const { ref val, .. } => Ok(Statement::Const(val.clone())),
             AsmStatement::Local { local, .. } => match local {
                 AsmLocal::Get { var, .. } => {
                     Ok(Statement::Local(Local::Get(s.get_local_id(var.n_id))))
@@ -594,63 +600,86 @@ impl<'a> MIRProducer<'a> {
                 AsmMemory::Size => Ok(Statement::Memory(Memory::Size)),
                 AsmMemory::Grow => Ok(Statement::Memory(Memory::Grow)),
                 // Loads
-                AsmMemory::I32Load { align, offset } => {
-                    Ok(Statement::Memory(Memory::I32Load { align, offset }))
-                }
-                AsmMemory::I64Load { align, offset } => {
-                    Ok(Statement::Memory(Memory::I64Load { align, offset }))
-                }
-                AsmMemory::F32Load { align, offset } => {
-                    Ok(Statement::Memory(Memory::F32Load { align, offset }))
-                }
-                AsmMemory::F64Load { align, offset } => {
-                    Ok(Statement::Memory(Memory::F64Load { align, offset }))
-                }
+                AsmMemory::I32Load { align, offset } => Ok(Statement::Memory(Memory::I32Load {
+                    align: *align,
+                    offset: *offset,
+                })),
+                AsmMemory::I64Load { align, offset } => Ok(Statement::Memory(Memory::I64Load {
+                    align: *align,
+                    offset: *offset,
+                })),
+                AsmMemory::F32Load { align, offset } => Ok(Statement::Memory(Memory::F32Load {
+                    align: *align,
+                    offset: *offset,
+                })),
+                AsmMemory::F64Load { align, offset } => Ok(Statement::Memory(Memory::F64Load {
+                    align: *align,
+                    offset: *offset,
+                })),
                 AsmMemory::I32Load8u { align, offset } => {
-                    Ok(Statement::Memory(Memory::I32Load8u { align, offset }))
+                    Ok(Statement::Memory(Memory::I32Load8u {
+                        align: *align,
+                        offset: *offset,
+                    }))
                 }
                 // Stores
-                AsmMemory::I32Store { align, offset } => {
-                    Ok(Statement::Memory(Memory::I32Store { align, offset }))
-                }
-                AsmMemory::I64Store { align, offset } => {
-                    Ok(Statement::Memory(Memory::I64Store { align, offset }))
-                }
-                AsmMemory::F32Store { align, offset } => {
-                    Ok(Statement::Memory(Memory::F32Store { align, offset }))
-                }
-                AsmMemory::F64Store { align, offset } => {
-                    Ok(Statement::Memory(Memory::F64Store { align, offset }))
-                }
+                AsmMemory::I32Store { align, offset } => Ok(Statement::Memory(Memory::I32Store {
+                    align: *align,
+                    offset: *offset,
+                })),
+                AsmMemory::I64Store { align, offset } => Ok(Statement::Memory(Memory::I64Store {
+                    align: *align,
+                    offset: *offset,
+                })),
+                AsmMemory::F32Store { align, offset } => Ok(Statement::Memory(Memory::F32Store {
+                    align: *align,
+                    offset: *offset,
+                })),
+                AsmMemory::F64Store { align, offset } => Ok(Statement::Memory(Memory::F64Store {
+                    align: *align,
+                    offset: *offset,
+                })),
                 AsmMemory::I32Store8 { align, offset } => {
-                    Ok(Statement::Memory(Memory::I32Store8 { align, offset }))
+                    Ok(Statement::Memory(Memory::I32Store8 {
+                        align: *align,
+                        offset: *offset,
+                    }))
                 }
             },
         }
     }
 
-    fn reduce_import(&mut self, imports: HirImports) -> Result<Imports, String> {
+    fn reduce_import(&mut self, imports: &HirImport, ctx: &Ctx) -> Result<Imports, String> {
         let mut prototypes = Vec::with_capacity(imports.prototypes.len());
-        for proto in imports.prototypes {
-            prototypes.push(self.reduce_prototype(proto)?);
+        let hir_funs = ctx.hir_funs();
+        for proto_fun_id in &imports.prototypes {
+            match hir_funs.get(&proto_fun_id) {
+                Some(FunKind::Extern(proto)) => prototypes.push(self.reduce_prototype(proto)?),
+                Some(FunKind::Fun(_)) => {
+                    return Err(String::from(
+                        "Imported fun_id must correspond to an external function",
+                    ))
+                }
+                None => return Err(String::from("Invalid fun_id for imported function")),
+            }
         }
         Ok(Imports {
-            from: imports.from,
+            from: imports.from.clone(),
             prototypes,
         })
     }
 
-    fn reduce_prototype(&mut self, proto: HirFunProto) -> Result<FunctionPrototype, String> {
+    fn reduce_prototype(&mut self, proto: &HirFunProto) -> Result<FunctionPrototype, String> {
         let mut param_t = Vec::with_capacity(proto.t.params.len());
         let mut ret_t = Vec::with_capacity(proto.t.ret.len());
 
-        for param in proto.t.params {
+        for param in &proto.t.params {
             match try_into_mir_t(&param) {
                 Ok(t) => param_t.push(t),
                 Err(s) => return Err(s),
             }
         }
-        for param in proto.t.ret {
+        for param in &proto.t.ret {
             match try_into_mir_t(&param) {
                 Ok(t) => ret_t.push(t),
                 Err(s) => return Err(s),
@@ -658,10 +687,10 @@ impl<'a> MIRProducer<'a> {
         }
 
         Ok(FunctionPrototype {
-            ident: proto.ident,
+            ident: proto.ident.clone(),
             param_t,
             ret_t,
-            alias: proto.alias,
+            alias: proto.alias.clone(),
             is_pub: proto.is_pub,
             fun_id: proto.fun_id,
         })

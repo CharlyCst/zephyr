@@ -1,4 +1,4 @@
-standalone package "fact"
+standalone package fact
 
 expose main as _start
 

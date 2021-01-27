@@ -1,4 +1,4 @@
-standalone package "unegation"
+standalone package unegation
 
 expose main as _start
 

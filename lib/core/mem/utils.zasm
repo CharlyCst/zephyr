@@ -1,4 +1,4 @@
-package "mem"
+package mem
 
 /// Increases the memory size by a given number of pages and return the old
 /// memory size, or -1 if the operation failed.

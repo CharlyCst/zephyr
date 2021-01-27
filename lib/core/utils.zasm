@@ -1,5 +1,5 @@
 /// Exposes utility functions
-standalone package "utils"
+standalone package utils
 
 pub fun panic() {
     unreachable

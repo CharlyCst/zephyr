@@ -1,5 +1,4 @@
 use crate::ast;
-use crate::cli::Config;
 use crate::driver::{PublicDeclarations, Ctx};
 use crate::error::ErrorHandler;
 
@@ -25,12 +24,12 @@ pub fn to_hir<'a>(
     namespace: PublicDeclarations,
     ctx: &Ctx,
     error_handler: &mut ErrorHandler,
-    config: &Config,
+    verbose: bool,
 ) -> hir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
     let program = name_resolver.resolve(ast_program, namespace);
 
-    if config.verbose {
+    if verbose {
         println!("\n/// Name Resolution ///\n");
 
         println!("{}\n", program.names);
@@ -43,7 +42,7 @@ pub fn to_hir<'a>(
     let mut type_checker = type_check::TypeChecker::new(error_handler, ctx);
     let typed_program = type_checker.check(program);
 
-    if config.verbose {
+    if verbose {
         println!("{}", typed_program.types);
         println!("\n/// Asm Validation ///\n");
     }
@@ -53,14 +52,14 @@ pub fn to_hir<'a>(
 
     error_handler.flush_and_exit_if_err();
 
-    if config.verbose {
+    if verbose {
         println!("\n/// MIR Production ///\n");
     }
 
     let mut hir_producer = ast_to_hir::HirProducer::new(error_handler);
     let hir = hir_producer.reduce(typed_program);
 
-    if config.verbose {
+    if verbose {
         println!("{}", hir);
     }
 

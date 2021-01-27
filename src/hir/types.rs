@@ -1,5 +1,5 @@
 use super::names;
-use crate::driver::PackageDeclarations;
+use crate::driver::ModuleDeclarations;
 use crate::error::Location;
 use crate::hir::Package;
 
@@ -42,7 +42,7 @@ pub struct TypedProgram {
     pub structs: HashMap<StructId, names::Struct>,
     pub names: names::NameStore,
     pub types: TypeStore,
-    pub pub_decls: PackageDeclarations,
+    pub pub_decls: ModuleDeclarations,
     pub package: Package,
 }
 

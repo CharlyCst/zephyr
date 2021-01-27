@@ -1,4 +1,4 @@
-standalone runtime package "runtime_b"
+standalone runtime package runtime_b
 
 from test import {}
 

@@ -1,7 +1,7 @@
 #![allow(dead_code)] // Call::Indirect
 use super::names::{AsmStatement, NameId};
 use super::types::Type as NameType;
-use crate::driver::PackageDeclarations;
+use crate::driver::ModuleDeclarations;
 use crate::error::Location;
 
 use std::collections::HashMap;
@@ -67,7 +67,7 @@ pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
     pub structs: HashMap<StructId, Struct>,
-    pub pub_decls: PackageDeclarations,
+    pub pub_decls: ModuleDeclarations,
     pub package: Package,
 }
 

@@ -1,13 +1,17 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast;
 use crate::hir;
 
+pub const ZEPHYR_EXTENSION: &str = "zph";
+pub const ASM_EXTENSION: &str = "zasm";
+
 /// A namespaced collection of public declarations and collection of all type definitions.
 pub struct PublicDeclarations {
-    decls: HashMap<String, PackageDeclarations>,
+    decls: HashMap<String, ModuleDeclarations>,
 }
 
 impl PublicDeclarations {
@@ -17,25 +21,25 @@ impl PublicDeclarations {
         }
     }
 
-    pub fn insert(&mut self, path: String, declarations: PackageDeclarations) {
+    pub fn insert(&mut self, path: String, declarations: ModuleDeclarations) {
         self.decls.insert(path, declarations);
     }
 
     /// Returns the exposed declaration of a package at `path`.
-    pub fn get(&self, path: &str) -> Option<&PackageDeclarations> {
+    pub fn get(&self, path: &str) -> Option<&ModuleDeclarations> {
         self.decls.get(path)
     }
 }
 
 /// A list of public declarations in a given package.
 #[derive(Clone)]
-pub struct PackageDeclarations {
+pub struct ModuleDeclarations {
     pub val_decls: HashMap<String, hir::ValueDeclaration>,
     pub type_decls: HashMap<String, hir::TypeDeclaration>,
     pub runtime_modules: HashSet<String>,
 }
 
-impl PackageDeclarations {
+impl ModuleDeclarations {
     pub fn new() -> Self {
         Self {
             val_decls: HashMap::new(),
@@ -46,8 +50,18 @@ impl PackageDeclarations {
 }
 
 /// A list of packages known from the compiler and expected to be available.
+#[allow(dead_code)]
 pub enum KnownPackage {
     Core,
+}
+
+impl KnownPackage {
+    #[allow(dead_code)]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            KnownPackage::Core => "core",
+        }
+    }
 }
 
 /// The result of a path lookup: either file or a directory
@@ -64,8 +78,56 @@ pub struct PreparedFile {
     pub kind: ast::Kind,
 }
 
-pub const ZEPHYR_EXTENSION: &str = "zph";
-pub const ASM_EXTENSION: &str = "zasm";
+/// A module can be either standalone (inside a single file) or standard (occupate the whole
+/// directory).
+#[derive(Eq, PartialEq)]
+#[allow(dead_code)]
+pub enum ModuleKind {
+    Standalone,
+    Standard,
+}
+
+/// A path to a module from the package root.
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct ModulePath {
+    pub root: String,
+    pub path: Vec<String>,
+}
+
+impl ModulePath {
+    pub fn from_root(root: String) -> Self {
+        Self {
+            root,
+            path: Vec::new(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn from_known_package(pkg: KnownPackage) -> Self {
+        let root = pkg.as_str().to_owned();
+        Self {
+            root,
+            path: Vec::new(),
+        }
+    }
+
+    pub fn alias(&self) -> &str {
+        if let Some(module) = self.path.last() {
+            module.as_str()
+        } else {
+            self.root.as_str()
+        }
+    }
+}
+
+impl fmt::Display for ModulePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut path = Vec::with_capacity(1 + self.path.len());
+        path.push(self.root.clone());
+        path.extend(self.path.clone());
+        write!(f, "{}", path.join("."))
+    }
+}
 
 /// Returns a list of files pointed by `path`.
 pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<ResolvedPath, String> {
@@ -130,127 +192,5 @@ fn resolve_directory_files(dir: fs::ReadDir, path: &PathBuf) -> Result<ResolvedP
         ))
     } else {
         Ok(ResolvedPath::Dir(paths))
-    }
-}
-
-/// Returns the path without the root package.
-/// 'std/math/crypo' becomes 'math/crypto'.
-pub fn strip_root(path: &str) -> &str {
-    let mut iter = path.chars();
-    loop {
-        if let Some(c) = iter.next() {
-            if c == '/' {
-                return iter.as_str();
-            }
-        } else {
-            // Empty string
-            return &path[0..0];
-        }
-    }
-}
-
-/// Returns an alias for the given path, that is its last component.
-pub fn get_alias(path: &str) -> &str {
-    path.split('/')
-        .last()
-        .expect("Unable to retrieve alias from path")
-}
-
-/// Returns the package root name and a path to the given subpackage from the root.
-pub fn split_package_name(path: &str) -> Option<(String, Option<String>)> {
-    if !validate_package_name(path) {
-        return None;
-    }
-    let root = path
-        .split('/')
-        .collect::<Vec<&str>>()
-        .get(0)
-        .expect("Internal error: could not retrieve path root")
-        .to_string();
-    let sub_package = strip_root(path);
-    if sub_package == "" {
-        Some((root, None))
-    } else {
-        Some((root, Some(sub_package.to_string())))
-    }
-}
-
-/// Returns `true` if the package name is correct, that is:
-/// - It contrains only lower case characters and underscores
-/// - It starts with a lower case character
-fn validate_package_name(package_name: &str) -> bool {
-    let mut is_first = true;
-    for c in package_name.chars() {
-        if c == '_' || c == '-' {
-            if is_first {
-                return false;
-            }
-        } else if c == '/' {
-            if is_first {
-                return false;
-            }
-            is_first = true;
-        } else if !c.is_alphabetic() {
-            return false;
-        } else if !c.is_lowercase() {
-            return false;
-        } else {
-            is_first = false;
-        }
-    }
-    true
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    /// test `validate_package`
-    fn package_name() {
-        assert!(validate_package_name("greeting"));
-        assert!(validate_package_name("hello_world"));
-        assert!(validate_package_name("greeting/hello"));
-        assert!(validate_package_name("std/utils/test_name"));
-        assert!(!validate_package_name("std/utils/_test_name"));
-        assert!(!validate_package_name("Greeting"));
-        assert!(!validate_package_name("_greeting"));
-        assert!(!validate_package_name("#greeting"));
-    }
-
-    #[test]
-    /// test `split_package_name`
-    fn split_package_names() {
-        assert_eq!(
-            split_package_name("std/math/crypto"),
-            Some((String::from("std"), Some(String::from("math/crypto"))))
-        );
-        assert_eq!(
-            split_package_name("std/math"),
-            Some((String::from("std"), Some(String::from("math"))))
-        );
-        assert_eq!(
-            split_package_name("external_package/foo/bar_buzz"),
-            Some((
-                String::from("external_package"),
-                Some(String::from("foo/bar_buzz"))
-            ))
-        );
-        assert_eq!(split_package_name("std"), Some((String::from("std"), None)));
-        assert_eq!(split_package_name("Std/math"), None);
-    }
-
-    #[test]
-    /// test `strip_root`
-    fn _strip_root() {
-        assert_eq!(strip_root("std/math/crypto"), "math/crypto");
-        assert_eq!(strip_root("std"), "");
-    }
-
-    #[test]
-    fn _get_alias() {
-        assert_eq!(get_alias("core/utils"), "utils");
-        assert_eq!(get_alias("core"), "core");
-        assert_eq!(get_alias("core/mem/malloc"), "malloc");
     }
 }

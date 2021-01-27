@@ -1,4 +1,4 @@
-standalone package "missing_fields"
+standalone package missing_fields
 
 expose main as _start
 

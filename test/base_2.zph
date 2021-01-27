@@ -1,4 +1,4 @@
-standalone package "base_2"
+standalone package base_2
 
 expose main as _start
 

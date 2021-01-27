@@ -1,9 +1,10 @@
-mod driver;
 mod utils;
 mod ctx;
-mod arena;
+mod resolver;
+mod known_functions;
 
-pub use driver::*;
-pub use utils::{PublicDeclarations, PackageDeclarations};
+pub use utils::{PublicDeclarations, ModuleDeclarations, ModulePath};
 pub use ctx::Ctx;
+pub use known_functions::KnownFunctions;
+pub use resolver::{Resolver, StandardResolver};
 

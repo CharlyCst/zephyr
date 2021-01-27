@@ -1,7 +1,7 @@
-standalone runtime package "hello"
+standalone runtime package hello
 
-use "core/mem"
-use "core/str"
+use core.mem
+use core.str
 
 expose hello as _start
 

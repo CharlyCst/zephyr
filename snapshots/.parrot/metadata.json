@@ -104,8 +104,8 @@
       "tags": [
         "driver"
       ],
-      "exit_code": 64,
-      "stdout": "circular_import.out",
+      "exit_code": 65,
+      "stdout": "circular-import.out",
       "stderr": null
     },
     {
@@ -127,7 +127,7 @@
         "driver",
         "runtime"
       ],
-      "exit_code": 0,
+      "exit_code": 65,
       "stdout": "multiple-runtimes.out",
       "stderr": null
     },

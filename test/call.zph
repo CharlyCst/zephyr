@@ -1,4 +1,4 @@
-standalone package "call"
+standalone package call
 
 expose main as _start
 
