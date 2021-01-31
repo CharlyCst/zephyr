@@ -1,5 +1,5 @@
 use super::names;
-use crate::driver::ModuleDeclarations;
+use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 use crate::hir::Package;
 

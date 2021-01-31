@@ -8,7 +8,7 @@ use super::types::{
     ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
     TypedProgram,
 };
-use crate::driver::{Ctx, ModuleDeclarations};
+use crate::ctx::{Ctx, ModuleDeclarations};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;

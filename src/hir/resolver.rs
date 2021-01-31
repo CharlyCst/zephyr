@@ -2,7 +2,7 @@ use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
-use crate::driver::PublicDeclarations;
+use crate::ctx::PublicDeclarations;
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;

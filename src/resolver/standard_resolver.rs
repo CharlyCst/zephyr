@@ -1,34 +1,27 @@
-//! # Resolver
+//! The standard resolver
 //!
-//! A resolver is a piece responsible for resolving the path of packages and fetching the code,
-//! it is used by the Ctx to retrieve imported modules.
+//! This is the implementation used in the official binary of the Zephyr compiler.
 
-use super::utils::{
-    resolve_path, ModuleKind, ModulePath, PreparedFile, ResolvedPath, ASM_EXTENSION,
-    ZEPHYR_EXTENSION,
-};
-use crate::ast;
-use crate::error::ErrorHandler;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub type FileId = u16;
+use crate::{ErrorHandler, FileKind, ModuleKind, ModulePath, PreparedFile, Resolver};
 
-pub trait Resolver {
-    /// Given a module path return a list of files for that module.
-    fn resolve_module(
-        &self,
-        module: &ModulePath,
-        err: &mut ErrorHandler,
-    ) -> Result<(Vec<PreparedFile>, ModuleKind), ()>;
-}
-
-// Standard Resolver implementation
+pub const ZEPHYR_EXTENSION: &str = "zph";
+pub const ASM_EXTENSION: &str = "zasm";
 
 /// Expectend environment variable pointing to Zephyr known packages.
 const ZEPHYR_LIB: &'static str = "ZEPHYR_LIB";
+
+type FileId = u16;
+
+/// The result of a path lookup: either file or a directory
+pub enum ResolvedPath {
+    Dir(Vec<PathBuf>),
+    File(PathBuf),
+}
 
 pub struct StandardResolver {
     package_paths: HashMap<String, PathBuf>,
@@ -116,12 +109,12 @@ impl StandardResolver {
     }
 
     /// Look at a file extension to decide of its kind.
-    fn get_file_kind(&self, path: &Path, err: &mut ErrorHandler) -> Result<ast::Kind, ()> {
+    fn get_file_kind(&self, path: &Path, err: &mut ErrorHandler) -> Result<FileKind, ()> {
         if let Some(ext) = path.extension() {
             if ext.eq(ZEPHYR_EXTENSION) {
-                Ok(ast::Kind::Zephyr)
+                Ok(FileKind::Zephyr)
             } else if ext.eq(ASM_EXTENSION) {
-                Ok(ast::Kind::Asm)
+                Ok(FileKind::Asm)
             } else {
                 err.report_internal_no_loc(format!(
                     "Allowed unknown extension at: '{}'.",
@@ -162,5 +155,71 @@ impl Resolver for StandardResolver {
         };
         path.extend(&module.path);
         self.prepare_files(path, err)
+    }
+}
+
+/// Returns a list of files pointed by `path`.
+pub fn resolve_path<P: AsRef<Path>>(path: P) -> Result<ResolvedPath, String> {
+    let mut path = path.as_ref().to_owned();
+    // look for a file if the path does not exist.
+    if !path.exists() {
+        let mut zph_path = path.clone();
+        zph_path.set_extension(ZEPHYR_EXTENSION);
+        if zph_path.is_file() {
+            path = zph_path;
+        } else {
+            let mut asm_path = path.clone();
+            asm_path.set_extension(ASM_EXTENSION);
+            if asm_path.is_file() {
+                path = asm_path;
+            }
+        }
+    }
+    let file_info = fs::metadata(&path)
+        .map_err(|_| format!("Path '{}' does not exist.", path.to_str().unwrap_or("")))?;
+    if file_info.is_dir() {
+        let dir = fs::read_dir(&path).expect("Should never happen");
+        let files = resolve_directory_files(dir, &path)?;
+        Ok(files)
+    } else if file_info.is_file() {
+        let ext = path.extension().expect("Could not read file extension");
+        if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
+            Ok(ResolvedPath::File(path.to_owned()))
+        } else {
+            Err(format!(
+                "Invalid file extension '{}'.",
+                ext.to_str().unwrap_or("")
+            ))
+        }
+    } else {
+        Err(format!(
+            "{}' is neither a file nor a directory.",
+            path.to_str().unwrap_or("")
+        ))
+    }
+}
+
+/// Given a directory, return a list of all the zephyr files it contains.
+/// Rises an error if no file with a zephyr extension are found.
+fn resolve_directory_files(dir: fs::ReadDir, path: &PathBuf) -> Result<ResolvedPath, String> {
+    let mut paths = Vec::new();
+    for entry in dir {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext.eq(ZEPHYR_EXTENSION) || ext.eq(ASM_EXTENSION) {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    if paths.is_empty() {
+        Err(format!(
+            "Could not find any zephyr file (.{}) in '{}'",
+            ZEPHYR_EXTENSION,
+            path.to_str().unwrap_or("")
+        ))
+    } else {
+        Ok(ResolvedPath::Dir(paths))
     }
 }

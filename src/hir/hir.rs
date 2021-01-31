@@ -1,7 +1,7 @@
 #![allow(dead_code)] // Call::Indirect
 use super::names::{AsmStatement, NameId};
 use super::types::Type as NameType;
-use crate::driver::ModuleDeclarations;
+use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 
 use std::collections::HashMap;
