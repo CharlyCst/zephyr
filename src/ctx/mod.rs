@@ -1,3 +1,7 @@
+//! The compilation context
+//!
+//! This module contains the Ctx, that is the compilation context. The Ctx can be use either to
+//! compile Zephyr code down to wasm, or to query information about the code itself.
 mod ctx;
 mod known_functions;
 mod utils;

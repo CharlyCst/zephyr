@@ -7,15 +7,16 @@ const MAGENTA: &'static str = "\x1B[35m";
 const BOLD: &'static str = "\x1B[1m";
 const END: &'static str = "\x1B[0m";
 
+/// Store errors encountered during compilation and generate a report on demand.
+///
+/// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
+/// merged as needed when proceeding through the pipeline.
 pub struct ErrorHandler {
     has_error: bool,
     errors: Vec<Error>,
     codes: HashMap<u16, String>,
 }
 
-/// Store errors encountered during compilation and generate a report on demand.
-/// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
-/// merged as needed when proceeding through the pipeline.
 impl ErrorHandler {
     pub fn new<'a>(code: String, f_id: u16) -> ErrorHandler {
         let mut codes = HashMap::new();
