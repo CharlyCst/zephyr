@@ -1,3 +1,7 @@
+//! The compiler binary
+//!
+//! This file define de CLI of the zephyr compiler, it is build on top of the compiler library.
+
 use std::fs;
 use std::path;
 use clap;

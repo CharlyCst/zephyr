@@ -23,6 +23,7 @@ pub enum ResolvedPath {
     File(PathBuf),
 }
 
+/// The standard implementation of a resolver, used by the zephyr CLI application.
 pub struct StandardResolver {
     package_paths: HashMap<String, PathBuf>,
     file_id: Cell<FileId>,

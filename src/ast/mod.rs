@@ -13,6 +13,7 @@ pub use ast::*;
 pub use tokens::*;
 
 #[derive(Debug)]
+/// A file can contain either Zephyr code or Zephyr assembly.
 pub enum Kind {
     Zephyr,
     Asm,
