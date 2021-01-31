@@ -1,4 +1,4 @@
-use crate::driver::{Ctx, KnownFunctions};
+use crate::ctx::{Ctx, KnownFunctions};
 use crate::error::ErrorHandler;
 
 pub use mir::*;

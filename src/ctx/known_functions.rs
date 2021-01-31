@@ -6,7 +6,7 @@
 //! The functions parameters and return values are validated by this module according to the
 //! following specification:
 //!
-//! ```
+//! ```ignore
 //! malloc: i32 -> i32
 //! ```
 use super::utils::ModulePath;

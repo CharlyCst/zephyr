@@ -1,19 +1,38 @@
 use std::fs;
 use std::path;
+use clap;
 
-mod ast;
-mod cli;
-mod driver;
-mod error;
-mod hir;
-mod mir;
-mod wasm;
+use zephyr::{ErrorHandler, StandardResolver, Ctx, ModulePath};
+
+use clap::Clap;
+use std::path::PathBuf;
+
+/// The Zephyr compiler.
+#[derive(Clap, Debug)]
+#[clap(version = "0.1.0")]
+pub struct Config {
+    /// Use verbose output
+    #[clap(short, long)]
+    pub verbose: bool,
+
+    /// Package to build
+    #[clap(default_value = ".", parse(from_os_str))]
+    pub input: PathBuf,
+
+    /// Output location
+    #[clap(short, long, parse(from_os_str))]
+    pub output: Option<PathBuf>,
+
+    /// Type check the package
+    #[clap(long)]
+    pub check: bool,
+}
 
 fn main() {
-    let config = cli::parse();
-    let mut resolver = driver::StandardResolver::new();
-    let mut ctx = driver::Ctx::new();
-    let mut err = error::ErrorHandler::new_no_file();
+    let config = Config::parse();
+    let mut resolver = StandardResolver::new();
+    let mut ctx = Ctx::new();
+    let mut err = ErrorHandler::new_no_file();
 
     // Resolve paths
     let path = config
@@ -25,7 +44,7 @@ fn main() {
     // Prepare files & resolver
     let (module_files, _) = match resolver.prepare_files(&path, &mut err) {
         Ok(files) => files,
-       Err(()) => {
+        Err(()) => {
             err.flush();
             std::process::exit(65);
         }
@@ -37,7 +56,7 @@ fn main() {
             std::process::exit(65);
         }
     };
-    let module = driver::ModulePath::from_root(module_name.clone());
+    let module = ModulePath::from_root(module_name.clone());
     resolver.add_package(module_name.clone(), path);
 
     // Compile

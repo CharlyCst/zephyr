@@ -1,7 +1,8 @@
-use super::mir::*;
-use crate::driver::KnownFunctions;
+use std::collections::HashMap;
 
-use crate::driver::Ctx;
+use super::mir::*;
+
+use crate::ctx::{Ctx, KnownFunctions};
 use crate::error::ErrorHandler;
 use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
 use crate::hir::{
@@ -12,8 +13,6 @@ use crate::hir::{
     Statement as S, Struct as HirStruct, TupleType as HirTupleType, Type as HirType,
     Unop as HirUnop, Value as V,
 };
-
-use std::collections::HashMap;
 
 enum FromBinop {
     Binop(Binop),

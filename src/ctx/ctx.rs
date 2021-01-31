@@ -4,13 +4,12 @@ use std::collections::{HashMap, HashSet};
 
 use super::known_functions;
 use super::known_functions::{KnownFunctionPaths, KnownFunctions};
-use super::resolver::Resolver;
-use super::utils::PreparedFile;
-use super::utils::{ModuleDeclarations, ModuleKind, ModulePath, PublicDeclarations};
+use super::utils::{ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, PublicDeclarations};
 use crate::ast;
 use crate::error::ErrorHandler;
 use crate::hir;
 use crate::mir;
+use crate::resolver::Resolver;
 use crate::wasm;
 
 type StructMap = HashMap<hir::StructId, hir::Struct>;

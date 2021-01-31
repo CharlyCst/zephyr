@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::driver::{PublicDeclarations, Ctx};
+use crate::ctx::{PublicDeclarations, Ctx};
 use crate::error::ErrorHandler;
 
 pub use self::names::{

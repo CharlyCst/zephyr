@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::PackageKind;
-pub use crate::driver::{ModuleDeclarations, PublicDeclarations};
+pub use crate::ctx::{ModuleDeclarations, PublicDeclarations};
 pub use crate::hir::{FunId, StructId};
 
 pub struct Program {
