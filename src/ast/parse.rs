@@ -1099,7 +1099,15 @@ impl<'a> Parser<'a> {
     /// Expects that `IDENTIFIER` and `{` have been consumed, does not consume final `}`.
     fn struct_literal(&mut self) -> Result<Vec<FieldValue>, ()> {
         let mut fields = Vec::new();
-        while let Some(field) = self.field() {
+        loop {
+            let field = match self.field() {
+                Ok(Some(field)) => field,
+                Ok(None) => break,
+                Err(()) => {
+                    self.err.silent_report();
+                    continue;
+                }
+            };
             fields.push(field);
             if !self.next_match(TokenType::Comma) && !self.next_match(TokenType::SemiColon) {
                 break;
@@ -1108,7 +1116,7 @@ impl<'a> Parser<'a> {
         Ok(fields)
     }
 
-    fn field(&mut self) -> Option<FieldValue> {
+    fn field(&mut self) -> Result<Option<FieldValue>, ()> {
         let token = self.advance();
         let loc = token.loc;
         let ident = if let TokenType::Identifier(ident) = &token.t {
@@ -1116,15 +1124,32 @@ impl<'a> Parser<'a> {
         } else {
             // Restore initial state
             self.back();
-            return None;
+            return Ok(None);
         };
-        self.next_match_report(
-            TokenType::Colon,
-            "Expect a colon (':') after struct field identifier",
-        )
-        .ok()?;
-        let expr = Box::new(self.expression(true).ok()?);
-        return Some(FieldValue { ident, expr, loc });
+        let expr = if self.next_match(TokenType::Colon) {
+            match self.expression(true) {
+                Ok(expr) => expr,
+                Err(()) => {
+                    self.err.report(
+                        loc,
+                        String::from("Expected an expression after field's ':'"),
+                    );
+                    return Err(());
+                }
+            }
+        } else {
+            Expression::Variable {
+                var: Variable {
+                    ident: ident.clone(),
+                    namespace: None,
+                    t: None,
+                    loc,
+                },
+            }
+        };
+        let expr = Box::new(expr);
+
+        return Ok(Some(FieldValue { ident, expr, loc }));
     }
 
     fn path(&mut self) -> Result<Path, ()> {

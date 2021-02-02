@@ -186,6 +186,18 @@
       "exit_code": 65,
       "stdout": "check.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr incomplete_struct_field.zph",
+      "name": "incomplete_struct_field",
+      "description": "Should raise an explicit error when an expression is missing after a field's colon \":\".\n#struct #error",
+      "tags": [
+        "struct",
+        "error"
+      ],
+      "exit_code": 65,
+      "stdout": "incomplete_struct_field.out",
+      "stderr": null
     }
   ]
 }
