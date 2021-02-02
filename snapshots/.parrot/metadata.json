@@ -177,6 +177,15 @@
       "exit_code": 65,
       "stdout": "too-many-fields.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr --check equal_typing_rules.zph",
+      "name": "check",
+      "description": "The '--check' argument can be used to type-check a program.",
+      "tags": [],
+      "exit_code": 65,
+      "stdout": "check.out",
+      "stderr": null
     }
   ]
 }
