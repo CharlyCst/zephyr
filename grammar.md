@@ -22,7 +22,7 @@ import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDEN
 struct_block   -> "{" ( struct_field ( ("," | ";") struct_field )* ("," | ";")? )? "}"
 struct_field   -> "pub"? IDENTIFIER ":" IDENTIFIER
 
-parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
+parameters     -> IDENTIFIER ":" path ( "," IDENTIFIER ":" IDENTIFIER)* ","?
 result         -> (":" IDENTIFIER)?
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt

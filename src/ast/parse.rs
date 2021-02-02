@@ -592,18 +592,11 @@ impl<'a> Parser<'a> {
                 "Expected a type after parameter identifier",
             )
             .ok();
-            let token = self.advance();
-            let loc = token.loc;
 
-            let t = match token {
-                Token {
-                    t: TokenType::Identifier(ref x),
-                    ..
-                } => x.clone(),
-                _ => {
-                    self.err
-                        .report(loc, String::from("Expected parameter type"));
-                    self.back();
+            let t = match self.path() {
+                Ok(path) => path,
+                Err(()) => {
+                    self.err.silent_report();
                     return params;
                 }
             };

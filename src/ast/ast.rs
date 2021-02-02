@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub use crate::ctx::ModulePath;
+pub use crate::ctx::{ModulePath, ModId};
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 
@@ -34,7 +34,8 @@ pub enum Value {
         loc: Location,
     },
     Struct {
-        namespace: Option<String>,
+        /// Namespaces are reserved for HIR resolution.
+        namespace: Option<ModId>,
         ident: String,
         fields: Vec<FieldValue>,
         loc: Location,
@@ -75,12 +76,13 @@ pub enum UnaryOperator {
 
 pub struct Parameter {
     pub ident: String,
-    pub t: String,
+    pub t: Path,
     pub loc: Location,
 }
 
 pub struct Variable {
-    pub namespace: Option<String>,
+    /// Namespaces are reserver for HIR resolution
+    pub namespace: Option<ModId>,
     pub ident: String,
     pub t: Option<String>,
     pub loc: Location,
@@ -333,7 +335,7 @@ impl fmt::Display for Function {
             .map(|v| {
                 let mut param = v.ident.clone();
                 param.push_str(" ");
-                param.push_str(&v.t);
+                param.push_str(&format!("{}", v.t));
                 param
             })
             .collect::<Vec<String>>()
@@ -475,6 +477,17 @@ impl fmt::Display for Statement {
                 None => write!(f, "return;"),
             },
         }
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut path = self.root.clone();
+        for access in &self.path {
+            path.push('.');
+            path.push_str(access);
+        }
+        write!(f, "{}", path)
     }
 }
 

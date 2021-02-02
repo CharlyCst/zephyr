@@ -107,7 +107,6 @@ impl<'a> MIRProducer<'a> {
         }
 
         Program {
-            name: ctx.get_name().to_owned(),
             funs,
             imports,
             structs,

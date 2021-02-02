@@ -2,38 +2,40 @@ use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
-use crate::ctx::PublicDeclarations;
+use crate::ctx::{Ctx, ModId, ModuleDeclarations, TypeDeclaration, ValueDeclaration};
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
 
-struct State {
+struct State<'ctx> {
     names: NameStore,
     types: TypeVarStore,
     contexts: Vec<HashMap<String, usize>>,
     value_namespace: HashMap<String, ValueKind>,
     type_namespace: HashMap<String, TypeKind>,
-    used_namespace: PublicDeclarations,
+    imported_modules: HashMap<String, ModId>,
     constraints: ConstraintStore,
     fun_counter: u32,
     struct_counter: u32,
     package_id: u32,
+    ctx: &'ctx Ctx,
 }
 
-impl State {
-    pub fn new(package_id: u32, used_namespace: PublicDeclarations) -> State {
+impl<'ctx> State<'ctx> {
+    pub fn new(package_id: u32, imported_modules: HashMap<String, ModId>, ctx: &'ctx Ctx) -> Self {
         let contexts = vec![HashMap::new()];
-        State {
+        Self {
             names: NameStore::new(),
             types: TypeVarStore::new(),
             contexts,
             value_namespace: HashMap::new(),
             type_namespace: HashMap::new(),
-            used_namespace,
+            imported_modules,
             constraints: ConstraintStore::new(),
             fun_counter: 0,
             struct_counter: 0,
             package_id,
+            ctx,
         }
     }
 
@@ -71,7 +73,7 @@ impl State {
     ) -> Result<(NameId, TypeId), Location> {
         if let Some(n) = self.find_in_context(&ident) {
             return Err(n.loc);
-        } else if let Some(_) = self.used_namespace.get(&ident) {
+        } else if let Some(_) = self.imported_modules.get(&ident) {
             return Err(Location::dummy()); // TODO: get the location of the corresponding `use` statement.
         }
 
@@ -119,10 +121,11 @@ impl<'a> NameResolver<'a> {
     pub fn resolve(
         &mut self,
         ast_program: ast::Program,
-        used_namespace: PublicDeclarations,
+        imported_modules: HashMap<String, ModId>,
+        ctx: &Ctx,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new(ast_program.package.id, used_namespace);
+        let mut state = State::new(ast_program.package.id, imported_modules, ctx);
         let mut named_funs = Vec::with_capacity(funs.len());
 
         // Register functions names and signatures
@@ -132,6 +135,7 @@ impl<'a> NameResolver<'a> {
             &mut state,
         );
         let structs = self.register_and_resolve_structs(ast_program.structs, &mut state);
+        self.register_used_mods(ast_program.used, &mut state);
         self.register_functions(&funs, &mut state);
 
         // Resolve exposed funs
@@ -194,7 +198,7 @@ impl<'a> NameResolver<'a> {
         };
 
         for param in fun.params.into_iter() {
-            let t = vec![self.get_type(&param.t, None, param.loc, state)];
+            let t = vec![self.get_type_from_path(&param.t, state)];
 
             match state.declare(param.ident.clone(), t, param.loc) {
                 Ok((n_id, _)) => fun_params.push(Variable {
@@ -566,7 +570,7 @@ impl<'a> NameResolver<'a> {
                     fields,
                     loc,
                 } => {
-                    let t = self.get_type(&ident, namespace.as_deref(), loc, state);
+                    let t = self.get_type(&ident, namespace, loc, state);
                     let t_id = state.types.fresh(loc, vec![t]);
                     let n = fields.len();
                     let mut hir_fields = Vec::with_capacity(n);
@@ -598,7 +602,7 @@ impl<'a> NameResolver<'a> {
                 }
             },
             ast::Expression::Variable { var } => {
-                let value = self.get_value(&var.ident, var.namespace.as_deref(), var.loc, state)?;
+                let value = self.get_value(&var.ident, var.namespace, var.loc, state)?;
                 if let Some((expr, t_id)) = value {
                     Ok((expr, t_id))
                 } else if let Some(name) = state.find_in_context(&var.ident) {
@@ -610,9 +614,9 @@ impl<'a> NameResolver<'a> {
                         },
                     };
                     Ok((expr, name.t_id))
-                } else if state.used_namespace.get(&var.ident).is_some() {
+                } else if let Some(mod_id) = state.imported_modules.get(&var.ident) {
                     let expr = Expression::Namespace {
-                        ident: var.ident.clone(),
+                        mod_id: *mod_id,
                         loc: var.loc,
                     };
                     Ok((expr, T_ID_UNIT))
@@ -715,14 +719,14 @@ impl<'a> NameResolver<'a> {
                         };
                         Ok((expr, field_t_id))
                     }
-                    Expression::Namespace { ident, loc } => {
+                    Expression::Namespace { mod_id, loc } => {
                         // Namespace imported from another package
-                        self.resolve_namespace_expr(ident, loc, *field, state)
+                        self.resolve_namespace_expr(mod_id, loc, *field, state)
                     }
                     _ => {
                         self.err.report(
                             expr.get_loc(),
-                            String::from("The left operand of an access must be an identifier or struct literal."),
+                            String::from("The left operand of an access must be an identifier, a struct or a module."),
                         );
                         return Err(());
                     }
@@ -735,49 +739,40 @@ impl<'a> NameResolver<'a> {
     /// namespace.
     fn resolve_namespace_expr(
         &mut self,
-        namespace_ident: String,
+        mod_id: ModId,
         namespace_loc: Location,
         field: ast::Expression,
         state: &mut State,
     ) -> Result<(Expression, TypeId), ()> {
-        if let Some(_) = state.used_namespace.get(&namespace_ident) {
-            match field {
-                ast::Expression::Variable { var } => {
-                    let var = ast::Variable {
-                        namespace: Some(namespace_ident),
-                        ident: var.ident,
-                        t: var.t,
-                        loc: var.loc,
-                    };
-                    self.resolve_expression(ast::Expression::Variable { var }, state)
-                }
-                ast::Expression::Literal {
-                    value:
-                        ast::Value::Struct {
-                            ident, fields, loc, ..
-                        },
-                } => {
-                    let value = ast::Value::Struct {
-                        namespace: Some(namespace_ident),
-                        ident,
-                        fields,
-                        loc,
-                    };
-                    self.resolve_expression(ast::Expression::Literal { value }, state)
-                }
-
-                _ => {
-                    self.err
-                        .report(namespace_loc, String::from("Invalid access"));
-                    Err(())
-                }
+        match field {
+            ast::Expression::Variable { var } => {
+                let var = ast::Variable {
+                    namespace: Some(mod_id),
+                    ident: var.ident,
+                    t: var.t,
+                    loc: var.loc,
+                };
+                self.resolve_expression(ast::Expression::Variable { var }, state)
             }
-        } else {
-            self.err.report_internal(
-                namespace_loc,
-                format!("Namespace '{}' does not exist", namespace_ident),
-            );
-            return Err(());
+            ast::Expression::Literal {
+                value:
+                    ast::Value::Struct {
+                        ident, fields, loc, ..
+                    },
+            } => {
+                let value = ast::Value::Struct {
+                    namespace: Some(mod_id),
+                    ident,
+                    fields,
+                    loc,
+                };
+                self.resolve_expression(ast::Expression::Literal { value }, state)
+            }
+            _ => {
+                self.err
+                    .report(namespace_loc, String::from("Invalid access"));
+                Err(())
+            }
         }
     }
 
@@ -866,7 +861,7 @@ impl<'a> NameResolver<'a> {
         for fun in funs {
             let mut params = Vec::new();
             for param in fun.params.iter() {
-                params.push(self.get_type(&param.t, None, param.loc, state));
+                params.push(self.get_type_from_path(&param.t, state));
             }
 
             let mut results = Vec::new();
@@ -927,7 +922,7 @@ impl<'a> NameResolver<'a> {
         for proto in prototypes {
             let mut params = Vec::new();
             for param in proto.params.iter() {
-                if let Some(known_t) = check_base_type(&param.t) {
+                if let Some(known_t) = check_base_type_from_path(&param.t) {
                     params.push(known_t);
                 } else {
                     self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
@@ -1063,6 +1058,35 @@ impl<'a> NameResolver<'a> {
         exposed_funs
     }
 
+    /// Add the imported modules to the global namespace.
+    fn register_used_mods(&mut self, used: Vec<ast::Use>, state: &mut State) {
+        for import in used {
+            // Choose an identifier for the module
+            let ident = if let Some(alias) = import.alias {
+                alias
+            } else if let Some(module) = import.path.path.last() {
+                module.clone()
+            } else {
+                import.path.root.clone()
+            };
+            // Insert into the namespace
+            match state.ctx.get_mod_id_from_path(&import.path) {
+                Some(mod_id) => {
+                    state
+                        .value_namespace
+                        .insert(ident, ValueKind::Module(mod_id));
+                }
+                None => {
+                    let loc = import.loc;
+                    self.err.report(
+                        loc,
+                        format!("Module '{}' doesn't exist or can't be found.", &import.path),
+                    );
+                }
+            }
+        }
+    }
+
     /// Look for a value in either the given namespace of the local one.
     ///
     /// If no namespace is passed, this function does not raise any error (which allows to fall
@@ -1070,21 +1094,30 @@ impl<'a> NameResolver<'a> {
     fn get_value(
         &mut self,
         val: &str,
-        namespace: Option<&str>,
+        namespace: Option<ModId>,
         loc: Location,
         state: &mut State,
     ) -> Result<Option<(Expression, TypeId)>, ()> {
         if let Some(namespace) = namespace {
             // Look for a value in used namespace
-            if let Some(declarations) = state.used_namespace.get(namespace) {
-                if let Some(val) = declarations.val_decls.get(val) {
-                    match val {
+            if let Some(declarations) = state.ctx.get_mod_from_id(namespace) {
+                if let Some(value) = declarations.val_decls.get(val) {
+                    match value {
                         ValueDeclaration::Function { fun_id, t } => {
                             let expr = Expression::Function {
                                 fun_id: *fun_id,
                                 loc,
                             };
-                            let t_id = state.types.fresh(loc, vec![t.clone()]);
+                            let t = t.clone();
+                            let t_id = state.types.fresh(loc, vec![t]);
+                            Ok(Some((expr, t_id)))
+                        }
+                        ValueDeclaration::Module(mod_id) => {
+                            let expr = Expression::Namespace {
+                                mod_id: *mod_id,
+                                loc,
+                            };
+                            let t_id = T_ID_UNIT;
                             Ok(Some((expr, t_id)))
                         }
                     }
@@ -1097,7 +1130,7 @@ impl<'a> NameResolver<'a> {
                 }
             } else {
                 self.err
-                    .report(loc, format!("Namespace '{}' does not exisist", namespace));
+                    .report(loc, format!("Namespace '{}' does not exist", namespace));
                 Err(())
             }
         } else {
@@ -1111,6 +1144,14 @@ impl<'a> NameResolver<'a> {
                         let t_id = state.names.get(*n_id).t_id;
                         Ok(Some((expr, t_id)))
                     }
+                    ValueKind::Module(mod_id) => {
+                        let expr = Expression::Namespace {
+                            mod_id: *mod_id,
+                            loc,
+                        };
+                        let t_id = T_ID_UNIT;
+                        Ok(Some((expr, t_id)))
+                    }
                 }
             } else {
                 Ok(None)
@@ -1119,22 +1160,33 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Get a type from a (possibly namespaced) string.
-    fn get_type(&mut self, t: &str, namespace: Option<&str>, loc: Location, state: &State) -> Type {
+    fn get_type(
+        &mut self,
+        t: &str,
+        namespace: Option<ModId>,
+        loc: Location,
+        state: &State,
+    ) -> Type {
         if let Some(t) = check_built_in_type(t) {
             return t;
         }
-        if let Some(namespace) = namespace {
+        if let Some(mod_id) = namespace {
             // Look for type in used namespace
-            if let Some(declarations) = state.used_namespace.get(namespace) {
+            if let Some(declarations) = state.ctx.get_mod_from_id(mod_id) {
                 if let Some(t) = declarations.type_decls.get(t) {
                     match t {
-                        TypeDeclaration::Struct { struct_id } => Type::Struct(*struct_id),
+                        TypeDeclaration::Struct(struct_id) => Type::Struct(*struct_id),
                     }
                 } else {
-                    self.err.report(
-                        loc,
-                        format!("Type '{}' does not exist in '{}'", t, namespace),
-                    );
+                    if let Some(path) = state.ctx.get_mod_path_from_id(mod_id) {
+                        self.err
+                            .report(loc, format!("Type '{}' does not exist in '{}'", t, path));
+                    } else {
+                        self.err.report_internal(
+                            loc,
+                            format!("Module ID '{}' has no associated path in context.", mod_id),
+                        );
+                    }
                     Type::Bug
                 }
             } else {
@@ -1157,6 +1209,90 @@ impl<'a> NameResolver<'a> {
                 self.err.report(loc, format!("Unknown type: '{}'", t));
                 Type::Bug
             }
+        }
+    }
+
+    /// Get a type from a path.
+    fn get_type_from_path(&mut self, path: &ast::Path, state: &State) -> Type {
+        // Check for built-in type
+        if path.path.is_empty() {
+            if let Some(t) = check_built_in_type(&path.root) {
+                return t;
+            }
+        }
+        let mut ident = &path.root;
+        let mut namespace = NamespaceKind::from_resolver_state(&state);
+        for access in &path.path {
+            match namespace.get_nested_namespace(ident, &state.ctx) {
+                Some(n) => namespace = n,
+                None => {
+                    self.err
+                        .report(path.loc, format!("Could not resolve '{}'", ident));
+                    return Type::Bug;
+                }
+            }
+            ident = access;
+        }
+        match namespace.get_type(ident) {
+            Some(t) => t,
+            None => {
+                self.err
+                    .report(path.loc, format!("Type '{}' does not exist", ident));
+                Type::Bug
+            }
+        }
+    }
+}
+
+/// Encapsulate different kinds of namespace: the one being built and others from the Ctx.
+enum NamespaceKind<'a> {
+    Resolver(
+        &'a HashMap<String, ValueKind>,
+        &'a HashMap<String, TypeKind>,
+    ),
+    Ctx(&'a ModuleDeclarations),
+}
+
+impl<'a> NamespaceKind<'a> {
+    fn from_resolver_state(state: &'a State) -> Self {
+        NamespaceKind::Resolver(&state.value_namespace, &state.type_namespace)
+    }
+
+    /// Get a namespace inside of a namespace.
+    /// Return None if the namespace does not exist (or the value exists but is not a namespace).
+    fn get_nested_namespace(&self, ident: &str, ctx: &'a Ctx) -> Option<Self> {
+        match self {
+            NamespaceKind::Resolver(namespace, _) => match namespace.get(ident) {
+                Some(ValueKind::Module(mod_id)) => {
+                    Some(NamespaceKind::Ctx(ctx.get_mod_from_id(*mod_id)?))
+                }
+                _ => None,
+            },
+            NamespaceKind::Ctx(mod_decls) => match mod_decls.val_decls.get(ident) {
+                Some(ValueDeclaration::Module(mod_id)) => {
+                    Some(NamespaceKind::Ctx(ctx.get_mod_from_id(*mod_id)?))
+                }
+                _ => None,
+            },
+        }
+    }
+
+    /// Get a type from a namespace.
+    /// Return None if the type does not exist.
+    fn get_type(&self, t: &str) -> Option<Type> {
+        match self {
+            NamespaceKind::Resolver(_, types) => match types.get(t) {
+                Some(t) => match t {
+                    TypeKind::Struct(s_id) => Some(Type::Struct(*s_id)),
+                },
+                None => None,
+            },
+            NamespaceKind::Ctx(mod_decls) => match mod_decls.type_decls.get(t) {
+                Some(t) => match t {
+                    TypeDeclaration::Struct(s_id) => Some(Type::Struct(*s_id)),
+                },
+                None => None,
+            },
         }
     }
 }
@@ -1182,5 +1318,16 @@ fn check_base_type(t: &str) -> Option<Type> {
         "f32" => Some(Type::F32),
         "f64" => Some(Type::F64),
         _ => None,
+    }
+}
+
+/// Return the corresponding base type, if any.
+///
+/// See `check_base_type` for more details.
+fn check_base_type_from_path(t: &ast::Path) -> Option<Type> {
+    if !t.path.is_empty() {
+        None
+    } else {
+        check_base_type(&t.root)
     }
 }

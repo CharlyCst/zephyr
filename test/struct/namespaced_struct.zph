@@ -1,0 +1,16 @@
+// Struct should be usable even behind a namespace.
+standalone package namespaced_struct
+
+use core.str
+
+expose main as _start
+
+fun main(): i32 {
+    let s = str.new_str()
+	return test(s)
+}
+
+fun test(_: str.String): i32 {
+    return 42
+}
+
