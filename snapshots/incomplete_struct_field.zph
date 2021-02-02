@@ -1,0 +1,13 @@
+standalone package incomplete_struct_field
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fun main() {
+    let p = Point {
+        x:
+        y: 0
+    }
+}

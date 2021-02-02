@@ -54,7 +54,7 @@ primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | struct_literal
 
 arguments      -> ( expression ( "," expression )* ","? )?
 struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"
-field          -> IDENTIFIER ":" expression
+field          -> IDENTIFIER ( ":" expression )?
 
 path           -> IDENTIFIER ( "." IDENTIFIER )*
 
