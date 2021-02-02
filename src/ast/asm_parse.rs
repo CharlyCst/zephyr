@@ -338,7 +338,11 @@ impl<'a> Parser<'a> {
 
             params.push(ast::Parameter {
                 ident,
-                t,
+                t: ast::Path {
+                    root: t,
+                    path: vec![],
+                    loc,
+                },
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {

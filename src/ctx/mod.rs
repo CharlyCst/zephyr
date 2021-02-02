@@ -6,6 +6,9 @@ mod ctx;
 mod known_functions;
 mod utils;
 
-pub use ctx::Ctx;
-pub use utils::{ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, PublicDeclarations};
+pub use ctx::{Ctx, ModId};
 pub use known_functions::KnownFunctions;
+pub use utils::{
+    ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, TypeDeclaration,
+    ValueDeclaration,
+};

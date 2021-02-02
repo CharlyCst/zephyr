@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::PackageKind;
-pub use crate::ctx::{ModuleDeclarations, PublicDeclarations};
+pub use crate::ctx::{ModuleDeclarations};
 pub use crate::hir::{FunId, StructId};
 
 pub struct Program {
-    pub name: String,
     pub funs: Vec<Function>,
     pub structs: HashMap<StructId, Struct>,
     pub imports: Vec<Imports>,

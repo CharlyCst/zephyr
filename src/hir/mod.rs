@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::ast;
-use crate::ctx::{PublicDeclarations, Ctx};
+use crate::ctx::{Ctx, ModId};
 use crate::error::ErrorHandler;
 
 pub use self::names::{
@@ -21,13 +23,13 @@ mod types;
 
 pub fn to_hir<'a>(
     ast_program: ast::Program,
-    namespace: PublicDeclarations,
+    namespace: HashMap<String, ModId>,
     ctx: &Ctx,
     error_handler: &mut ErrorHandler,
     verbose: bool,
 ) -> hir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
-    let program = name_resolver.resolve(ast_program, namespace);
+    let program = name_resolver.resolve(ast_program, namespace, ctx);
 
     if verbose {
         println!("\n/// Name Resolution ///\n");

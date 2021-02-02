@@ -35,8 +35,9 @@ pub struct Config {
 fn main() {
     let config = Config::parse();
     let mut resolver = StandardResolver::new();
-    let mut ctx = Ctx::new();
     let mut err = ErrorHandler::new_no_file();
+    let mut ctx = Ctx::new();
+    ctx.set_verbose(config.verbose);
 
     // Resolve paths
     let path = config

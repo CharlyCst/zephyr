@@ -8,7 +8,7 @@ use super::types::{
     ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
     TypedProgram,
 };
-use crate::ctx::{Ctx, ModuleDeclarations};
+use crate::ctx::{Ctx, ModuleDeclarations, ModId};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
@@ -56,6 +56,7 @@ impl<'a> TypeChecker<'a> {
 
         let store = self.build_store(&type_vars);
         let pub_decls = self.get_pub_decls(
+            prog.package.id,
             &store,
             &prog.names,
             &prog.funs,
@@ -110,13 +111,14 @@ impl<'a> TypeChecker<'a> {
     /// imported runtime module.
     fn get_pub_decls(
         &mut self,
+        mod_id: ModId,
         types: &TypeStore,
         names: &NameStore,
         funs: &Vec<Function>,
         imports: &Vec<Imports>,
         type_namespace: &TypeNamespace,
     ) -> ModuleDeclarations {
-        let mut pub_decls = ModuleDeclarations::new();
+        let mut pub_decls = ModuleDeclarations::new(mod_id);
         for fun in funs {
             if fun.is_pub {
                 let name = names.get(fun.n_id);
@@ -148,7 +150,7 @@ impl<'a> TypeChecker<'a> {
             if t.is_pub {
                 pub_decls.type_decls.insert(
                     t.ident.clone(),
-                    TypeDeclaration::Struct { struct_id: *t_id },
+                    TypeDeclaration::Struct(*t_id),
                 );
             }
         }

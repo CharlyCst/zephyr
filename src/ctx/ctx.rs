@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::known_functions;
 use super::known_functions::{KnownFunctionPaths, KnownFunctions};
-use super::utils::{ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, PublicDeclarations};
+use super::utils::{ModuleDeclarations, ModuleKind, ModulePath, PreparedFile};
 use crate::ast;
 use crate::error::ErrorHandler;
 use crate::hir;
@@ -12,16 +12,20 @@ use crate::mir;
 use crate::resolver::Resolver;
 use crate::wasm;
 
+pub type ModId = u32;
+
 type StructMap = HashMap<hir::StructId, hir::Struct>;
 type FunMap = HashMap<hir::FunId, hir::FunKind>;
+type ModMap = HashMap<ModId, ModulePath>;
+type ReverseModMap = HashMap<ModulePath, ModId>;
 type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
-type ModId = u32;
 
 /// The global compilation context.
 pub struct Ctx {
-    name: String,
     structs: StructMap,
     funs: FunMap,
+    mods: ModMap,
+    mods_ids: ReverseModMap,
     public_decls: DeclMap,
     imports: Vec<hir::Import>,
     packages: Vec<hir::Package>,
@@ -32,9 +36,10 @@ pub struct Ctx {
 impl Ctx {
     pub fn new() -> Self {
         Self {
-            name: String::from("pkg"), // default package name
             structs: HashMap::new(),
             funs: HashMap::new(),
+            mods: HashMap::new(),
+            mods_ids: HashMap::new(),
             imports: Vec::new(),
             packages: Vec::new(),
             public_decls: HashMap::new(),
@@ -43,12 +48,34 @@ impl Ctx {
         }
     }
 
+    /// Toggle verbose mode, default to `false`.
+    pub fn set_verbose(&mut self, verbose: bool) {
+        self.verbose = verbose;
+    }
+
+    /// Get a structure from its ID.
     pub fn get_s(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
         self.structs.get(&s_id)
     }
 
-    pub fn get_name(&self) -> &str {
-        self.name.as_str()
+    /// Get module declarations from the module ID.
+    pub fn get_mod_from_id(&self, mod_id: ModId) -> Option<&ModuleDeclarations> {
+        let mod_path = self.mods.get(&mod_id)?;
+        self.public_decls.get(mod_path)
+    }
+
+    /// Get module declarations from the module path.
+    pub fn get_mod_from_path(&self, mod_path: &ModulePath) -> Option<&ModuleDeclarations> {
+        self.public_decls.get(mod_path)
+    }
+
+    /// Get a module ID from its path.
+    pub fn get_mod_id_from_path(&self, mod_path: &ModulePath) -> Option<ModId> {
+        self.mods_ids.get(mod_path).map(|id| *id)
+    }
+
+    pub fn get_mod_path_from_id(&self, mod_id: ModId) -> Option<&ModulePath> {
+        self.mods.get(&mod_id)
     }
 
     pub fn hir_funs(&self) -> &FunMap {
@@ -213,7 +240,7 @@ impl Ctx {
         // Get AST
         let mut pkg_ast = self.get_ast(module, err, resolver)?;
         // Prepare HIR
-        let mut namespaces = PublicDeclarations::new();
+        let mut namespaces = HashMap::new();
         let mut package_import = HashSet::new();
         let mut runtime_modules = HashSet::new();
         // Collect dependencies
@@ -223,9 +250,9 @@ impl Ctx {
             package_import.insert(used.path.clone());
             // Collect dependencies
             // TODO: Should we hide exposed declarations of imported packages?
-            let pub_decls = if let Some(pub_decls) = self.public_decls.get(&used.path) {
+            let mod_id = if let Some(pub_decls) = self.public_decls.get(&used.path) {
                 // Already processed and cached.
-                pub_decls.clone()
+                pub_decls.mod_id
             } else {
                 let mut imported = imported.clone();
                 imported.insert(used.path.clone());
@@ -236,14 +263,14 @@ impl Ctx {
                     &module_hir.imports,
                     err,
                 );
-                let pub_decls = module_hir.pub_decls.clone();
+                let mod_id = module_hir.package.id;
                 self.extend_hir(module_hir, used.path.clone());
-                pub_decls
+                mod_id
             };
             if let Some(alias) = &used.alias {
-                namespaces.insert(alias.clone(), pub_decls);
+                namespaces.insert(alias.clone(), mod_id);
             } else {
-                namespaces.insert(used.path.alias().to_owned(), pub_decls);
+                namespaces.insert(used.path.alias().to_owned(), mod_id);
             }
         }
         let hir_program = hir::to_hir(pkg_ast, namespaces, &self, err, self.verbose);
@@ -302,6 +329,7 @@ impl Ctx {
         if let Some(fun) = public_decls.val_decls.get(fun) {
             let fun_id = match fun {
                 hir::ValueDeclaration::Function { t: _, fun_id } => *fun_id,
+                _ => return Err(()),
             };
             let fun = self
                 .funs
@@ -341,6 +369,8 @@ impl Ctx {
                 prototypes,
             })
         }
+        self.mods.insert(hir.package.id, module.clone());
+        self.mods_ids.insert(module.clone(), hir.package.id);
         self.packages.push(hir.package);
         self.public_decls.insert(module, hir.pub_decls);
     }

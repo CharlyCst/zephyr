@@ -278,7 +278,7 @@ impl fmt::Display for ConstraintStore {
                         .map(|a| format!("{}", a))
                         .collect::<Vec<String>>()
                         .join(", ");
-                    store.push_str(&format!("  {:>4} λ {}\n", fun_t, args))
+                    store.push_str(&format!("  {:>4} λ. {:>3}\n", fun_t, args))
                 }
                 TypeConstraint::Field(obj_t, field_t, ref field, _) => {
                     store.push_str(&format!("  {:>4} .{} {:>3}\n", obj_t, field, field_t))

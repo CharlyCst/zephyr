@@ -1,5 +1,6 @@
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, Package, UnaryOperator};
+use crate::ctx::ModId;
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 use std::collections::HashMap;
@@ -26,6 +27,7 @@ pub struct ResolvedProgram {
 /// All the kind of values that can be found in the Value Namespace.
 pub enum ValueKind {
     Function(FunId, NameId),
+    Module(ModId),
 }
 
 /// All the kind of types that can be found in the Type Namespace.
@@ -77,11 +79,12 @@ pub struct StructField {
 #[derive(Clone)]
 pub enum ValueDeclaration {
     Function { t: Type, fun_id: FunId },
+    Module(ModId),
 }
 
 #[derive(Clone)]
 pub enum TypeDeclaration {
-    Struct { struct_id: StructId },
+    Struct(StructId),
 }
 
 pub enum Body {
@@ -172,11 +175,11 @@ pub enum Expression {
         expr: Box<Expression>,
         field: String,
         t_id: TypeId,
-        struct_t_id : TypeId,
+        struct_t_id: TypeId,
         loc: Location,
     },
     Namespace {
-        ident: String,
+        mod_id: ModId,
         loc: Location,
     },
     Binary {

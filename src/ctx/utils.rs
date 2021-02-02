@@ -3,6 +3,10 @@ use std::fmt;
 
 use crate::ast;
 use crate::hir;
+use super::ctx::ModId;
+
+pub use hir::ValueDeclaration;
+pub use hir::TypeDeclaration;
 
 /// A list of packages known from the compiler and expected to be available.
 #[allow(dead_code)]
@@ -19,39 +23,19 @@ impl KnownPackage {
     }
 }
 
-/// A namespaced collection of public declarations and collection of all type definitions.
-pub struct PublicDeclarations {
-    decls: HashMap<String, ModuleDeclarations>,
-}
-
-impl PublicDeclarations {
-    pub fn new() -> Self {
-        Self {
-            decls: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, path: String, declarations: ModuleDeclarations) {
-        self.decls.insert(path, declarations);
-    }
-
-    /// Returns the exposed declaration of a package at `path`.
-    pub fn get(&self, path: &str) -> Option<&ModuleDeclarations> {
-        self.decls.get(path)
-    }
-}
-
 /// A list of public declarations in a given package.
 #[derive(Clone)]
 pub struct ModuleDeclarations {
+    pub mod_id: ModId,
     pub val_decls: HashMap<String, hir::ValueDeclaration>,
     pub type_decls: HashMap<String, hir::TypeDeclaration>,
     pub runtime_modules: HashSet<String>,
 }
 
 impl ModuleDeclarations {
-    pub fn new() -> Self {
+    pub fn new(mod_id: ModId) -> Self {
         Self {
+            mod_id,
             val_decls: HashMap::new(),
             type_decls: HashMap::new(),
             runtime_modules: HashSet::new(),

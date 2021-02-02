@@ -23,20 +23,20 @@ pub enum Kind {
 /// The file content corresponding to `f_id` must be owned by the error_handler.
 pub fn get_ast(
     f_id: u16,
-    package_id: u32,
+    mod_id: u32,
     kind: Kind,
     error_handler: &mut ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
     match kind {
-        Kind::Zephyr => get_zephyr_ast(f_id, package_id, error_handler, verbose),
-        Kind::Asm => get_asm_ast(f_id, package_id, error_handler, verbose),
+        Kind::Zephyr => get_zephyr_ast(f_id, mod_id, error_handler, verbose),
+        Kind::Asm => get_asm_ast(f_id, mod_id, error_handler, verbose),
     }
 }
 
 fn get_zephyr_ast(
     f_id: u16,
-    package_id: u32,
+    mod_id: u32,
     error_handler: &mut ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
@@ -55,7 +55,7 @@ fn get_zephyr_ast(
         println!("\n/// Parsing ///\n");
     }
 
-    let mut parser = parse::Parser::new(tokens, package_id, error_handler);
+    let mut parser = parse::Parser::new(tokens, mod_id, error_handler);
     let ast_program = parser.parse();
 
     if verbose {
@@ -68,7 +68,7 @@ fn get_zephyr_ast(
 
 fn get_asm_ast(
     f_id: u16,
-    package_id: u32,
+    mod_id: u32,
     error_handler: &mut ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
@@ -89,7 +89,7 @@ fn get_asm_ast(
 
     error_handler.flush_and_exit_if_err();
 
-    let mut parser = asm_parse::Parser::new(tokens, package_id, error_handler);
+    let mut parser = asm_parse::Parser::new(tokens, mod_id, error_handler);
     let ast_program = parser.parse();
 
     if verbose {
