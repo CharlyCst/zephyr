@@ -242,7 +242,6 @@ impl Ctx {
         // Prepare HIR
         let mut namespaces = HashMap::new();
         let mut package_import = HashSet::new();
-        let mut runtime_modules = HashSet::new();
         // Collect dependencies
         for used in pkg_ast.used.iter_mut() {
             self.detect_circular_imports(&used.path, &imported, err)?;
@@ -258,11 +257,6 @@ impl Ctx {
                 imported.insert(used.path.clone());
                 let module_hir = self.get_hir(&used.path, imported, err, resolver)?;
                 // Merge package content
-                self.detect_duplicate_runtime_modules(
-                    &mut runtime_modules,
-                    &module_hir.imports,
-                    err,
-                );
                 let mod_id = module_hir.package.id;
                 self.extend_hir(module_hir, used.path.clone());
                 mod_id
@@ -472,31 +466,6 @@ impl Ctx {
                 "Package '{}' is imported multiple times from the same package.",
                 path
             ));
-        }
-    }
-
-    /// Raises an error if an external runtime is imported multiple times and insert new imports in
-    /// the imports set.
-    ///
-    /// params:
-    ///  - modules: a set of modules already imported.
-    ///  - imports: the new import definitions.
-    ///  - err: an error handler.
-    fn detect_duplicate_runtime_modules(
-        &self,
-        modules: &mut HashSet<String>,
-        imports: &Vec<hir::Imports>,
-        err: &mut ErrorHandler,
-    ) {
-        for import in imports {
-            if modules.contains(&import.from) {
-                err.report_no_loc(format!(
-                    "The runtime module '{}' is defined in multiple places.",
-                    &import.from
-                ));
-            } else {
-                modules.insert(import.from.clone());
-            }
         }
     }
 
