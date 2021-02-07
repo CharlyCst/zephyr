@@ -5,6 +5,6 @@ use std.r.wasi
 expose hello as _start
 
 fun hello() {
-    wasi.print("Hello, world!")
+    wasi.print("Hello, world!\n")
 }
 
