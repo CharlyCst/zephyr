@@ -186,6 +186,18 @@
       "exit_code": 65,
       "stdout": "incomplete_struct_field.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr escape_char.zph -o a.wasm",
+      "name": "escape_characters",
+      "description": "If an invalid escape sequence is found an warning should be raised explaining that the sequence is not valid.\n#scan #str",
+      "tags": [
+        "scan",
+        "str"
+      ],
+      "exit_code": 0,
+      "stdout": "escape_characters.out",
+      "stderr": null
     }
   ]
 }
