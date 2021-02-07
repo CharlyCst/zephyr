@@ -6,7 +6,7 @@ use core.str
 expose main as _start
 
 fun main(): i32 {
-    let s = str.new_str()
+    let s = str.new_string()
 	return test(s)
 }
 

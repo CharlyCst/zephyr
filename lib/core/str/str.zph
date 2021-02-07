@@ -10,8 +10,14 @@ pub struct String {
     buffer: i32,
 }
 
+/// A String slice, a structure that doesn't own the data it points to.
+pub struct Str {
+    len: i32,
+    start: i32,
+}
+
 /// Creates a new string.
-pub fun new_str(): String {
+pub fun new_string(): String {
     let capacity = 12 // Arbitrary default size
     let buffer = mem.malloc(capacity)
     return String {
@@ -22,22 +28,31 @@ pub fun new_str(): String {
 }
 
 /// Adds a character to the string.
-pub fun push_char(str: String, char: i32) {
-    if str.capacity <= str.len {
+pub fun push_char(s: String, char: i32) {
+    if s.capacity <= s.len {
         // Reallocate the buffer
-        let new_capacity = str.capacity * 2
+        let new_capacity = s.capacity * 2
         let new_buffer = mem.malloc(new_capacity)
-        let old_buffer = str.buffer
+        let old_buffer = s.buffer
         let idx = 0
-        while idx < str.len {
+        while idx < s.len {
             let tmp = mem.read_u8(old_buffer + idx)
             mem.set_u8(new_buffer + idx, tmp)
             idx = idx + 1
         }
-        mem.free(str.buffer)
-        str.buffer = new_buffer
-        str.capacity = new_capacity
+        mem.free(s.buffer)
+        s.buffer = new_buffer
+        s.capacity = new_capacity
     }
-    mem.set_u8(str.buffer + str.len, char)
-    str.len = str.len + 1
+    mem.set_u8(s.buffer + s.len, char)
+    s.len = s.len + 1
 }
+
+/// Return slice from a String.
+pub fun as_str(string: String): Str {
+    return Str {
+        len: string.len,
+        start: string.buffer,
+    }
+}
+

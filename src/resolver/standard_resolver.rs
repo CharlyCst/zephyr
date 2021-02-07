@@ -9,8 +9,13 @@ use std::path::{Path, PathBuf};
 
 use crate::{ErrorHandler, FileKind, ModuleKind, ModulePath, PreparedFile, Resolver};
 
+// File extensions
 pub const ZEPHYR_EXTENSION: &str = "zph";
 pub const ASM_EXTENSION: &str = "zasm";
+
+// Packages
+pub const CORE: &str = "core";
+pub const STD: &str = "std";
 
 /// Expectend environment variable pointing to Zephyr known packages.
 const ZEPHYR_LIB: &'static str = "ZEPHYR_LIB";
@@ -41,11 +46,14 @@ impl StandardResolver {
         let zephyr_path = PathBuf::from(&known_package_path);
 
         // Build path to known packages
-        let mut core_path = zephyr_path;
-        core_path.push("core");
+        let mut core_path = zephyr_path.clone();
+        core_path.push(CORE);
+        let mut std_path = zephyr_path;
+        std_path.push(STD);
 
         // Map package roots to paths
-        package_paths.insert(String::from("core"), core_path);
+        package_paths.insert(String::from(CORE), core_path);
+        package_paths.insert(String::from(STD), std_path);
         Self {
             package_paths,
             file_id: Cell::new(0),

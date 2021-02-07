@@ -2,7 +2,7 @@ use super::names::*;
 use super::types::id::*;
 use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
 use crate::ast;
-use crate::ctx::{Ctx, ModId, ModuleDeclarations, TypeDeclaration, ValueDeclaration};
+use crate::ctx::{Ctx, KnownValues, ModId, ModuleDeclarations, TypeDeclaration, ValueDeclaration};
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
@@ -10,29 +10,40 @@ use std::collections::HashMap;
 struct State<'ctx> {
     names: NameStore,
     types: TypeVarStore,
+    data: HashMap<DataId, Data>,
     contexts: Vec<HashMap<String, usize>>,
     value_namespace: HashMap<String, ValueKind>,
     type_namespace: HashMap<String, TypeKind>,
     imported_modules: HashMap<String, ModId>,
     constraints: ConstraintStore,
+    known_values: &'ctx KnownValues,
     fun_counter: u32,
     struct_counter: u32,
+    data_counter: u32,
     package_id: u32,
     ctx: &'ctx Ctx,
 }
 
 impl<'ctx> State<'ctx> {
-    pub fn new(package_id: u32, imported_modules: HashMap<String, ModId>, ctx: &'ctx Ctx) -> Self {
+    pub fn new(
+        package_id: u32,
+        imported_modules: HashMap<String, ModId>,
+        ctx: &'ctx Ctx,
+        known_values: &'ctx KnownValues,
+    ) -> Self {
         let contexts = vec![HashMap::new()];
         Self {
+            data: HashMap::new(),
             names: NameStore::new(),
             types: TypeVarStore::new(),
-            contexts,
             value_namespace: HashMap::new(),
             type_namespace: HashMap::new(),
-            imported_modules,
             constraints: ConstraintStore::new(),
+            contexts,
+            imported_modules,
+            known_values,
             fun_counter: 0,
+            data_counter: 0,
             struct_counter: 0,
             package_id,
             ctx,
@@ -61,6 +72,14 @@ impl<'ctx> State<'ctx> {
         let s_id = (self.struct_counter as u64) + ((self.package_id as u64) << 32);
         self.struct_counter += 1;
         s_id
+    }
+
+    /// Add a string to the program's data and return the corresponding data ID.
+    pub fn add_str_data(&mut self, string: String) -> DataId {
+        let d_id = (self.data_counter as u64) + ((self.package_id as u64) << 32);
+        self.data_counter += 1;
+        self.data.insert(d_id, Data::Str(d_id, string.into_bytes()));
+        d_id
     }
 
     /// Declare a name, will fail if the name already exists in the current context or corresponds
@@ -123,9 +142,10 @@ impl<'a> NameResolver<'a> {
         ast_program: ast::Program,
         imported_modules: HashMap<String, ModId>,
         ctx: &Ctx,
+        known_values: &KnownValues,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new(ast_program.package.id, imported_modules, ctx);
+        let mut state = State::new(ast_program.package.id, imported_modules, ctx, known_values);
         let mut named_funs = Vec::with_capacity(funs.len());
 
         // Register functions names and signatures
@@ -152,6 +172,7 @@ impl<'a> NameResolver<'a> {
             funs: named_funs,
             structs,
             imports,
+            data: state.data,
             names: state.names,
             types: state.types,
             constraints: state.constraints,
@@ -563,6 +584,21 @@ impl<'a> NameResolver<'a> {
                         },
                     };
                     Ok((expr, T_ID_BOOL))
+                }
+                ast::Value::Str { val, loc } => {
+                    let len = val.len() as u64;
+                    let data_id = state.add_str_data(val);
+                    let str_s_id = state.known_values.structs.str;
+                    let t_id = state.types.fresh(loc, vec![Type::Struct(str_s_id)]);
+                    let expr = Expression::Literal {
+                        value: Value::Str {
+                            data_id,
+                            len,
+                            loc,
+                            t_id,
+                        },
+                    };
+                    Ok((expr, t_id))
                 }
                 ast::Value::Struct {
                     namespace,

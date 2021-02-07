@@ -3,7 +3,9 @@ use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
 use super::known_functions;
-use super::known_functions::{KnownFunctionPaths, KnownFunctions};
+use super::known_functions::{
+    KnownFunctionPaths, KnownFunctions, KnownStructPaths, KnownStructs, KnownValues,
+};
 use super::utils::{ModuleDeclarations, ModuleKind, ModulePath, PreparedFile};
 use crate::ast;
 use crate::error::ErrorHandler;
@@ -15,6 +17,7 @@ use crate::wasm;
 pub type ModId = u32;
 
 type StructMap = HashMap<hir::StructId, hir::Struct>;
+type DataMap = HashMap<hir::DataId, hir::Data>;
 type FunMap = HashMap<hir::FunId, hir::FunKind>;
 type ModMap = HashMap<ModId, ModulePath>;
 type ReverseModMap = HashMap<ModulePath, ModId>;
@@ -22,13 +25,18 @@ type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
 
 /// The global compilation context.
 pub struct Ctx {
+    // HIR elements
     structs: StructMap,
+    data: DataMap,
     funs: FunMap,
     mods: ModMap,
     mods_ids: ReverseModMap,
     public_decls: DeclMap,
     imports: Vec<hir::Import>,
     packages: Vec<hir::Package>,
+
+    // Configuration
+    knwon_values: KnownValues,
     mod_id: Cell<ModId>,
     verbose: bool,
 }
@@ -37,13 +45,15 @@ impl Ctx {
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
+            data: HashMap::new(),
             funs: HashMap::new(),
             mods: HashMap::new(),
             mods_ids: HashMap::new(),
             imports: Vec::new(),
             packages: Vec::new(),
             public_decls: HashMap::new(),
-            mod_id: Cell::new(0),
+            knwon_values: KnownValues::uninitialized(),
+            mod_id: Cell::new(1), // ModId 0 is reserverd
             verbose: false,
         }
     }
@@ -88,6 +98,10 @@ impl Ctx {
 
     pub fn hir_imports(&self) -> &Vec<hir::Import> {
         &self.imports
+    }
+
+    pub fn hir_data(&self) -> &DataMap {
+        &self.data
     }
 
     /// Given a list of files return the corresponding module.
@@ -143,6 +157,7 @@ impl Ctx {
         err: &mut ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<(), ()> {
+        self.initialize_known_values(err, resolver)?;
         let hir = self.get_hir(&module, HashSet::new(), err, resolver)?;
         self.extend_hir(hir, module);
         Ok(())
@@ -154,6 +169,7 @@ impl Ctx {
         err: &mut ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<Vec<u8>, ()> {
+        self.initialize_known_values(err, resolver)?;
         let known_funs = self.get_known_functions(err, resolver)?;
         let mir = mir::to_mir(&self, &known_funs, err, self.verbose);
         Ok(wasm::to_wasm(mir, err, self.verbose))
@@ -267,11 +283,34 @@ impl Ctx {
                 namespaces.insert(used.path.alias().to_owned(), mod_id);
             }
         }
-        let hir_program = hir::to_hir(pkg_ast, namespaces, &self, err, self.verbose);
+        let hir_program = hir::to_hir(
+            pkg_ast,
+            namespaces,
+            &self,
+            &self.knwon_values,
+            err,
+            self.verbose,
+        );
         Ok(hir_program)
     }
 
-    /// Return the ID of the known functions, that is functions that are known to the compiler and
+    /// Initialize the known values (values such as `Str` or `malloc`) if they are not yet defined,
+    /// otherwise return imediately.
+    fn initialize_known_values(
+        &mut self,
+        err: &mut ErrorHandler,
+        resolver: &impl Resolver,
+    ) -> Result<(), ()> {
+        if self.knwon_values.is_initialized() {
+            return Ok(());
+        }
+        let funs = self.get_known_functions(err, resolver)?;
+        let structs = self.get_known_structs(err, resolver)?;
+        self.knwon_values = KnownValues { funs, structs };
+        Ok(())
+    }
+
+    /// Return the IDs of the known functions, that is functions that are known to the compiler and
     /// needed for the latter phases of the compilation.
     fn get_known_functions(
         &mut self,
@@ -285,6 +324,19 @@ impl Ctx {
         let malloc = self.get_fun(&malloc_decl, "malloc", &modules.malloc, err)?;
         let malloc = known_functions::validate_malloc(malloc, err)?;
         Ok(KnownFunctions { malloc })
+    }
+
+    /// Return the IDs of known structs.
+    fn get_known_structs(
+        &mut self,
+        err: &mut ErrorHandler,
+        resolver: &impl Resolver,
+    ) -> Result<KnownStructs, ()> {
+        let modules = KnownStructPaths::get();
+        let str_decl = self.get_public_decls(&modules.str, err, resolver)?.clone();
+        let str = self.get_struct(&str_decl, "Str", &modules.str, err)?;
+        let str = known_functions::validate_str(str, err)?;
+        Ok(KnownStructs { str })
     }
 
     /// Return the public declarations of a given module, will build HIR if not already in Ctx.
@@ -307,6 +359,7 @@ impl Ctx {
     }
 
     /// Return a function from the public declarations of a module.
+    /// Raises an error if the function is not found.
     ///
     /// params:
     ///  - public_decls: public declarations of a module, expected to contain the function.
@@ -328,10 +381,40 @@ impl Ctx {
             let fun = self
                 .funs
                 .get(&fun_id)
-                .expect("Function declared but not in context.");
+                .expect("Function declared but not in context");
             Ok(fun)
         } else {
             err.report_no_loc(format!("Could not find funtion '{}' at '{}'", fun, module));
+            Err(())
+        }
+    }
+
+    /// Return a struct from the public declarations of a module.
+    /// Raises an error if the struct is not found.
+    ///
+    /// params:
+    ///  - public_decls: public declarations of a module, expected to contain the struct.
+    ///  - struc: the identifier of the struct.
+    ///  - module: a path to the module.
+    ///  - err: an error handler.
+    fn get_struct(
+        &self,
+        public_decls: &ModuleDeclarations,
+        struc: &str,
+        module: &ModulePath,
+        err: &mut ErrorHandler,
+    ) -> Result<&hir::Struct, ()> {
+        if let Some(struc) = public_decls.type_decls.get(struc) {
+            let struct_id = match struc {
+                hir::TypeDeclaration::Struct(s_id) => s_id,
+            };
+            let struc = self
+                .structs
+                .get(&struct_id)
+                .expect("Struct declared but not in context");
+            Ok(struc)
+        } else {
+            err.report_no_loc(format!("Could not find struct '{}' at '{}'", struc, module));
             Err(())
         }
     }
@@ -349,6 +432,10 @@ impl Ctx {
         for fun in hir.funs {
             let prev = self.funs.insert(fun.fun_id, hir::FunKind::Fun(fun));
             assert!(prev.is_none()); // fun_id must be unique
+        }
+        for (d_id, data) in hir.data {
+            let prev = self.data.insert(d_id, data);
+            assert!(prev.is_none()); // d_id must be unique
         }
         for import in hir.imports {
             let mut prototypes = Vec::new();

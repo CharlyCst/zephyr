@@ -11,14 +11,20 @@ use std::collections::HashMap;
 type LocalsMap = HashMap<mir::LocalId, usize>;
 type BlocksMap = HashMap<mir::BasicBlockId, usize>;
 type FunctionsMap = HashMap<hir::FunId, usize>;
+type OffsetMap = HashMap<hir::DataId, wasm::Offset>;
 
 /// State globally availlable, which contains functions and global variables.
 struct GlobalState {
     funs: FunctionsMap,
+    offsets: OffsetMap,
 }
 
 impl GlobalState {
-    pub fn new(funs: &Vec<mir::Function>, imports: &Vec<mir::Imports>) -> GlobalState {
+    pub fn new(
+        funs: &Vec<mir::Function>,
+        imports: &Vec<mir::Imports>,
+        offsets: OffsetMap,
+    ) -> GlobalState {
         let mut fun_map = HashMap::new();
         let mut fun_idx = 0;
         for import in imports {
@@ -30,7 +36,10 @@ impl GlobalState {
         for (idx, fun) in funs.iter().enumerate() {
             fun_map.insert(fun.fun_id, idx + fun_idx);
         }
-        GlobalState { funs: fun_map }
+        GlobalState {
+            funs: fun_map,
+            offsets,
+        }
     }
 }
 
@@ -80,7 +89,8 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
-        let global_state = GlobalState::new(&mir.funs, &mir.imports);
+        let (data_section, offsets) = self.initialize_data(mir.data);
+        let global_state = GlobalState::new(&mir.funs, &mir.imports, offsets);
         let mut funs = Vec::new();
         let mut imports = Vec::new();
         for fun in mir.funs {
@@ -90,8 +100,21 @@ impl<'a> Compiler<'a> {
             imports.extend(self.module_imports(module_imports));
         }
 
-        let module = sections::Module::new(funs, imports);
+        let module = sections::Module::new(funs, imports, data_section);
         module.encode()
+    }
+
+    fn initialize_data(
+        &self,
+        mir_data: HashMap<mir::DataId, mir::Data>,
+    ) -> (sections::SectionData, OffsetMap) {
+        let mut data_section = sections::SectionData::new();
+        let mut offsets = HashMap::with_capacity(mir_data.len());
+        for (data_id, data) in mir_data {
+            let offset = data_section.add_data_segment(data);
+            offsets.insert(data_id, offset);
+        }
+        (data_section, offsets)
     }
 
     /// Compiles a set of MIR module imports to a list of wasm imports.
@@ -275,6 +298,11 @@ impl<'a> Compiler<'a> {
                     mir::Value::F64(x) => {
                         code.push(INSTR_F64_CST);
                         code.extend(x.to_le_bytes().iter());
+                    }
+                    mir::Value::DataPointer(data_id) => {
+                        let offset = *s.global_state.offsets.get(&data_id).unwrap();
+                        code.push(INSTR_I32_CST);
+                        code.extend(to_sleb(offset as i64));
                     }
                 },
                 mir::Statement::Control(cntrl) => match cntrl {

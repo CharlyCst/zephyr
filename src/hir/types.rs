@@ -6,7 +6,7 @@ use crate::hir::Package;
 use std::collections::HashMap;
 use std::fmt;
 
-pub use names::StructId;
+pub use names::{DataId, StructId};
 
 pub mod id {
     pub const _T_ID_BUG: usize = 0;
@@ -39,6 +39,7 @@ pub enum Type {
 pub struct TypedProgram {
     pub funs: Vec<names::Function>,
     pub imports: Vec<names::Imports>,
+    pub data: HashMap<DataId, names::Data>,
     pub structs: HashMap<StructId, names::Struct>,
     pub names: names::NameStore,
     pub types: TypeStore,

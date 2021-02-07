@@ -11,7 +11,7 @@ use crate::hir::{
     IntegerType as HirIntergerType, LocalId as HirLocalId, LocalVariable as HirLocalVariable,
     NumericType as HirNumericType, PlaceExpression as PlaceExpr, ScalarType as HirScalarType,
     Statement as S, Struct as HirStruct, TupleType as HirTupleType, Type as HirType,
-    Unop as HirUnop, Value as V,
+    Unop as HirUnop, Value as V, Data as HirData,
 };
 
 enum FromBinop {
@@ -85,9 +85,11 @@ impl<'a> MIRProducer<'a> {
         let hir_funs = ctx.hir_funs();
         let hir_structs = ctx.hir_structs();
         let hir_imports = ctx.hir_imports();
+        let hir_data = ctx.hir_data();
         let mut funs = Vec::with_capacity(hir_funs.len());
         let mut imports = Vec::with_capacity(hir_imports.len());
         let structs = self.reduce_structs(hir_structs);
+        let data = self.reduce_data(hir_data);
         let mut state = State::new(&structs, known_funs);
 
         for (_, fun) in hir_funs {
@@ -110,6 +112,7 @@ impl<'a> MIRProducer<'a> {
             funs,
             imports,
             structs,
+            data,
         }
     }
 
@@ -171,6 +174,20 @@ impl<'a> MIRProducer<'a> {
             );
         }
         mir_struct
+    }
+
+    fn reduce_data(&mut self, hir_data: &HashMap<DataId, HirData>) -> HashMap<DataId, Data> {
+        let mut mir_data = HashMap::with_capacity(hir_data.len());
+        for (data_id, data) in hir_data {
+            let data = match data {
+                HirData::Str(data_id_2, data) => {
+                    assert!(data_id == data_id_2);
+                    data.to_owned()
+                }
+            };
+            mir_data.insert(*data_id, data);
+        }
+        mir_data
     }
 
     fn reduce_fun(&mut self, fun: &HirFun, s: &mut State) -> Result<Function, String> {
@@ -346,6 +363,10 @@ impl<'a> MIRProducer<'a> {
                 }
                 V::Bool(val, _) => {
                     stmts.push(Statement::Const(Value::I32(if *val { 1 } else { 0 })));
+                    vec![Type::I32]
+                }
+                V::DataPointer(data_id, _) => {
+                    stmts.push(Statement::Const(Value::DataPointer(*data_id)));
                     vec![Type::I32]
                 }
                 V::Struct {

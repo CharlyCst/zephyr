@@ -1,0 +1,8 @@
+standalone package str
+
+expose main as _start
+
+fun main(): i32 {
+    let s = "abcd"
+    return 38 + s.len
+}

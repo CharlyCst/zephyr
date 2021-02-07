@@ -120,18 +120,6 @@
       "stderr": null
     },
     {
-      "cmd": "../target/debug/zephyr multiple_runtimes",
-      "name": "multiple-runtimes",
-      "description": "There can be at most one runtime, the driver should rise an error otherwise.\n#driver #runtime",
-      "tags": [
-        "driver",
-        "runtime"
-      ],
-      "exit_code": 65,
-      "stdout": "multiple-runtimes.out",
-      "stderr": null
-    },
-    {
       "cmd": "../target/debug/zephyr unauthorized_import.zph",
       "name": "unauthorized-import",
       "description": "Imports are only allowed in 'runtime' packages, the compiler should rise and error if another kind of package defines an import.\n#resolver #import #runtime",

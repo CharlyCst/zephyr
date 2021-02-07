@@ -91,6 +91,7 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
                     MirValue::I64(_) => stack.push(Type::I64),
                     MirValue::F32(_) => stack.push(Type::F32),
                     MirValue::F64(_) => stack.push(Type::F64),
+                    MirValue::DataPointer(_) => stack.push(Type::I32),
                 },
                 AsmStatement::Control { cntrl, .. } => match cntrl {
                     AsmControl::Return => return Ok(stack),

@@ -1,0 +1,19 @@
+/// Wasi runtime
+standalone runtime package wasi
+
+use core.str
+use core.mem
+
+// Tested on Wasmtime 0.15.0
+from wasi_unstable import {
+    pub fun fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32): i32
+}
+
+/// Print a string to stdout.
+pub fun print(message: str.Str) {
+    let iov = mem.malloc(12)
+    mem.set_i32(iov, message.start)
+    mem.set_i32(iov + 4, message.len)
+    fd_write(1, iov, 1, iov + 8)
+    mem.free(iov)
+}

@@ -11,12 +11,14 @@ pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 pub type NameId = usize;
 pub type FunId = u64;
 pub type StructId = u64;
+pub type DataId = u64;
 pub type TypeNamespace = HashMap<StructId, Struct>;
 
 /// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
+    pub data: HashMap<DataId, Data>,
     pub structs: HashMap<StructId, Struct>,
     pub names: NameStore,
     pub types: TypeVarStore,
@@ -33,6 +35,10 @@ pub enum ValueKind {
 /// All the kind of types that can be found in the Type Namespace.
 pub enum TypeKind {
     Struct(StructId),
+}
+
+pub enum Data {
+    Str(DataId, Vec<u8>),
 }
 
 pub struct Imports {
@@ -145,6 +151,12 @@ pub enum Value {
         loc: Location,
         t_id: TypeId,
     },
+    Str {
+        data_id: DataId,
+        len: u64,
+        loc: Location,
+        t_id: TypeId,
+    },
     Struct {
         ident: String,
         loc: Location,
@@ -220,6 +232,7 @@ impl Expression {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
                 Value::Float { loc, .. } => *loc,
+                Value::Str { loc, .. } => *loc,
                 Value::Struct { loc, .. } => *loc,
             },
             Expression::Function { loc, .. } => *loc,

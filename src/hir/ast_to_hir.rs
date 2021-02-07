@@ -65,6 +65,7 @@ impl<'a> HirProducer<'a> {
             funs,
             imports,
             structs,
+            data: prog.data,
             pub_decls: prog.pub_decls,
             package: prog.package,
         }
@@ -208,6 +209,36 @@ impl<'a> HirProducer<'a> {
                     V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
                         ASTTypes::Bool => Value::Bool(val, loc),
                         _ => return Err(String::from("Boolean constant of non boolean type.")),
+                    },
+                    V::Str {
+                        data_id,
+                        len,
+                        loc,
+                        t_id,
+                    } => match s.types.get(t_id) {
+                        ASTTypes::Struct(struct_id) => {
+                            let len = FieldValue {
+                                ident: String::from("len"),
+                                expr: Box::new(Expression::Literal {
+                                    value: Value::I32(len as i32, loc),
+                                }),
+                                loc,
+                            };
+                            let start = FieldValue {
+                                ident: String::from("start"),
+                                expr: Box::new(Expression::Literal {
+                                    value: Value::DataPointer(data_id, loc),
+                                }),
+                                loc,
+                            };
+                            let fields = vec![len, start];
+                            Value::Struct {
+                                struct_id: *struct_id,
+                                fields,
+                                loc,
+                            }
+                        }
+                        _ => return Err(String::from("Str literal of non struct type.")),
                     },
                     V::Struct {
                         fields, t_id, loc, ..

@@ -1037,6 +1037,12 @@ impl<'a> Parser<'a> {
                     loc: token.loc,
                 },
             }),
+            TokenType::StringLit(ref s) => Ok(Expression::Literal {
+                value: Value::Str {
+                    val: s.clone(),
+                    loc: token.loc,
+                },
+            }),
             TokenType::Identifier(ref x) => {
                 let ident = x.clone();
                 let loc = token.loc;

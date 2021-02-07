@@ -68,6 +68,7 @@ impl<'a> TypeChecker<'a> {
             funs: prog.funs,
             imports: prog.imports,
             structs: prog.structs,
+            data: prog.data,
             names: prog.names,
             types: store,
             pub_decls,
