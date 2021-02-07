@@ -1,5 +1,5 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, NameId};
+use super::names::{AsmStatement, Data, NameId, DataId};
 use super::types::Type as NameType;
 use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
@@ -66,6 +66,7 @@ impl FunctionType {
 pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
+    pub data: HashMap<DataId, Data>,
     pub structs: HashMap<StructId, Struct>,
     pub pub_decls: ModuleDeclarations,
     pub package: Package,
@@ -287,6 +288,7 @@ pub enum Value {
         fields: Vec<FieldValue>,
         loc: Location,
     },
+    DataPointer(DataId, Location), // A pointer to a memory location
 }
 
 pub struct FieldValue {
@@ -374,6 +376,7 @@ impl Expression {
                 Value::I32(_, loc) => *loc,
                 Value::Bool(_, loc) => *loc,
                 Value::Struct { loc, .. } => *loc,
+                Value::DataPointer(_, loc) => *loc,
             },
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
@@ -673,6 +676,7 @@ impl fmt::Display for Value {
                     write!(f, "false")
                 }
             }
+            Value::DataPointer(data_id, _) => write!(f, "data #{}", data_id),
             Value::Struct {
                 struct_id, fields, ..
             } => write!(

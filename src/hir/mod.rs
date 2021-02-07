@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ast;
-use crate::ctx::{Ctx, ModId};
+use crate::ctx::{Ctx, KnownValues, ModId};
 use crate::error::ErrorHandler;
 
 pub use self::names::{
@@ -12,6 +12,7 @@ pub use self::types::TypeId;
 pub use crate::ast::Package;
 pub use hir::Program;
 pub use hir::*;
+pub use names::{Data, DataId};
 
 mod asm_validate;
 mod ast_to_hir;
@@ -25,11 +26,12 @@ pub fn to_hir<'a>(
     ast_program: ast::Program,
     namespace: HashMap<String, ModId>,
     ctx: &Ctx,
+    known_values: &KnownValues,
     error_handler: &mut ErrorHandler,
     verbose: bool,
 ) -> hir::Program {
     let mut name_resolver = resolver::NameResolver::new(error_handler);
-    let program = name_resolver.resolve(ast_program, namespace, ctx);
+    let program = name_resolver.resolve(ast_program, namespace, ctx, known_values);
 
     if verbose {
         println!("\n/// Name Resolution ///\n");

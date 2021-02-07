@@ -3,13 +3,16 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::PackageKind;
-pub use crate::ctx::{ModuleDeclarations};
-pub use crate::hir::{FunId, StructId};
+pub use crate::ctx::ModuleDeclarations;
+pub use crate::hir::{DataId, FunId, StructId};
+
+pub type Data = Vec<u8>;
 
 pub struct Program {
     pub funs: Vec<Function>,
     pub structs: HashMap<StructId, Struct>,
     pub imports: Vec<Imports>,
+    pub data: HashMap<DataId, Data>
 }
 
 pub struct Imports {
@@ -114,6 +117,7 @@ pub enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
+    DataPointer(DataId),
 }
 
 pub enum Unop {
@@ -432,6 +436,7 @@ impl fmt::Display for Value {
             Value::I64(x) => write!(f, "i64.const {}", x),
             Value::F32(x) => write!(f, "f32.const {}", x),
             Value::F64(x) => write!(f, "f64.const {}", x),
+            Value::DataPointer(x) => write!(f, "i32.const ptr:{}", x)
         }
     }
 }

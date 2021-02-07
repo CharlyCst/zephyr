@@ -1,8 +1,0 @@
-package multiple_runtimes
-
-use multiple_runtimes.runtime_a
-use multiple_runtimes.runtime_b
-
-fun main(): i32 {
-    return 42
-}

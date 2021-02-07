@@ -49,8 +49,8 @@ multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
 call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
-primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | struct_literal
-                | "false" | "true" | "(" expression ")"
+primary        -> INTEGER | FLOAT | BOOLEAN | STRING | IDENTIFIER
+                | struct_literal | "false" | "true" | "(" expression ")"
 
 arguments      -> ( expression ( "," expression )* ","? )?
 struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"

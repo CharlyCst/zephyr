@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use super::opcode::*;
 use super::wasm;
-use super::wasm::WasmVec;
+use super::wasm::{DataSegment, Offset, WasmVec};
 
 /// Handles type index attribution and storage.
 struct TypeStore {
@@ -276,54 +276,68 @@ impl SectionExport {
     }
 }
 
-struct SectionData {
+pub struct SectionData {
     data: WasmVec,
+    offset: Offset,
+    nb_pages: u32,
 }
 
 impl SectionData {
-    fn new() -> Self {
-        let mut data = WasmVec::new();
+    pub fn new() -> Self {
+        // Offset is initialized to 8 as the first bytes are reserved by the allocator.
+        Self { data: WasmVec::new(), offset: 8, nb_pages: 1 }
+    }
+
+    /// Insert a new data segment and return its offset.
+    pub fn add_data_segment(&mut self, data: Vec<u8>) -> Offset {
+        let offset = self.offset;
+        let len = data.len() as Offset;
+        self.data
+            .extend_item(DataSegment::new(0, offset, data.into()));
+
+        // Maintain an offset such that an aligment of 8 is always guaranteed.
+        if len % 8 != 0 {
+            self.offset = offset + len + 8 - (len % 8);
+        } else {
+            self.offset = offset + len;
+        }
+        offset
+    }
+
+    /// Insert memory segments needed to initialize the memory allocator.
+    ///
+    /// ! Caution: this function assumes that no other data segment will be added, call it just
+    /// before encoding the SectionData into raw wasm.
+    fn add_allocator_segments(&mut self) {
+        let mut first_block_header = Vec::new();
 
         // The memory allocator expects to find the address of the first block
         // encoded as a u32 at mem[0]. This address should be carefully picked
         // so that data will be aligned (see allocator).
-        let mut hardcoded_data = WasmVec::new();
+
+        let offset = self.offset; // Aligned to 8 bytes
+        let first_block_offset = offset + 4; // Offset of the first block header
+
         // mem[0..4] - address of first block
-        hardcoded_data.push_item(12);
-        hardcoded_data.push_item(0);
-        hardcoded_data.push_item(0);
-        hardcoded_data.push_item(0);
-        // mem[4..8] - padding
-        hardcoded_data.push_item(0);
-        hardcoded_data.push_item(0);
-        hardcoded_data.push_item(0);
-        hardcoded_data.push_item(0);
-        // mem[8..12] - mocked block footer with allocated bit set
-        hardcoded_data.push_item(0xff);
-        hardcoded_data.push_item(0xff);
-        hardcoded_data.push_item(0xff);
-        hardcoded_data.push_item(0xff);
-        // mem[12..16] - first block header (its size)
-        hardcoded_data.push_item(0xf0);
-        hardcoded_data.push_item(0xff);
-        hardcoded_data.push_item(0);
-        hardcoded_data.push_item(0);
+        self.data.extend_item(DataSegment::new(
+            0,
+            0,
+            first_block_offset.to_le_bytes().to_vec().into(),
+        ));
 
-        let mut data_segment = Vec::new();
-        // mem_idx: 0
-        data_segment.extend(to_leb(0));
-        // offset: 0
-        data_segment.push(INSTR_I32_CST);
-        data_segment.extend(to_leb(0));
-        data_segment.push(INSTR_END);
-        // data
-        data_segment.extend(hardcoded_data);
+        // mem[offset..(offset + 4)] - mocked block footer with allocated bit set
+        let footer: u32 = 0xffffffff;
+        first_block_header.extend(&footer.to_le_bytes());
+        // mem[(offset + 4)..(offset + 8)] - first block header (its size)
+        let block_size = wasm::PAGE_SIZE * self.nb_pages - (first_block_offset + 4);
+        first_block_header.extend(&block_size.to_le_bytes());
 
-        data.extend_item(data_segment);
-        Self { data }
+        self.data
+            .extend_item(DataSegment::new(0, offset, first_block_header.into()));
     }
 
-    fn encode(self) -> Vec<Instr> {
+    fn encode(mut self) -> Vec<Instr> {
+        self.add_allocator_segments();
         let mut bytecode = Vec::new();
 
         bytecode.push(SEC_DATA);
@@ -345,14 +359,13 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(mut funs: Vec<wasm::Function>, mut imports: Vec<wasm::Import>) -> Self {
+    pub fn new(mut funs: Vec<wasm::Function>, mut imports: Vec<wasm::Import>, data: SectionData) -> Self {
         let types = SectionType::new(&mut funs, &mut imports); // Must be called first because of side effects
         let imports = SectionImport::new(imports);
         let functions = SectionFunction::new(&funs);
         let memories = SectionMemory::new(vec![wasm::Limit::Min(1)]);
         let exports = SectionExport::new(&funs);
         let code = SectionCode::new(&funs);
-        let data = SectionData::new();
         Self {
             types,
             imports,
@@ -371,6 +384,7 @@ impl Module {
         bytecode.extend(MAGIC_NUMBER.to_le_bytes().iter());
         bytecode.extend(VERSION.to_le_bytes().iter());
 
+        // Sections
         bytecode.extend(self.types.encode());
         bytecode.extend(self.imports.encode());
         bytecode.extend(self.functions.encode());

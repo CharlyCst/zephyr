@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub use crate::ctx::{ModulePath, ModId};
+pub use crate::ctx::{ModId, ModulePath};
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 
@@ -31,6 +31,10 @@ pub enum Value {
     },
     Boolean {
         val: bool,
+        loc: Location,
+    },
+    Str {
+        val: String,
         loc: Location,
     },
     Struct {
@@ -400,6 +404,7 @@ impl fmt::Display for Expression {
                 Value::Boolean { val: false, .. } => write!(f, "false"),
                 Value::Integer { val: n, .. } => write!(f, "{}", n),
                 Value::Float { val: x, .. } => write!(f, "{}", x),
+                Value::Str {val: s, .. } => write!(f, "{}", s),
                 Value::Struct { ident, fields, .. } => write!(
                     f,
                     "{} {{ {} }}",

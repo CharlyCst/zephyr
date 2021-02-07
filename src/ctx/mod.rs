@@ -7,8 +7,7 @@ mod known_functions;
 mod utils;
 
 pub use ctx::{Ctx, ModId};
-pub use known_functions::KnownFunctions;
+pub use known_functions::{KnownFunctions, KnownStructs, KnownValues};
 pub use utils::{
-    ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, TypeDeclaration,
-    ValueDeclaration,
+    ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, TypeDeclaration, ValueDeclaration,
 };

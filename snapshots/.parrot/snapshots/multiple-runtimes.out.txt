@@ -1,2 +1,0 @@
-[31m[1mError:[0m[31m The runtime module 'test' is defined in multiple places.[0m
-
