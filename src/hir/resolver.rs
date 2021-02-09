@@ -311,8 +311,8 @@ impl<'a> NameResolver<'a> {
     ) -> Result<Statement, ()> {
         let stmt = match stmt {
             ast::Statement::AssignStmt { target, expr } => {
-                let (target, target_t_id) = self.resolve_expression(*target, state)?;
-                let (expr, expr_id) = self.resolve_expression(*expr, state)?;
+                let (target, target_t_id) = self.resolve_expression(target, state)?;
+                let (expr, expr_id) = self.resolve_expression(expr, state)?;
                 let loc = target.get_loc().merge(expr.get_loc());
                 state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
                 Statement::AssignStmt {
@@ -324,7 +324,7 @@ impl<'a> NameResolver<'a> {
                 match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
                     Ok((n_id, var_t_id)) => {
                         locals.push(n_id);
-                        let (expr, expr_t_id) = self.resolve_expression(*expr, state)?;
+                        let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
                         let loc = var.loc.merge(expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
                         Statement::LetStmt {
@@ -350,7 +350,7 @@ impl<'a> NameResolver<'a> {
                 block,
                 else_block,
             } => {
-                let (expr, expr_t_id) = self.resolve_expression(*expr, state)?;
+                let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
                 state.new_constraint(TypeConstraint::Equality(
                     expr_t_id,
                     T_ID_BOOL,
@@ -370,7 +370,7 @@ impl<'a> NameResolver<'a> {
                 }
             }
             ast::Statement::WhileStmt { expr, block } => {
-                let (expr, expr_t_id) = self.resolve_expression(*expr, state)?;
+                let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
                 state.new_constraint(TypeConstraint::Equality(
                     expr_t_id,
                     T_ID_BOOL,
@@ -404,8 +404,8 @@ impl<'a> NameResolver<'a> {
                     Statement::ReturnStmt { expr: None, loc }
                 }
             }
-            ast::Statement::ExprStmt { expr } => {
-                let (expr, _) = self.resolve_expression(*expr, state)?;
+            ast::Statement::ExprStmt(expr) => {
+                let (expr, _) = self.resolve_expression(expr, state)?;
                 Statement::ExprStmt {
                     expr: Box::new(expr),
                 }
@@ -552,7 +552,7 @@ impl<'a> NameResolver<'a> {
                     }
                 }
             }
-            ast::Expression::Literal { value } => match value {
+            ast::Expression::Literal(value) => match value {
                 ast::Value::Integer { val, loc } => {
                     let fresh_t_id = state.types.fresh(loc, vec![Type::I32, Type::I64]);
                     let expr = Expression::Literal {
@@ -612,7 +612,7 @@ impl<'a> NameResolver<'a> {
                     let mut hir_fields = Vec::with_capacity(n);
                     let mut field_constraints = Vec::with_capacity(n);
                     for field in fields {
-                        let (expr, field_t_id) = self.resolve_expression(*field.expr, state)?;
+                        let (expr, field_t_id) = self.resolve_expression(field.expr, state)?;
                         hir_fields.push(FieldValue {
                             ident: field.ident.clone(),
                             expr: Box::new(expr),
@@ -637,7 +637,7 @@ impl<'a> NameResolver<'a> {
                     Ok((expr, t_id))
                 }
             },
-            ast::Expression::Variable { var } => {
+            ast::Expression::Variable(var) => {
                 let value = self.get_value(&var.ident, var.namespace, var.loc, state)?;
                 if let Some((expr, t_id)) = value {
                     Ok((expr, t_id))
@@ -726,7 +726,7 @@ impl<'a> NameResolver<'a> {
                     } => {
                         // Reduce the field
                         let (field, loc_field) = match &*field {
-                            ast::Expression::Variable { var } => (var.ident.clone(), var.loc),
+                            ast::Expression::Variable(var) => (var.ident.clone(), var.loc),
                             _ => {
                                 let (expr, _) = self.resolve_expression(*field, state)?;
                                 self.err.report(
@@ -781,28 +781,25 @@ impl<'a> NameResolver<'a> {
         state: &mut State,
     ) -> Result<(Expression, TypeId), ()> {
         match field {
-            ast::Expression::Variable { var } => {
+            ast::Expression::Variable(var) => {
                 let var = ast::Variable {
                     namespace: Some(mod_id),
                     ident: var.ident,
                     t: var.t,
                     loc: var.loc,
                 };
-                self.resolve_expression(ast::Expression::Variable { var }, state)
+                self.resolve_expression(ast::Expression::Variable(var), state)
             }
-            ast::Expression::Literal {
-                value:
-                    ast::Value::Struct {
-                        ident, fields, loc, ..
-                    },
-            } => {
+            ast::Expression::Literal(ast::Value::Struct {
+                ident, fields, loc, ..
+            }) => {
                 let value = ast::Value::Struct {
                     namespace: Some(mod_id),
                     ident,
                     fields,
                     loc,
                 };
-                self.resolve_expression(ast::Expression::Literal { value }, state)
+                self.resolve_expression(ast::Expression::Literal(value), state)
             }
             _ => {
                 self.err
