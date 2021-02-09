@@ -1,5 +1,5 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, Data, NameId, DataId};
+use super::names::{AsmStatement, Data, DataId, NameId};
 use super::types::Type as NameType;
 use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
@@ -154,24 +154,22 @@ pub struct Block {
 }
 
 pub enum Statement {
-    ExprStmt {
-        expr: Box<Expression>,
-    },
+    ExprStmt(Expression),
     LetStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        var: Variable,
+        expr: Expression,
     },
     AssignStmt {
-        target: Box<PlaceExpression>,
-        expr: Box<Expression>,
+        target: PlaceExpression,
+        expr: Expression,
     },
     IfStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
         else_block: Option<Block>,
     },
     WhileStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
     },
     ReturnStmt {
@@ -189,12 +187,8 @@ pub struct Variable {
 
 /// An expression that produces a value.
 pub enum Expression {
-    Variable {
-        var: Variable,
-    },
-    Literal {
-        value: Value,
-    },
+    Variable(Variable),
+    Literal(Value),
     Binary {
         expr_left: Box<Expression>,
         binop: Binop,
@@ -233,9 +227,7 @@ pub enum Expression {
 /// An expression that produces a place, that is a slot in which a value can be stored (memory
 /// address, variable index and so on).
 pub enum PlaceExpression {
-    Variable {
-        var: Variable,
-    },
+    Variable(Variable),
     Access {
         expr: Box<Expression>,
         field: String,
@@ -368,8 +360,8 @@ pub fn lift_t(t: &Type) -> NameType {
 impl Expression {
     pub fn get_loc(&self) -> Location {
         match self {
-            Expression::Variable { var } => var.loc,
-            Expression::Literal { value } => match value {
+            Expression::Variable(var) => var.loc,
+            Expression::Literal(value) => match value {
                 Value::F64(_, loc) => *loc,
                 Value::F32(_, loc) => *loc,
                 Value::I64(_, loc) => *loc,
@@ -582,8 +574,8 @@ impl fmt::Display for Block {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
-            Expression::Literal { value: v } => write!(f, "{}", v),
+            Expression::Variable(v) => write!(f, "{}", v.ident),
+            Expression::Literal(v) => write!(f, "{}", v),
             Expression::CallDirect { fun_id, args, .. } => write!(
                 f,
                 "(fun {})({})",
@@ -621,7 +613,7 @@ impl fmt::Display for Expression {
 impl fmt::Display for PlaceExpression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PlaceExpression::Variable { var: v, .. } => write!(f, "{}", v.ident),
+            PlaceExpression::Variable(v) => write!(f, "{}", v.ident),
             PlaceExpression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
         }
     }
@@ -630,7 +622,7 @@ impl fmt::Display for PlaceExpression {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::ExprStmt { expr } => write!(f, "{};", expr),
+            Statement::ExprStmt ( expr ) => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
             Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {

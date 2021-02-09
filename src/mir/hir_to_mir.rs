@@ -6,12 +6,12 @@ use crate::ctx::{Ctx, KnownFunctions};
 use crate::error::ErrorHandler;
 use crate::hir::{AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement};
 use crate::hir::{
-    Binop as HirBinop, Block as HirBlock, Body as HirBody, Expression as Expr, FunKind,
-    Function as HirFun, FunctionPrototype as HirFunProto, Import as HirImport,
+    Binop as HirBinop, Block as HirBlock, Body as HirBody, Data as HirData, Expression as Expr,
+    FunKind, Function as HirFun, FunctionPrototype as HirFunProto, Import as HirImport,
     IntegerType as HirIntergerType, LocalId as HirLocalId, LocalVariable as HirLocalVariable,
     NumericType as HirNumericType, PlaceExpression as PlaceExpr, ScalarType as HirScalarType,
     Statement as S, Struct as HirStruct, TupleType as HirTupleType, Type as HirType,
-    Unop as HirUnop, Value as V, Data as HirData,
+    Unop as HirUnop, Value as V,
 };
 
 enum FromBinop {
@@ -269,7 +269,7 @@ impl<'a> MIRProducer<'a> {
                     self.reduce_expr(&expr, stmts, locals, s)?;
                     stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))));
                 }
-                S::ExprStmt { expr } => {
+                S::ExprStmt(expr) => {
                     let values = self.reduce_expr(&expr, stmts, locals, s)?;
                     // drop unused values
                     for _ in values {
@@ -344,7 +344,7 @@ impl<'a> MIRProducer<'a> {
         s: &mut State,
     ) -> Result<Vec<Type>, String> {
         let types = match expression {
-            Expr::Literal { value } => match value {
+            Expr::Literal(value) => match value {
                 V::I32(val, _) => {
                     stmts.push(Statement::Const(Value::I32(*val)));
                     vec![Type::I32]
@@ -410,7 +410,7 @@ impl<'a> MIRProducer<'a> {
                     vec![Type::I32]
                 }
             },
-            Expr::Variable { var } => {
+            Expr::Variable(var) => {
                 stmts.push(Statement::Local(Local::Get(s.get_local_id(var.n_id))));
                 vec![try_into_mir_t(&var.t)?]
             }
@@ -547,7 +547,7 @@ impl<'a> MIRProducer<'a> {
         s: &mut State,
     ) -> Result<(), String> {
         match target {
-            PlaceExpr::Variable { var } => {
+            PlaceExpr::Variable(var) => {
                 self.reduce_expr(&expr, stmts, locals, s)?;
                 stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))))
             }

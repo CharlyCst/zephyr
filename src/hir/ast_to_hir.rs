@@ -144,19 +144,19 @@ impl<'a> HirProducer<'a> {
     fn reduce_stmt(&mut self, stmt: S, s: &State) -> Result<Statement, String> {
         match stmt {
             S::AssignStmt { target, expr } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
-                let target = self.reduce_expr(*target, s)?;
-                let target = Box::new(self.as_place(target)?);
+                let expr = self.reduce_expr(expr, s)?;
+                let target = self.reduce_expr(target, s)?;
+                let target = self.as_place(target)?;
                 Ok(Statement::AssignStmt { target, expr })
             }
             S::LetStmt { var, expr } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
-                let var = Box::new(self.reduce_var(*var, s)?);
+                let expr = self.reduce_expr(expr, s)?;
+                let var = self.reduce_var(var, s)?;
                 Ok(Statement::LetStmt { expr, var })
             }
-            S::ExprStmt { expr } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
-                Ok(Statement::ExprStmt { expr })
+            S::ExprStmt(expr) => {
+                let expr = self.reduce_expr(expr, s)?;
+                Ok(Statement::ExprStmt(expr))
             }
             S::ReturnStmt { expr, loc } => {
                 let expr = if let Some(expr) = expr {
@@ -167,7 +167,7 @@ impl<'a> HirProducer<'a> {
                 Ok(Statement::ReturnStmt { expr, loc })
             }
             S::WhileStmt { expr, block } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
+                let expr = self.reduce_expr(expr, s)?;
                 let block = self.reduce_block(block, s)?;
                 Ok(Statement::WhileStmt { expr, block })
             }
@@ -176,7 +176,7 @@ impl<'a> HirProducer<'a> {
                 block,
                 else_block,
             } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
+                let expr = self.reduce_expr(expr, s)?;
                 let block = self.reduce_block(block, s)?;
                 let else_block = if let Some(else_block) = else_block {
                     Some(self.reduce_block(else_block, s)?)
@@ -194,85 +194,77 @@ impl<'a> HirProducer<'a> {
 
     fn reduce_expr(&mut self, expression: Expr, s: &State) -> Result<Expression, String> {
         match expression {
-            Expr::Literal { value } => Ok(Expression::Literal {
-                value: match value {
-                    V::Integer { val, t_id, loc } => match s.types.get(t_id) {
-                        ASTTypes::I32 => Value::I32(val as i32, loc),
-                        ASTTypes::I64 => Value::I64(val as i64, loc),
-                        _ => return Err(String::from("Integer constant of non integer type.")),
-                    },
-                    V::Float { val, t_id, loc } => match s.types.get(t_id) {
-                        ASTTypes::F32 => Value::F32(val as f32, loc),
-                        ASTTypes::F64 => Value::F64(val, loc),
-                        _ => return Err(String::from("Float constant of non float type.")),
-                    },
-                    V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
-                        ASTTypes::Bool => Value::Bool(val, loc),
-                        _ => return Err(String::from("Boolean constant of non boolean type.")),
-                    },
-                    V::Str {
-                        data_id,
-                        len,
-                        loc,
-                        t_id,
-                    } => match s.types.get(t_id) {
-                        ASTTypes::Struct(struct_id) => {
-                            let len = FieldValue {
-                                ident: String::from("len"),
-                                expr: Box::new(Expression::Literal {
-                                    value: Value::I32(len as i32, loc),
-                                }),
-                                loc,
-                            };
-                            let start = FieldValue {
-                                ident: String::from("start"),
-                                expr: Box::new(Expression::Literal {
-                                    value: Value::DataPointer(data_id, loc),
-                                }),
-                                loc,
-                            };
-                            let fields = vec![len, start];
-                            Value::Struct {
-                                struct_id: *struct_id,
-                                fields,
-                                loc,
-                            }
-                        }
-                        _ => return Err(String::from("Str literal of non struct type.")),
-                    },
-                    V::Struct {
-                        fields, t_id, loc, ..
-                    } => match s.types.get(t_id) {
-                        ASTTypes::Struct(struct_id) => {
-                            let mut hir_fields = Vec::with_capacity(fields.len());
-                            for field in fields {
-                                hir_fields.push(FieldValue {
-                                    ident: field.ident,
-                                    loc: field.loc,
-                                    expr: Box::new(self.reduce_expr(*field.expr, s)?),
-                                });
-                            }
-                            Value::Struct {
-                                struct_id: *struct_id,
-                                fields: hir_fields,
-                                loc,
-                            }
-                        }
-                        _ => return Err(String::from("Struct literal of non struct type.")),
-                    },
+            Expr::Literal(value) => Ok(Expression::Literal(match value {
+                V::Integer { val, t_id, loc } => match s.types.get(t_id) {
+                    ASTTypes::I32 => Value::I32(val as i32, loc),
+                    ASTTypes::I64 => Value::I64(val as i64, loc),
+                    _ => return Err(String::from("Integer constant of non integer type.")),
                 },
-            }),
-            Expr::Variable { var } => {
+                V::Float { val, t_id, loc } => match s.types.get(t_id) {
+                    ASTTypes::F32 => Value::F32(val as f32, loc),
+                    ASTTypes::F64 => Value::F64(val, loc),
+                    _ => return Err(String::from("Float constant of non float type.")),
+                },
+                V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
+                    ASTTypes::Bool => Value::Bool(val, loc),
+                    _ => return Err(String::from("Boolean constant of non boolean type.")),
+                },
+                V::Str {
+                    data_id,
+                    len,
+                    loc,
+                    t_id,
+                } => match s.types.get(t_id) {
+                    ASTTypes::Struct(struct_id) => {
+                        let len = FieldValue {
+                            ident: String::from("len"),
+                            expr: Box::new(Expression::Literal(Value::I32(len as i32, loc))),
+                            loc,
+                        };
+                        let start = FieldValue {
+                            ident: String::from("start"),
+                            expr: Box::new(Expression::Literal(Value::DataPointer(data_id, loc))),
+                            loc,
+                        };
+                        let fields = vec![len, start];
+                        Value::Struct {
+                            struct_id: *struct_id,
+                            fields,
+                            loc,
+                        }
+                    }
+                    _ => return Err(String::from("Str literal of non struct type.")),
+                },
+                V::Struct {
+                    fields, t_id, loc, ..
+                } => match s.types.get(t_id) {
+                    ASTTypes::Struct(struct_id) => {
+                        let mut hir_fields = Vec::with_capacity(fields.len());
+                        for field in fields {
+                            hir_fields.push(FieldValue {
+                                ident: field.ident,
+                                loc: field.loc,
+                                expr: Box::new(self.reduce_expr(*field.expr, s)?),
+                            });
+                        }
+                        Value::Struct {
+                            struct_id: *struct_id,
+                            fields: hir_fields,
+                            loc,
+                        }
+                    }
+                    _ => return Err(String::from("Struct literal of non struct type.")),
+                },
+            })),
+            Expr::Variable(var) => {
                 let name = s.names.get(var.n_id);
                 let t = s.types.get(name.t_id);
-                Ok(Expression::Variable {
-                    var: Variable {
-                        ident: var.ident,
-                        loc: var.loc,
-                        n_id: var.n_id,
-                        t: to_hir_t(t)?,
-                    },
-                })
+                Ok(Expression::Variable(Variable {
+                    ident: var.ident,
+                    loc: var.loc,
+                    n_id: var.n_id,
+                    t: to_hir_t(t)?,
+                }))
             }
             Expr::Function { .. } => Err(String::from(
                 "Function as expression are not yet supported.",
@@ -469,7 +461,7 @@ impl<'a> HirProducer<'a> {
     /// memory slot or a variable for instance).
     fn as_place(&mut self, expr: Expression) -> Result<PlaceExpression, String> {
         match expr {
-            Expression::Variable { var } => Ok(PlaceExpression::Variable { var }),
+            Expression::Variable(var) => Ok(PlaceExpression::Variable(var)),
             Expression::Access {
                 expr,
                 field,
