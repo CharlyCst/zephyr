@@ -662,13 +662,11 @@ impl<'a> Parser<'a> {
         let stmt = if self.next_match(TokenType::Equal) {
             let value = self.expression(true)?;
             Statement::AssignStmt {
-                target: Box::new(expr),
-                expr: Box::new(value),
+                target: expr,
+                expr: value,
             }
         } else {
-            Statement::ExprStmt {
-                expr: Box::new(expr),
-            }
+            Statement::ExprStmt(expr)
         };
         self.consume_semi_colon();
         Ok(stmt)
@@ -700,13 +698,13 @@ impl<'a> Parser<'a> {
         let expr = self.expression(true)?;
         self.consume_semi_colon();
         Ok(Statement::LetStmt {
-            var: Box::new(Variable {
+            var: Variable {
                 namespace: None,
                 t: None,
                 ident,
                 loc,
-            }),
-            expr: Box::new(expr),
+            },
+            expr,
         })
     }
 
@@ -731,14 +729,14 @@ impl<'a> Parser<'a> {
             let else_block = self.block()?;
             self.consume_semi_colon();
             Ok(Statement::IfStmt {
-                expr: Box::new(expr),
+                expr,
                 block,
                 else_block: Some(else_block),
             })
         } else {
             self.consume_semi_colon();
             Ok(Statement::IfStmt {
-                expr: Box::new(expr),
+                expr,
                 block,
                 else_block: None,
             })
@@ -756,10 +754,7 @@ impl<'a> Parser<'a> {
         )?;
         let block = self.block()?;
         self.consume_semi_colon();
-        Ok(Statement::WhileStmt {
-            expr: Box::new(expr),
-            block,
-        })
+        Ok(Statement::WhileStmt { expr, block })
     }
 
     /// Parses the 'return_stmt' grammar element (assuming the `return` token has
@@ -1017,32 +1012,16 @@ impl<'a> Parser<'a> {
 
     fn primary(&mut self, struct_lit: bool) -> Result<Expression, ()> {
         let token = self.advance();
+        let loc = token.loc;
 
         match &token.t {
-            TokenType::IntegerLit(n) => Ok(Expression::Literal {
-                value: Value::Integer {
-                    val: *n,
-                    loc: token.loc,
-                },
-            }),
-            TokenType::FloatLit(x) => Ok(Expression::Literal {
-                value: Value::Float {
-                    val: *x,
-                    loc: token.loc,
-                },
-            }),
-            TokenType::BooleanLit(b) => Ok(Expression::Literal {
-                value: Value::Boolean {
-                    val: *b,
-                    loc: token.loc,
-                },
-            }),
-            TokenType::StringLit(ref s) => Ok(Expression::Literal {
-                value: Value::Str {
-                    val: s.clone(),
-                    loc: token.loc,
-                },
-            }),
+            TokenType::IntegerLit(n) => Ok(Expression::Literal(Value::Integer { val: *n, loc })),
+            TokenType::FloatLit(x) => Ok(Expression::Literal(Value::Float { val: *x, loc })),
+            TokenType::BooleanLit(b) => Ok(Expression::Literal(Value::Boolean { val: *b, loc })),
+            TokenType::StringLit(ref s) => Ok(Expression::Literal(Value::Str {
+                val: s.clone(),
+                loc,
+            })),
             TokenType::Identifier(ref x) => {
                 let ident = x.clone();
                 let loc = token.loc;
@@ -1054,24 +1033,20 @@ impl<'a> Parser<'a> {
                         TokenType::RightBrace,
                         "Expect closing brace '}' after struct instantiation",
                     )?;
-                    Ok(Expression::Literal {
-                        value: Value::Struct {
-                            namespace: None,
-                            ident,
-                            fields,
-                            loc,
-                        },
-                    })
+                    Ok(Expression::Literal(Value::Struct {
+                        namespace: None,
+                        ident,
+                        fields,
+                        loc,
+                    }))
                 } else {
                     // Variable
-                    Ok(Expression::Variable {
-                        var: Variable {
-                            namespace: None,
-                            t: None,
-                            ident,
-                            loc,
-                        },
-                    })
+                    Ok(Expression::Variable(Variable {
+                        namespace: None,
+                        t: None,
+                        ident,
+                        loc,
+                    }))
                 }
             }
             TokenType::LeftPar => {
@@ -1137,16 +1112,13 @@ impl<'a> Parser<'a> {
                 }
             }
         } else {
-            Expression::Variable {
-                var: Variable {
-                    ident: ident.clone(),
-                    namespace: None,
-                    t: None,
-                    loc,
-                },
-            }
+            Expression::Variable(Variable {
+                ident: ident.clone(),
+                namespace: None,
+                t: None,
+                loc,
+            })
         };
-        let expr = Box::new(expr);
 
         return Ok(Some(FieldValue { ident, expr, loc }));
     }

@@ -48,7 +48,7 @@ pub enum Value {
 
 pub struct FieldValue {
     pub ident: String,
-    pub expr: Box<Expression>,
+    pub expr: Expression,
     pub loc: Location,
 }
 
@@ -93,12 +93,8 @@ pub struct Variable {
 }
 
 pub enum Expression {
-    Variable {
-        var: Variable,
-    },
-    Literal {
-        value: Value,
-    },
+    Variable(Variable),
+    Literal(Value),
     Binary {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
@@ -119,24 +115,22 @@ pub enum Expression {
 }
 
 pub enum Statement {
-    ExprStmt {
-        expr: Box<Expression>,
-    },
+    ExprStmt(Expression),
     LetStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        var: Variable,
+        expr: Expression,
     },
     AssignStmt {
-        target: Box<Expression>,
-        expr: Box<Expression>,
+        target: Expression,
+        expr: Expression,
     },
     IfStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
         else_block: Option<Block>,
     },
     WhileStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
     },
     ReturnStmt {
@@ -398,13 +392,13 @@ impl fmt::Display for Block {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
-            Expression::Literal { value: v } => match v {
+            Expression::Variable(v) => write!(f, "{}", v.ident),
+            Expression::Literal(v) => match v {
                 Value::Boolean { val: true, .. } => write!(f, "true"),
                 Value::Boolean { val: false, .. } => write!(f, "false"),
                 Value::Integer { val: n, .. } => write!(f, "{}", n),
                 Value::Float { val: x, .. } => write!(f, "{}", x),
-                Value::Str {val: s, .. } => write!(f, "{}", s),
+                Value::Str { val: s, .. } => write!(f, "{}", s),
                 Value::Struct { ident, fields, .. } => write!(
                     f,
                     "{} {{ {} }}",
@@ -462,7 +456,7 @@ impl fmt::Display for Expression {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::ExprStmt { expr } => write!(f, "{};", expr),
+            Statement::ExprStmt(expr) => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
             Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
