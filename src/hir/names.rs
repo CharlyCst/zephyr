@@ -103,24 +103,22 @@ pub struct Block {
 }
 
 pub enum Statement {
-    ExprStmt {
-        expr: Box<Expression>,
-    },
+    ExprStmt(Expression),
     LetStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        var: Variable,
+        expr: Expression,
     },
     AssignStmt {
-        target: Box<Expression>,
-        expr: Box<Expression>,
+        target: Expression,
+        expr: Expression,
     },
     IfStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
         else_block: Option<Block>,
     },
     WhileStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
     },
     ReturnStmt {
@@ -173,12 +171,8 @@ pub struct FieldValue {
 }
 
 pub enum Expression {
-    Variable {
-        var: Variable,
-    },
-    Literal {
-        value: Value,
-    },
+    Variable(Variable),
+    Literal(Value),
     Function {
         fun_id: FunId,
         loc: Location,
@@ -227,8 +221,8 @@ pub enum Expression {
 impl Expression {
     pub fn get_loc(&self) -> Location {
         match self {
-            Expression::Variable { var } => var.loc,
-            Expression::Literal { value } => match value {
+            Expression::Variable(var) => var.loc,
+            Expression::Literal(value) => match value {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
                 Value::Float { loc, .. } => *loc,

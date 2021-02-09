@@ -315,10 +315,7 @@ impl<'a> NameResolver<'a> {
                 let (expr, expr_id) = self.resolve_expression(expr, state)?;
                 let loc = target.get_loc().merge(expr.get_loc());
                 state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
-                Statement::AssignStmt {
-                    target: Box::new(target),
-                    expr: Box::new(expr),
-                }
+                Statement::AssignStmt { target, expr }
             }
             ast::Statement::LetStmt { var, expr } => {
                 match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
@@ -328,12 +325,12 @@ impl<'a> NameResolver<'a> {
                         let loc = var.loc.merge(expr.get_loc());
                         state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
                         Statement::LetStmt {
-                            var: Box::new(Variable {
+                            var: Variable {
                                 ident: var.ident,
                                 loc: var.loc,
                                 n_id,
-                            }),
-                            expr: Box::new(expr),
+                            },
+                            expr,
                         }
                     }
                     Err(_decl_loc) => {
@@ -364,7 +361,7 @@ impl<'a> NameResolver<'a> {
                     None
                 };
                 Statement::IfStmt {
-                    expr: Box::new(expr),
+                    expr,
                     block,
                     else_block,
                 }
@@ -377,10 +374,7 @@ impl<'a> NameResolver<'a> {
                     expr.get_loc(),
                 ));
                 let block = self.resolve_block(block, state, locals, fun_t_id);
-                Statement::WhileStmt {
-                    expr: Box::new(expr),
-                    block,
-                }
+                Statement::WhileStmt { expr, block }
             }
             ast::Statement::ReturnStmt { expr, loc } => {
                 if let Some(ret_expr) = expr {
@@ -406,9 +400,7 @@ impl<'a> NameResolver<'a> {
             }
             ast::Statement::ExprStmt(expr) => {
                 let (expr, _) = self.resolve_expression(expr, state)?;
-                Statement::ExprStmt {
-                    expr: Box::new(expr),
-                }
+                Statement::ExprStmt(expr)
             }
         };
         Ok(stmt)
@@ -555,34 +547,28 @@ impl<'a> NameResolver<'a> {
             ast::Expression::Literal(value) => match value {
                 ast::Value::Integer { val, loc } => {
                     let fresh_t_id = state.types.fresh(loc, vec![Type::I32, Type::I64]);
-                    let expr = Expression::Literal {
-                        value: Value::Integer {
-                            val,
-                            loc,
-                            t_id: fresh_t_id,
-                        },
-                    };
+                    let expr = Expression::Literal(Value::Integer {
+                        val,
+                        loc,
+                        t_id: fresh_t_id,
+                    });
                     Ok((expr, fresh_t_id))
                 }
                 ast::Value::Float { val, loc } => {
                     let fresh_t_id = state.types.fresh(loc, vec![Type::F32, Type::F64]);
-                    let expr = Expression::Literal {
-                        value: Value::Float {
-                            val,
-                            loc,
-                            t_id: fresh_t_id,
-                        },
-                    };
+                    let expr = Expression::Literal(Value::Float {
+                        val,
+                        loc,
+                        t_id: fresh_t_id,
+                    });
                     Ok((expr, fresh_t_id))
                 }
                 ast::Value::Boolean { val, loc } => {
-                    let expr = Expression::Literal {
-                        value: Value::Boolean {
-                            val,
-                            loc,
-                            t_id: T_ID_BOOL,
-                        },
-                    };
+                    let expr = Expression::Literal(Value::Boolean {
+                        val,
+                        loc,
+                        t_id: T_ID_BOOL,
+                    });
                     Ok((expr, T_ID_BOOL))
                 }
                 ast::Value::Str { val, loc } => {
@@ -590,14 +576,12 @@ impl<'a> NameResolver<'a> {
                     let data_id = state.add_str_data(val);
                     let str_s_id = state.known_values.structs.str;
                     let t_id = state.types.fresh(loc, vec![Type::Struct(str_s_id)]);
-                    let expr = Expression::Literal {
-                        value: Value::Str {
-                            data_id,
-                            len,
-                            loc,
-                            t_id,
-                        },
-                    };
+                    let expr = Expression::Literal(Value::Str {
+                        data_id,
+                        len,
+                        loc,
+                        t_id,
+                    });
                     Ok((expr, t_id))
                 }
                 ast::Value::Struct {
@@ -626,14 +610,12 @@ impl<'a> NameResolver<'a> {
                         fields: field_constraints,
                         loc,
                     });
-                    let expr = Expression::Literal {
-                        value: Value::Struct {
-                            ident: ident.clone(),
-                            loc,
-                            fields: hir_fields,
-                            t_id,
-                        },
-                    };
+                    let expr = Expression::Literal(Value::Struct {
+                        ident: ident.clone(),
+                        loc,
+                        fields: hir_fields,
+                        t_id,
+                    });
                     Ok((expr, t_id))
                 }
             },
@@ -642,13 +624,11 @@ impl<'a> NameResolver<'a> {
                 if let Some((expr, t_id)) = value {
                     Ok((expr, t_id))
                 } else if let Some(name) = state.find_in_context(&var.ident) {
-                    let expr = Expression::Variable {
-                        var: Variable {
-                            ident: var.ident.clone(),
-                            loc: var.loc,
-                            n_id: name.n_id,
-                        },
-                    };
+                    let expr = Expression::Variable(Variable {
+                        ident: var.ident.clone(),
+                        loc: var.loc,
+                        n_id: name.n_id,
+                    });
                     Ok((expr, name.t_id))
                 } else if let Some(mod_id) = state.imported_modules.get(&var.ident) {
                     let expr = Expression::Namespace {
@@ -721,9 +701,7 @@ impl<'a> NameResolver<'a> {
                 match expr {
                     Expression::Variable { .. }
                     | Expression::Access { .. }
-                    | Expression::Literal {
-                        value: Value::Struct { .. },
-                    } => {
+                    | Expression::Literal(Value::Struct { .. }) => {
                         // Reduce the field
                         let (field, loc_field) = match &*field {
                             ast::Expression::Variable(var) => (var.ident.clone(), var.loc),
