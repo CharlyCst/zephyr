@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use super::ctx::ModId;
 use crate::ast;
 use crate::hir;
-use super::ctx::ModId;
 
-pub use hir::ValueDeclaration;
 pub use hir::TypeDeclaration;
+pub use hir::ValueDeclaration;
 
 /// A list of packages known from the compiler and expected to be available.
 #[allow(dead_code)]
