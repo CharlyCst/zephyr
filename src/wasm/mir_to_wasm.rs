@@ -8,17 +8,23 @@ use crate::mir;
 use std::collections::HashMap;
 
 // Map element IDs to final wasm IDs
-type LocalsMap = HashMap<hir::LocalId, usize>;
+type LocalsMap = HashMap<mir::LocalId, usize>;
 type BlocksMap = HashMap<mir::BasicBlockId, usize>;
 type FunctionsMap = HashMap<hir::FunId, usize>;
+type OffsetMap = HashMap<hir::DataId, wasm::Offset>;
 
 /// State globally availlable, which contains functions and global variables.
 struct GlobalState {
     funs: FunctionsMap,
+    offsets: OffsetMap,
 }
 
 impl GlobalState {
-    pub fn new(funs: &Vec<mir::Function>, imports: &Vec<mir::Imports>) -> GlobalState {
+    pub fn new(
+        funs: &Vec<mir::Function>,
+        imports: &Vec<mir::Imports>,
+        offsets: OffsetMap,
+    ) -> GlobalState {
         let mut fun_map = HashMap::new();
         let mut fun_idx = 0;
         for import in imports {
@@ -30,7 +36,10 @@ impl GlobalState {
         for (idx, fun) in funs.iter().enumerate() {
             fun_map.insert(fun.fun_id, idx + fun_idx);
         }
-        GlobalState { funs: fun_map }
+        GlobalState {
+            funs: fun_map,
+            offsets,
+        }
     }
 }
 
@@ -80,7 +89,8 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile(&mut self, mir: mir::Program) -> Vec<Instr> {
-        let global_state = GlobalState::new(&mir.funs, &mir.imports);
+        let (data_section, offsets) = self.initialize_data(mir.data);
+        let global_state = GlobalState::new(&mir.funs, &mir.imports, offsets);
         let mut funs = Vec::new();
         let mut imports = Vec::new();
         for fun in mir.funs {
@@ -90,8 +100,21 @@ impl<'a> Compiler<'a> {
             imports.extend(self.module_imports(module_imports));
         }
 
-        let module = sections::Module::new(funs, imports);
+        let module = sections::Module::new(funs, imports, data_section);
         module.encode()
+    }
+
+    fn initialize_data(
+        &self,
+        mir_data: HashMap<mir::DataId, mir::Data>,
+    ) -> (sections::SectionData, OffsetMap) {
+        let mut data_section = sections::SectionData::new();
+        let mut offsets = HashMap::with_capacity(mir_data.len());
+        for (data_id, data) in mir_data {
+            let offset = data_section.add_data_segment(data);
+            offsets.insert(data_id, offset);
+        }
+        (data_section, offsets)
     }
 
     /// Compiles a set of MIR module imports to a list of wasm imports.
@@ -247,7 +270,7 @@ impl<'a> Compiler<'a> {
     ) {
         for stmt in stmts {
             match stmt {
-                mir::Statement::Local { local } => match local {
+                mir::Statement::Local(local) => match local {
                     mir::Local::Set(l_id) => {
                         let local_idx = s.locals[&l_id];
                         code.push(INSTR_LOCAL_SET);
@@ -259,7 +282,7 @@ impl<'a> Compiler<'a> {
                         code.extend(to_leb(local_idx as u64));
                     }
                 },
-                mir::Statement::Const { val } => match val {
+                mir::Statement::Const(val) => match val {
                     mir::Value::I32(x) => {
                         code.push(INSTR_I32_CST);
                         code.extend(to_sleb(x as i64));
@@ -271,14 +294,18 @@ impl<'a> Compiler<'a> {
                     mir::Value::F32(x) => {
                         code.push(INSTR_F32_CST);
                         code.extend(x.to_le_bytes().iter());
-                        println!("{:?}", x.to_le_bytes());
                     }
                     mir::Value::F64(x) => {
                         code.push(INSTR_F64_CST);
                         code.extend(x.to_le_bytes().iter());
                     }
+                    mir::Value::DataPointer(data_id) => {
+                        let offset = *s.global_state.offsets.get(&data_id).unwrap();
+                        code.push(INSTR_I32_CST);
+                        code.extend(to_sleb(offset as i64));
+                    }
                 },
-                mir::Statement::Control { cntrl } => match cntrl {
+                mir::Statement::Control(cntrl) => match cntrl {
                     mir::Control::Return => code.push(INSTR_RETURN),
                     mir::Control::Unreachable => code.push(INSTR_UNREACHABLE),
                     mir::Control::Br(label) => {
@@ -290,11 +317,11 @@ impl<'a> Compiler<'a> {
                         code.extend(to_leb(s.get_label(label) as u64));
                     }
                 },
-                mir::Statement::Block { block } => self.block(*block, s, code),
-                mir::Statement::Binop { binop } => code.push(get_binop(binop)),
-                mir::Statement::Unop { unop } => code.push(get_unop(unop)),
-                mir::Statement::Relop { relop } => code.push(get_relop(relop)),
-                mir::Statement::Call { call } => match call {
+                mir::Statement::Block(block) => self.block(*block, s, code),
+                mir::Statement::Binop(binop) => code.push(get_binop(binop)),
+                mir::Statement::Unop(unop) => code.push(get_unop(unop)),
+                mir::Statement::Relop(relop) => code.push(get_relop(relop)),
+                mir::Statement::Call(call) => match call {
                     mir::Call::Direct(fun_id) => {
                         code.push(INSTR_CALL);
                         code.extend(to_leb(s.get_fun(fun_id) as u64));
@@ -303,10 +330,10 @@ impl<'a> Compiler<'a> {
                         .err
                         .report_internal_no_loc(String::from("Indirect call not yet implemented")),
                 },
-                mir::Statement::Parametric { param } => match param {
+                mir::Statement::Parametric(param) => match param {
                     mir::Parametric::Drop => code.push(INSTR_DROP),
                 },
-                mir::Statement::Memory { mem } => match mem {
+                mir::Statement::Memory(mem) => match mem {
                     mir::Memory::Size => {
                         code.push(INSTR_MEMORY_SIZE);
                         code.push(0x00);
@@ -335,6 +362,16 @@ impl<'a> Compiler<'a> {
                         code.extend(to_leb(align as u64));
                         code.extend(to_leb(offset as u64));
                     }
+                    mir::Memory::I32Load8u { align, offset } => {
+                        code.push(INSTR_I32_LOAD8_U);
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
+                    }
+                    mir::Memory::I64Load8u { align, offset } => {
+                        code.push(INSTR_I64_LOAD8_U);
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
+                    }
                     mir::Memory::I32Store { align, offset } => {
                         code.push(INSTR_I32_STORE);
                         code.extend(to_leb(align as u64));
@@ -352,6 +389,16 @@ impl<'a> Compiler<'a> {
                     }
                     mir::Memory::F64Store { align, offset } => {
                         code.push(INSTR_F64_STORE);
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
+                    }
+                    mir::Memory::I32Store8 { align, offset } => {
+                        code.push(INSTR_I32_STORE8);
+                        code.extend(to_leb(align as u64));
+                        code.extend(to_leb(offset as u64));
+                    }
+                    mir::Memory::I64Store8 { align, offset } => {
+                        code.push(INSTR_I64_STORE8);
                         code.extend(to_leb(align as u64));
                         code.extend(to_leb(offset as u64));
                     }

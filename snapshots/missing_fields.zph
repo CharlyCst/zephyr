@@ -1,0 +1,14 @@
+standalone package missing_fields
+
+expose main as _start
+
+struct S {
+    a: i32
+    b: i32
+    c: i32
+}
+
+fun main(): i32 {
+    let s = S { b: 42 }
+    return 0
+}

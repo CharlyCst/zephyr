@@ -1,4 +1,4 @@
-standalone package "if"
+standalone package _if
 
 expose main as _start
 

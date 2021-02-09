@@ -1,7 +1,7 @@
-standalone package "use"
+standalone package use_multiple
 
-use "core"
-use "core/mem"
+use core
+use core.mem
 
 expose main as _start
 

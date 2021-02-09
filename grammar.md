@@ -7,27 +7,31 @@ The grammar is defined as follow, and parsed in recursive descent fashion.
 ```
 program        -> package declaration* EOF
 
-package        -> "standalone"? "runtime"? "package" STRING ";"
+package        -> "standalone"? "runtime"? "package" IDENTIFIER ";"
 
-declaration    -> use | expose | function | imports
-use            -> "use" STRING ( "as" IDENTIFIER)? ";"
+declaration    -> use | expose | function | struct | imports
+use            -> "use" path ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 imports        -> "from" IDENTIFIER "import" import_block ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+struct         -> "pub"? struct IDENTIFIER struct_block  ";"
 
 import_block   -> "{" import* "}"
 import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
 
-parameters     -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
+struct_block   -> "{" ( struct_field ( ("," | ";") struct_field )* ("," | ";")? )? "}"
+struct_field   -> "pub"? IDENTIFIER ":" IDENTIFIER
+
+parameters     -> IDENTIFIER ":" path ( "," IDENTIFIER ":" IDENTIFIER)* ","?
 result         -> (":" IDENTIFIER)?
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt
 expr_stmt      -> expression ";"
-assign_stmt    -> IDENTIFIER = expression ";"
+assign_stmt    -> expression = expression ";"
 let_stmt       -> "let" IDENTIFIER = expression ";"
-if_stmt        -> "if" expression block ("else" block) ";"
-while_stmt     -> "while" expression block ";"
+if_stmt        -> "if" expression¹ block ("else" block) ";"
+while_stmt     -> "while" expression¹ block ";"
 return_stmt    -> "return" expression? ";"
 
 block          -> "{" statement* "}"
@@ -45,9 +49,16 @@ multiplication -> unary (("/" | "*" | "%" ) unary)*
 unary          -> (("!" | "-") unary) | call
 call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
-primary        -> INTEGER | FLOAT | BOOLEAN | IDENTIFIER | "false"
-                | "true" | "(" expression ")"
+primary        -> INTEGER | FLOAT | BOOLEAN | STRING | IDENTIFIER
+                | struct_literal | "false" | "true" | "(" expression ")"
+
 arguments      -> ( expression ( "," expression )* ","? )?
+struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"
+field          -> IDENTIFIER ( ":" expression )?
+
+path           -> IDENTIFIER ( "." IDENTIFIER )*
+
+// expression¹: except `struct_literal`, but `struct_literal` are allowed inside parentheses.
 ```
 
 It is worth noting that there is no semi-colon `;` in Zephyr, but some are inserted by the scanner following Go-like rules.
@@ -59,7 +70,7 @@ This grammar is used by the zasm front end, it is much simpler and closer to was
 ```
 program     -> package declaration* EOF
 
-package     -> "package" STRING ";"
+package     -> "package" IDENTIFIER ";"
 declaration -> expose | function
 expose      -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 function    -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"

@@ -1,0 +1,18 @@
+standalone package struct_in_if
+// A struct literal in a if (or while statement) may cause an ambiguity in the grammar
+// if not handled properly, but should work just fine inside parenthesis.
+
+expose main as _start
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fun main(): i32 {
+    if (Point { x: 0, y: 0 }).x == 0 {
+        return 42
+    }
+	return 1
+}
+

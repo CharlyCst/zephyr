@@ -2,12 +2,14 @@ use super::hir::*;
 use super::names::{
     Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun,
     FunctionPrototype as NameFunProto, Imports as NameImports, NameStore, Statement as S,
-    Value as V, Variable as NameVariable,
+    Struct as NameStruct, Value as V, Variable as NameVariable,
 };
 use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
 
 use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
 use crate::error::{ErrorHandler, Location};
+
+use std::collections::HashMap;
 
 struct State {
     pub names: NameStore,
@@ -34,6 +36,7 @@ impl<'a> HirProducer<'a> {
         let mut state = State::new(prog.names, prog.types);
         let mut funs = Vec::with_capacity(prog.funs.len());
         let mut imports = Vec::with_capacity(prog.imports.len());
+        let mut structs = HashMap::with_capacity(prog.structs.len());
 
         for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
@@ -49,9 +52,20 @@ impl<'a> HirProducer<'a> {
             }
         }
 
+        for (s_id, s) in prog.structs {
+            match self.reduce_struct(s) {
+                Ok(s) => {
+                    structs.insert(s_id, s);
+                }
+                Err(err) => self.err.report_internal_no_loc(err),
+            }
+        }
+
         Program {
             funs,
-            imports: imports,
+            imports,
+            structs,
+            data: prog.data,
             pub_decls: prog.pub_decls,
             package: prog.package,
         }
@@ -105,6 +119,7 @@ impl<'a> HirProducer<'a> {
                 ASTTypes::F32 => Type::Scalar(ScalarType::F32),
                 ASTTypes::F64 => Type::Scalar(ScalarType::F64),
                 ASTTypes::Bool => Type::Scalar(ScalarType::I32),
+                ASTTypes::Struct(s_id) => Type::Struct(*s_id),
                 _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
             };
             locals.push(LocalVariable {
@@ -128,19 +143,20 @@ impl<'a> HirProducer<'a> {
 
     fn reduce_stmt(&mut self, stmt: S, s: &State) -> Result<Statement, String> {
         match stmt {
-            S::AssignStmt { var, expr } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
-                let var = Box::new(self.reduce_var(*var, s)?);
-                Ok(Statement::AssignStmt { var, expr })
+            S::AssignStmt { target, expr } => {
+                let expr = self.reduce_expr(expr, s)?;
+                let target = self.reduce_expr(target, s)?;
+                let target = self.as_place(target)?;
+                Ok(Statement::AssignStmt { target, expr })
             }
             S::LetStmt { var, expr } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
-                let var = Box::new(self.reduce_var(*var, s)?);
+                let expr = self.reduce_expr(expr, s)?;
+                let var = self.reduce_var(var, s)?;
                 Ok(Statement::LetStmt { expr, var })
             }
-            S::ExprStmt { expr } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
-                Ok(Statement::ExprStmt { expr })
+            S::ExprStmt(expr) => {
+                let expr = self.reduce_expr(expr, s)?;
+                Ok(Statement::ExprStmt(expr))
             }
             S::ReturnStmt { expr, loc } => {
                 let expr = if let Some(expr) = expr {
@@ -151,7 +167,7 @@ impl<'a> HirProducer<'a> {
                 Ok(Statement::ReturnStmt { expr, loc })
             }
             S::WhileStmt { expr, block } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
+                let expr = self.reduce_expr(expr, s)?;
                 let block = self.reduce_block(block, s)?;
                 Ok(Statement::WhileStmt { expr, block })
             }
@@ -160,7 +176,7 @@ impl<'a> HirProducer<'a> {
                 block,
                 else_block,
             } => {
-                let expr = Box::new(self.reduce_expr(*expr, s)?);
+                let expr = self.reduce_expr(expr, s)?;
                 let block = self.reduce_block(block, s)?;
                 let else_block = if let Some(else_block) = else_block {
                     Some(self.reduce_block(else_block, s)?)
@@ -178,35 +194,77 @@ impl<'a> HirProducer<'a> {
 
     fn reduce_expr(&mut self, expression: Expr, s: &State) -> Result<Expression, String> {
         match expression {
-            Expr::Literal { value } => Ok(Expression::Literal {
-                value: match value {
-                    V::Integer { val, t_id, loc } => match s.types.get(t_id) {
-                        ASTTypes::I32 => Value::I32(val as i32, loc),
-                        ASTTypes::I64 => Value::I64(val as i64, loc),
-                        _ => return Err(String::from("Integer constant of non integer type.")),
-                    },
-                    V::Float { val, t_id, loc } => match s.types.get(t_id) {
-                        ASTTypes::F32 => Value::F32(val as f32, loc),
-                        ASTTypes::F64 => Value::F64(val, loc),
-                        _ => return Err(String::from("Float constant of non float type.")),
-                    },
-                    V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
-                        ASTTypes::Bool => Value::Bool(val, loc),
-                        _ => return Err(String::from("Boolean constant of non boolean type.")),
-                    },
+            Expr::Literal(value) => Ok(Expression::Literal(match value {
+                V::Integer { val, t_id, loc } => match s.types.get(t_id) {
+                    ASTTypes::I32 => Value::I32(val as i32, loc),
+                    ASTTypes::I64 => Value::I64(val as i64, loc),
+                    _ => return Err(String::from("Integer constant of non integer type.")),
                 },
-            }),
-            Expr::Variable { var } => {
+                V::Float { val, t_id, loc } => match s.types.get(t_id) {
+                    ASTTypes::F32 => Value::F32(val as f32, loc),
+                    ASTTypes::F64 => Value::F64(val, loc),
+                    _ => return Err(String::from("Float constant of non float type.")),
+                },
+                V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
+                    ASTTypes::Bool => Value::Bool(val, loc),
+                    _ => return Err(String::from("Boolean constant of non boolean type.")),
+                },
+                V::Str {
+                    data_id,
+                    len,
+                    loc,
+                    t_id,
+                } => match s.types.get(t_id) {
+                    ASTTypes::Struct(struct_id) => {
+                        let len = FieldValue {
+                            ident: String::from("len"),
+                            expr: Box::new(Expression::Literal(Value::I32(len as i32, loc))),
+                            loc,
+                        };
+                        let start = FieldValue {
+                            ident: String::from("start"),
+                            expr: Box::new(Expression::Literal(Value::DataPointer(data_id, loc))),
+                            loc,
+                        };
+                        let fields = vec![len, start];
+                        Value::Struct {
+                            struct_id: *struct_id,
+                            fields,
+                            loc,
+                        }
+                    }
+                    _ => return Err(String::from("Str literal of non struct type.")),
+                },
+                V::Struct {
+                    fields, t_id, loc, ..
+                } => match s.types.get(t_id) {
+                    ASTTypes::Struct(struct_id) => {
+                        let mut hir_fields = Vec::with_capacity(fields.len());
+                        for field in fields {
+                            hir_fields.push(FieldValue {
+                                ident: field.ident,
+                                loc: field.loc,
+                                expr: Box::new(self.reduce_expr(*field.expr, s)?),
+                            });
+                        }
+                        Value::Struct {
+                            struct_id: *struct_id,
+                            fields: hir_fields,
+                            loc,
+                        }
+                    }
+                    _ => return Err(String::from("Struct literal of non struct type.")),
+                },
+            })),
+            Expr::Variable(var) => {
                 let name = s.names.get(var.n_id);
                 let t = s.types.get(name.t_id);
-                Ok(Expression::Variable {
-                    var: Variable {
-                        ident: var.ident,
-                        loc: var.loc,
-                        n_id: var.n_id,
-                        t: to_hir_t(t)?,
-                    },
-                })
+                Ok(Expression::Variable(Variable {
+                    ident: var.ident,
+                    loc: var.loc,
+                    n_id: var.n_id,
+                    t: to_hir_t(t)?,
+                }))
             }
             Expr::Function { .. } => Err(String::from(
                 "Function as expression are not yet supported.",
@@ -297,6 +355,30 @@ impl<'a> HirProducer<'a> {
             Expr::CallIndirect { .. } => {
                 Err(String::from("Indirect calls are not yet implemented."))
             }
+            Expr::Access {
+                expr,
+                field,
+                t_id,
+                struct_t_id,
+                loc,
+            } => {
+                let expr = Box::new(self.reduce_expr(*expr, s)?);
+                let t = to_hir_t(s.types.get(t_id))?;
+                let struct_t = to_hir_t(s.types.get(struct_t_id))?;
+                if let Type::Struct(struct_id) = struct_t {
+                    Ok(Expression::Access {
+                        expr,
+                        field,
+                        struct_id,
+                        t,
+                        loc,
+                    })
+                } else {
+                    println!("expr: {}", expr);
+                    Err(String::from("Access of a non struct type"))
+                }
+            }
+            Expr::Namespace { loc, .. } => Ok(Expression::Nop { loc }),
         }
     }
 
@@ -353,6 +435,50 @@ impl<'a> HirProducer<'a> {
         })
     }
 
+    fn reduce_struct(&mut self, struc: NameStruct) -> Result<Struct, String> {
+        let mut fields = HashMap::with_capacity(struc.fields.len());
+        for (f_name, field) in struc.fields {
+            let t = to_hir_t(&field.t)?;
+            fields.insert(
+                f_name,
+                StructField {
+                    t,
+                    is_pub: field.is_pub,
+                    loc: field.loc,
+                },
+            );
+        }
+        Ok(Struct {
+            fields,
+            ident: struc.ident,
+            s_id: struc.s_id,
+            is_pub: struc.is_pub,
+            loc: struc.loc,
+        })
+    }
+
+    /// Try to convert an expression into a place, that is something that can hold a value (a
+    /// memory slot or a variable for instance).
+    fn as_place(&mut self, expr: Expression) -> Result<PlaceExpression, String> {
+        match expr {
+            Expression::Variable(var) => Ok(PlaceExpression::Variable(var)),
+            Expression::Access {
+                expr,
+                field,
+                struct_id,
+                t,
+                loc,
+            } => Ok(PlaceExpression::Access {
+                expr,
+                field,
+                struct_id,
+                t,
+                loc,
+            }),
+            _ => Err(String::from("Expected a place expression")),
+        }
+    }
+
     /// Verify that t is a boolean type, raises an error otherwhise.
     fn t_is_bool(&mut self, t: &ScalarType, loc: Location) {
         match t {
@@ -398,13 +524,14 @@ impl<'a> HirProducer<'a> {
 fn to_hir_t(t: &ASTTypes) -> Result<Type, String> {
     match t {
         ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
-            Err(format!("Invalid type in MIR generation: {}", t))
+            Err(format!("Invalid type in HIR generation: {}", t))
         }
         ASTTypes::I32 => Ok(Type::Scalar(ScalarType::I32)),
         ASTTypes::I64 => Ok(Type::Scalar(ScalarType::I64)),
         ASTTypes::F32 => Ok(Type::Scalar(ScalarType::F32)),
         ASTTypes::F64 => Ok(Type::Scalar(ScalarType::F64)),
         ASTTypes::Bool => Ok(Type::Scalar(ScalarType::Bool)),
+        ASTTypes::Struct(s_id) => Ok(Type::Struct(*s_id)),
         ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
     }
 }
@@ -421,6 +548,7 @@ fn to_hir_scalar(t: &ASTTypes) -> Result<ScalarType, String> {
         ASTTypes::F64 => Ok(ScalarType::F64),
         ASTTypes::Bool => Ok(ScalarType::Bool),
         ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
+        ASTTypes::Struct(_) => Err(String::from("Expected a scalar type, got struct")),
     }
 }
 

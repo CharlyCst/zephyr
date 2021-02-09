@@ -1,0 +1,22 @@
+standalone package heterogeneous
+
+expose main as _start
+
+struct Zoo {
+    a: bool
+    b: i32,
+    c: f64,
+}
+
+fun main(): i32 {
+    let zoo = Zoo { 
+        a: true,
+        b: 42,
+        c: 3.14,
+    }
+    if zoo.a && zoo.c == 3.14 {
+        return zoo.b
+    }
+	return 0
+}
+

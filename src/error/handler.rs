@@ -7,15 +7,16 @@ const MAGENTA: &'static str = "\x1B[35m";
 const BOLD: &'static str = "\x1B[1m";
 const END: &'static str = "\x1B[0m";
 
+/// Store errors encountered during compilation and generate a report on demand.
+///
+/// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
+/// merged as needed when proceeding through the pipeline.
 pub struct ErrorHandler {
     has_error: bool,
     errors: Vec<Error>,
     codes: HashMap<u16, String>,
 }
 
-/// Store errors encountered during compilation and generate a report on demand.
-/// Each file should be attributed to a single ErrorHandler. ErrorHandlers can be
-/// merged as needed when proceeding through the pipeline.
 impl ErrorHandler {
     pub fn new<'a>(code: String, f_id: u16) -> ErrorHandler {
         let mut codes = HashMap::new();
@@ -23,7 +24,7 @@ impl ErrorHandler {
         ErrorHandler {
             has_error: false,
             errors: Vec::new(),
-            codes: codes,
+            codes,
         }
     }
 
@@ -51,7 +52,17 @@ impl ErrorHandler {
             loc: None,
             t: ErrorType::Any,
             level: Level::Warning,
-            message: message,
+            message,
+        })
+    }
+
+    /// Report a warning.
+    pub fn warn(&mut self, loc: Location, message: String) {
+        self.errors.push(Error {
+            loc: Some(loc),
+            t: ErrorType::Any,
+            level: Level::Warning,
+            message,
         })
     }
 
@@ -62,7 +73,7 @@ impl ErrorHandler {
             loc: None,
             t: ErrorType::Any,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 
@@ -73,7 +84,7 @@ impl ErrorHandler {
             loc: Some(loc),
             t: ErrorType::Any,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 
@@ -84,7 +95,7 @@ impl ErrorHandler {
             loc: Some(loc),
             t: ErrorType::Internal,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 
@@ -95,7 +106,7 @@ impl ErrorHandler {
             loc: None,
             t: ErrorType::Internal,
             level: Level::Error,
-            message: message,
+            message,
         })
     }
 

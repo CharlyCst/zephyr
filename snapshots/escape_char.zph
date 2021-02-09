@@ -1,0 +1,9 @@
+standalone package escape_char
+
+expose main as _start
+
+fun main(): i32 {
+    // '\d' is not a valid escape sequence
+    let s = "abc\d"
+    return 38 + s.len
+}

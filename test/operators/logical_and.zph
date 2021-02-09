@@ -1,4 +1,4 @@
-standalone package "logical_and"
+standalone package logical_and
 
 expose main as _start
 

@@ -1,34 +1,10 @@
-standalone runtime package "hello"
+standalone package hello
 
-use "core/mem"
+use std.r.wasi
 
 expose hello as _start
 
-// Tested on Wasmtime 0.15.0
-from wasi_unstable import {
-    fun fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32): i32
-}
-
-pub fun hello() {
-    let iov = mem.malloc(32)
-    let str = iov + 8
-    let strlen = 14
-    mem.set_i32(iov, str)
-    mem.set_i32(iov + 4, strlen)
-    mem.set_i32(str + 0, 0x68)
-    mem.set_i32(str + 1, 0x65)
-    mem.set_i32(str + 2, 0x6c)
-    mem.set_i32(str + 3, 0x6c)
-    mem.set_i32(str + 4, 0x6f)
-    mem.set_i32(str + 5, 0x2c)
-    mem.set_i32(str + 6, 0x20)
-    mem.set_i32(str + 7, 0x77)
-    mem.set_i32(str + 8, 0x6f)
-    mem.set_i32(str + 9, 0x72)
-    mem.set_i32(str + 10, 0x6c)
-    mem.set_i32(str + 11, 0x64)
-    mem.set_i32(str + 12, 0x21)
-    mem.set_i32(str + 13, 0x0a)
-    let ret = fd_write(1, iov, 1, str + 16)
+fun hello() {
+    wasi.print("Hello, world!\n")
 }
 

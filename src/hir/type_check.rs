@@ -1,24 +1,35 @@
-use super::names::{Declaration, Function, Imports, NameStore, ResolvedProgram};
+use super::hir::lift_t;
+use super::names::{
+    Function, Imports, NameStore, ResolvedProgram, StructId, TypeDeclaration, TypeNamespace,
+    ValueDeclaration,
+};
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
-use super::types::{ConstraintStore, Type, TypeConstraint, TypeStore, TypeVarStore, TypedProgram};
-use crate::driver::PackageDeclarations;
+use super::types::{
+    ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
+    TypedProgram,
+};
+use crate::ctx::{Ctx, ModuleDeclarations, ModId};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
 
+/// Indicates if some progress has been made.
 enum Progress {
     Some,
     None,
-    Error,
 }
 
 pub struct TypeChecker<'a> {
     err: &'a mut ErrorHandler,
+    ctx: &'a Ctx,
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> TypeChecker {
-        TypeChecker { err: error_handler }
+    pub fn new(error_handler: &'a mut ErrorHandler, ctx: &'a Ctx) -> TypeChecker<'a> {
+        TypeChecker {
+            err: error_handler,
+            ctx,
+        }
     }
 
     /// Type check a ResolvedProgram.
@@ -30,22 +41,34 @@ impl<'a> TypeChecker<'a> {
         while constraints.len() > 0 && progress {
             let mut new_constraints = ConstraintStore::new();
             progress = false;
-            for constr in &constraints {
-                match self.apply_constr(constr, &mut type_vars, &mut new_constraints) {
-                    Progress::Some => progress = true,
-                    Progress::None => (),
-                    Progress::Error => (),
+            for constr in constraints.into_iter() {
+                match self.apply_constr(constr, &mut type_vars, &mut new_constraints, &prog.structs)
+                {
+                    Ok(p) => match p {
+                        Progress::Some => progress = true,
+                        Progress::None => (),
+                    },
+                    Err(_) => self.err.silent_report(),
                 }
             }
             constraints = new_constraints;
         }
 
         let store = self.build_store(&type_vars);
-        let pub_decls = self.get_pub_decls(&store, &prog.names, &prog.funs, &prog.imports);
+        let pub_decls = self.get_pub_decls(
+            prog.package.id,
+            &store,
+            &prog.names,
+            &prog.funs,
+            &prog.imports,
+            &prog.structs,
+        );
 
         TypedProgram {
             funs: prog.funs,
             imports: prog.imports,
+            structs: prog.structs,
+            data: prog.data,
             names: prog.names,
             types: store,
             pub_decls,
@@ -76,8 +99,6 @@ impl<'a> TypeChecker<'a> {
                     store.put(Type::F64);
                 } else {
                     // TODO: improve error handling...
-                    println!("{:?}", floats.types);
-                    println!("{:?}", var.types);
                     self.err
                         .report(var.loc, String::from("Could not infer type"))
                 }
@@ -91,19 +112,21 @@ impl<'a> TypeChecker<'a> {
     /// imported runtime module.
     fn get_pub_decls(
         &mut self,
+        mod_id: ModId,
         types: &TypeStore,
         names: &NameStore,
         funs: &Vec<Function>,
         imports: &Vec<Imports>,
-    ) -> PackageDeclarations {
-        let mut pub_decls = PackageDeclarations::new();
+        type_namespace: &TypeNamespace,
+    ) -> ModuleDeclarations {
+        let mut pub_decls = ModuleDeclarations::new(mod_id);
         for fun in funs {
             if fun.is_pub {
                 let name = names.get(fun.n_id);
                 let t = types.get(name.t_id);
-                pub_decls.decls.insert(
+                pub_decls.val_decls.insert(
                     fun.ident.clone(),
-                    Declaration::Function {
+                    ValueDeclaration::Function {
                         t: t.clone(),
                         fun_id: fun.fun_id,
                     },
@@ -115,12 +138,20 @@ impl<'a> TypeChecker<'a> {
             for fun in &import.prototypes {
                 let name = names.get(fun.n_id);
                 let t = types.get(name.t_id);
-                pub_decls.decls.insert(
+                pub_decls.val_decls.insert(
                     fun.ident.clone(),
-                    Declaration::Function {
+                    ValueDeclaration::Function {
                         t: t.clone(),
                         fun_id: fun.fun_id,
                     },
+                );
+            }
+        }
+        for (t_id, t) in type_namespace {
+            if t.is_pub {
+                pub_decls.type_decls.insert(
+                    t.ident.clone(),
+                    TypeDeclaration::Struct(*t_id),
                 );
             }
         }
@@ -132,11 +163,12 @@ impl<'a> TypeChecker<'a> {
     /// Progress can be made or not, depending on the state of the store.
     fn apply_constr(
         &mut self,
-        constr: &TypeConstraint,
+        constr: TypeConstraint,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
-        match *constr {
+        types: &TypeNamespace,
+    ) -> Result<Progress, ()> {
+        match constr {
             TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
                 self.constr_equality(t_id_1, t_id_2, loc, store, constraints)
             }
@@ -146,20 +178,28 @@ impl<'a> TypeChecker<'a> {
             TypeConstraint::Return(t_id_fun, t_id, loc) => {
                 self.constr_return(t_id_fun, t_id, loc, store, constraints)
             }
+            TypeConstraint::Field(obj_t_id, field_t_id, ref field, loc) => {
+                self.constr_field(obj_t_id, field_t_id, field, loc, store, constraints, types)
+            }
             TypeConstraint::Arguments(ref args_t_id, fun_t_id, ref locs, loc) => {
                 self.constr_arguments(&args_t_id, fun_t_id, &locs, loc, store, constraints)
             }
+            TypeConstraint::StructLiteral {
+                struct_t_id,
+                fields,
+                loc,
+            } => self.constr_struct(struct_t_id, fields, loc, store, constraints, types),
         }
     }
 
     fn constr_equality(
         &mut self,
-        t_id_1: usize,
-        t_id_2: usize,
+        t_id_1: TypeId,
+        t_id_2: TypeId,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
         let c = TypeConstraint::Equality(t_id_1, t_id_2, loc);
@@ -168,17 +208,17 @@ impl<'a> TypeChecker<'a> {
         if t_1.len() > 0 && t_1[0] == Type::Any {
             if t_2.len() > 0 && t_2[0] == Type::Any {
                 constraints.add(c);
-                return Progress::None;
+                return Ok(Progress::None);
             }
             let t = t_2.clone();
             store.replace(t_id_1, t);
             constraints.add(c);
-            return Progress::Some;
+            return Ok(Progress::Some);
         } else if t_2.len() > 0 && t_2[0] == Type::Any {
             let t = t_1.clone();
             store.replace(t_id_2, t);
             constraints.add(c);
-            return Progress::Some;
+            return Ok(Progress::Some);
         }
 
         // Can not infer types
@@ -187,7 +227,7 @@ impl<'a> TypeChecker<'a> {
                 loc,
                 String::from("Could not infer a type satisfying constraints"),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         let mut t = Vec::new();
@@ -218,20 +258,20 @@ impl<'a> TypeChecker<'a> {
         store.replace(t_id_1, t.clone());
         store.replace(t_id_2, t);
         if progress {
-            Progress::Some
+            Ok(Progress::Some)
         } else {
-            Progress::None
+            Ok(Progress::None)
         }
     }
 
     fn constr_included(
         &mut self,
-        t_id_1: usize,
-        t_id_2: usize,
+        t_id_1: TypeId,
+        t_id_2: TypeId,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let t_1 = &store.get(t_id_1).types;
         let t_2 = &store.get(t_id_2).types;
         let c = TypeConstraint::Included(t_id_1, t_id_2, loc);
@@ -240,11 +280,11 @@ impl<'a> TypeChecker<'a> {
         if t_1.len() > 0 && t_1[0] == Type::Any {
             if t_2.len() > 0 && t_2[0] == Type::Any {
                 constraints.add(c);
-                return Progress::None;
+                return Ok(Progress::None);
             }
             let t = t_2.clone();
             store.replace(t_id_1, t);
-            return Progress::Some;
+            return Ok(Progress::Some);
         }
 
         let mut t = Vec::new();
@@ -277,20 +317,20 @@ impl<'a> TypeChecker<'a> {
 
         store.replace(t_id_1, t);
         if progress {
-            Progress::Some
+            Ok(Progress::Some)
         } else {
-            Progress::None
+            Ok(Progress::None)
         }
     }
 
     fn constr_return(
         &mut self,
-        t_id_fun: usize,
-        t_id: usize,
+        t_id_fun: TypeId,
+        t_id: TypeId,
         _loc: Location,
         store: &mut TypeVarStore,
         _constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()> {
         let t_fun = store.get(t_id_fun);
         let ts = store.get(t_id);
 
@@ -299,7 +339,7 @@ impl<'a> TypeChecker<'a> {
                 t_fun.loc,
                 String::from("Return type constraint with ambiguous fun type"),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         let ret_t = match &t_fun.types[0] {
@@ -309,27 +349,27 @@ impl<'a> TypeChecker<'a> {
                     t_fun.loc,
                     String::from("Return type constraint used on a non function type"),
                 );
-                return Progress::Error;
+                return Err(());
             }
         };
 
         if ret_t.len() == 0 {
             if ts.types.len() == 0 {
-                return Progress::Some;
+                return Ok(Progress::Some);
             } else if ts.types[0] == Type::Any {
                 // TODO: do we accept type any?
-                return Progress::Some;
+                return Ok(Progress::Some);
             } else {
                 self.err
                     .report(t_fun.loc, String::from("Function returns no value"));
-                return Progress::Error;
+                return Err(());
             }
         } else if ret_t.len() != 1 {
             self.err.report_internal(
                 t_fun.loc,
                 String::from("Function returning multiple values are not yet supported"),
             );
-            return Progress::Error;
+            return Err(());
         }
 
         let ret_t = &ret_t[0];
@@ -337,30 +377,119 @@ impl<'a> TypeChecker<'a> {
             if t == ret_t || *t == Type::Any {
                 let typ = vec![ret_t.clone()];
                 store.replace(t_id, typ);
-                return Progress::Some;
+                return Ok(Progress::Some);
             }
         }
 
         self.err
             .report(ts.loc, String::from("Return value has wrong type"));
-        return Progress::Error;
+        return Err(());
     }
 
-    // TODO
+    fn constr_field(
+        &mut self,
+        struct_t_id: TypeId,
+        field_t_id: TypeId,
+        field: &String,
+        loc: Location,
+        store: &mut TypeVarStore,
+        constraints: &mut ConstraintStore,
+        types: &TypeNamespace,
+    ) -> Result<Progress, ()> {
+        let field_t = if let Ok(t) = self.get_struct_field_t(
+            struct_t_id,
+            field,
+            loc,
+            "Can not access field of a non struct type",
+            types,
+            store,
+        ) {
+            t
+        } else {
+            return Err(());
+        };
+        let t_id = store.fresh(loc, vec![field_t]);
+        constraints.add(TypeConstraint::Equality(t_id, field_t_id, loc));
+        Ok(Progress::Some)
+    }
+
+    fn constr_struct(
+        &mut self,
+        struct_t_id: TypeId,
+        fields: Vec<FieldContstraint>,
+        loc: Location,
+        store: &mut TypeVarStore,
+        constraints: &mut ConstraintStore,
+        types: &TypeNamespace,
+    ) -> Result<Progress, ()> {
+        let mut ok = true;
+        let fields_len = fields.len();
+
+        // type check each field
+        for (field, f_t_id, field_loc) in &fields {
+            let field_t = if let Ok(t) = self.get_struct_field_t(
+                struct_t_id,
+                field,
+                *field_loc,
+                "Can not access field of a non struct type",
+                types,
+                store,
+            ) {
+                t
+            } else {
+                ok = false;
+                continue;
+            };
+            let t_id = store.fresh(*field_loc, vec![field_t]);
+            constraints.add(TypeConstraint::Equality(t_id, *f_t_id, *field_loc));
+        }
+
+        // Missing fields
+        let n_fields = self.get_struct_fields_len(struct_t_id, loc, types, store)?;
+        if fields_len < n_fields {
+            // Rare event, simple but not very efficient code
+            let fields = fields
+                .iter()
+                .map(|(field, _, _)| field.as_str())
+                .collect::<Vec<&str>>();
+            let mut missing_fields = Vec::new();
+            let struc_fields = self
+                .get_struct_fields(struct_t_id, loc, types, store)
+                .unwrap(); // TODO: replace by `?`
+            for field in struc_fields {
+                if !fields.contains(&field.as_str()) {
+                    missing_fields.push(field);
+                }
+            }
+            missing_fields.sort();
+            self.err.report(
+                loc,
+                format!("Missing fields: '{}'", missing_fields.join("', '")),
+            );
+            return Err(());
+        }
+
+        if ok {
+            Ok(Progress::Some)
+        } else {
+            Err(())
+        }
+    }
+
     fn constr_arguments(
         &mut self,
-        args_t_id: &Vec<usize>,
-        fun_t_id: usize,
+        args_t_id: &Vec<TypeId>,
+        fun_t_id: TypeId,
         locs: &Vec<Location>, // Arguments location
         loc: Location,        // Function location
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Progress {
+    ) -> Result<Progress, ()>{
         let t_fun = store.get(fun_t_id);
 
         if t_fun.types.len() != 1 {
             self.err.report(loc, String::from("Call a non-function"));
-            return Progress::Error;
+            return Err(());
         }
 
         if let Type::Fun(ref f_args, _) = t_fun.types[0].clone() {
@@ -373,7 +502,7 @@ impl<'a> TypeChecker<'a> {
                         args_t_id.len()
                     ),
                 );
-                return Progress::Error;
+                return Err(());
             }
             if f_args.len() != locs.len() {
                 self.err.report_internal(
@@ -386,10 +515,145 @@ impl<'a> TypeChecker<'a> {
                 let fresh_t_id = store.fresh(*loc, candidate);
                 constraints.add(TypeConstraint::Equality(*t_arg, fresh_t_id, *loc));
             }
-            Progress::Some
+            Ok(Progress::Some)
         } else {
             self.err.report(loc, String::from("Call a non-function"));
-            Progress::Error
+           Err(())
+        }
+    }
+
+    /// Return the type of a field from a t_id (that must resolve to a struct) and the field. An
+    /// error will be raise if the t_id does not map to a struct, if the field does not exist or if
+    /// the type can not be infered (multiple candidates).
+    fn get_struct_field_t(
+        &mut self,
+        struct_t_id: TypeId,
+        field: &str,
+        loc: Location,
+        error: &str,
+        types: &TypeNamespace,
+        store: &mut TypeVarStore,
+    ) -> Result<Type, ()> {
+        let s_id = self.get_struct_id_from_t_id(struct_t_id, loc, store, error)?;
+        if let Some(struc) = types.get(&s_id) {
+            // Defined in the current package
+            match struc.fields.get(field) {
+                Some(f) => Ok(f.t.clone()),
+                None => {
+                    self.err.report(
+                        loc,
+                        format!("No such field '{}' in {}", field, &struc.ident),
+                    );
+                    Err(())
+                }
+            }
+        } else if let Some(struc) = self.ctx.get_s(s_id) {
+            // Defined in the global context
+            match struc.fields.get(field) {
+                Some(f) => Ok(lift_t(&f.t)),
+                None => {
+                    self.err.report(
+                        loc,
+                        format!("No such field '{}' in {}", field, &struc.ident),
+                    );
+                    Err(())
+                }
+            }
+        } else {
+            self.err
+                .report_internal(loc, format!("No type with id '{}'", s_id));
+            Err(())
+        }
+    }
+
+    /// Return the number of fields in the struct.
+    fn get_struct_fields_len(
+        &mut self,
+        struct_t_id: TypeId,
+        loc: Location,
+        types: &TypeNamespace,
+        store: &mut TypeVarStore,
+    ) -> Result<usize, ()> {
+        let s_id = self.get_struct_id_from_t_id(
+            struct_t_id,
+            loc,
+            store,
+            "Could not get number of fields",
+        )?;
+        if let Some(struc) = types.get(&s_id) {
+            // Defined in the current package
+            Ok(struc.fields.len())
+        } else if let Some(struc) = self.ctx.get_s(s_id) {
+            // Defined in the global context
+            Ok(struc.fields.len())
+        } else {
+            self.err
+                .report_internal(loc, format!("No type with id '{}'", s_id));
+            Err(())
+        }
+    }
+
+    /// Return a vec of fields names for this struct.
+    fn get_struct_fields(
+        &mut self,
+        struct_t_id: TypeId,
+        loc: Location,
+        types: &TypeNamespace,
+        store: &mut TypeVarStore,
+    ) -> Result<Vec<String>, ()> {
+        let s_id = self.get_struct_id_from_t_id(
+            struct_t_id,
+            loc,
+            store,
+            "Could not get number of fields",
+        )?;
+        if let Some(struc) = types.get(&s_id) {
+            // Defined in the current package
+            Ok(struc
+                .fields
+                .iter()
+                .map(|(ident, _)| ident.clone())
+                .collect())
+        } else if let Some(struc) = self.ctx.get_s(s_id) {
+            // Defined in the global context
+            Ok(struc
+                .fields
+                .iter()
+                .map(|(ident, _)| ident.clone())
+                .collect())
+        } else {
+            self.err
+                .report_internal(loc, format!("No type with id '{}'", s_id));
+            Err(())
+        }
+    }
+
+    /// Retrieve a struct_id from a type_id, raise an error if type_id does not map to a struct.
+    fn get_struct_id_from_t_id(
+        &mut self,
+        struct_t_id: TypeId,
+        loc: Location,
+        store: &mut TypeVarStore,
+        error: &str,
+    ) -> Result<StructId, ()> {
+        let t_struct = store.get(struct_t_id);
+        if t_struct.types.len() > 1 {
+            self.err
+                .report(t_struct.loc, String::from("Ambiguous type"));
+        }
+        let t_struct = if let Some(t) = t_struct.types.first() {
+            t
+        } else {
+            self.err.report(loc, String::from("Could not infer type"));
+            return Err(());
+        };
+        match t_struct {
+            Type::Struct(s_id) => Ok(*s_id),
+            _ => {
+                self.err.report(loc, String::from(error));
+                Err(())
+            }
         }
     }
 }
+

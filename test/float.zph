@@ -1,4 +1,4 @@
-standalone package "float"
+standalone package float
 
 expose main as _start
 

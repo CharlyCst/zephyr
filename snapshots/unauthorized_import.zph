@@ -1,4 +1,4 @@
-standalone package "unauthorized_import"
+standalone package unauthorized_import
 
 // Imports are not authorized in standard packages
 from test import {

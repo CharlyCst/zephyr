@@ -1,16 +1,18 @@
-#![allow(dead_code)] // Call::Indirect, Value::F32, Value::F64
-use crate::hir::{FunId, LocalId};
-
+#![allow(dead_code)] // Call::Indirect
+use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::PackageKind;
-pub use crate::driver::{PackageDeclarations, PublicDeclarations};
+pub use crate::ctx::ModuleDeclarations;
+pub use crate::hir::{DataId, FunId, StructId};
+
+pub type Data = Vec<u8>;
 
 pub struct Program {
-    pub name: String,
     pub funs: Vec<Function>,
+    pub structs: HashMap<StructId, Struct>,
     pub imports: Vec<Imports>,
-    pub pub_decls: PackageDeclarations,
+    pub data: HashMap<DataId, Data>
 }
 
 pub struct Imports {
@@ -39,12 +41,26 @@ pub struct FunctionPrototype {
     pub fun_id: FunId,
 }
 
+pub struct Struct {
+    /// Total size of the struct in bytes
+    pub size: u32,
+    /// Map field -> offset
+    pub fields: HashMap<String, StructField>,
+}
+
+pub struct StructField {
+    pub offset: u32,
+    pub layout: MemoryLayout,
+    pub t: Type,
+}
+
 pub struct LocalVariable {
     pub id: LocalId,
     pub t: Type,
 }
 
 pub type BasicBlockId = usize;
+pub type LocalId = usize;
 
 pub enum Block {
     Block {
@@ -66,16 +82,16 @@ pub enum Block {
 }
 
 pub enum Statement {
-    Local { local: Local },
-    Const { val: Value },
-    Block { block: Box<Block> },
-    Unop { unop: Unop },
-    Binop { binop: Binop },
-    Relop { relop: Relop },
-    Control { cntrl: Control },
-    Call { call: Call },
-    Parametric { param: Parametric },
-    Memory { mem: Memory },
+    Local(Local),
+    Const(Value),
+    Block(Box<Block>),
+    Unop(Unop),
+    Binop(Binop),
+    Relop(Relop),
+    Control(Control),
+    Call(Call),
+    Parametric(Parametric),
+    Memory(Memory),
 }
 
 pub enum Local {
@@ -95,11 +111,13 @@ pub enum Control {
     BrIf(BasicBlockId),
 }
 
+#[derive(Clone)]
 pub enum Value {
     I32(i32),
     I64(i64),
     F32(f32),
     F64(f64),
+    DataPointer(DataId),
 }
 
 pub enum Unop {
@@ -179,22 +197,117 @@ pub enum Parametric {
 pub enum Memory {
     Size,
     Grow,
+    I32Load8u { align: u32, offset: u32 },
     I32Load { align: u32, offset: u32 },
+    I64Load8u { align: u32, offset: u32 },
     I64Load { align: u32, offset: u32 },
     F32Load { align: u32, offset: u32 },
     F64Load { align: u32, offset: u32 },
+    I32Store8 { align: u32, offset: u32 },
     I32Store { align: u32, offset: u32 },
+    I64Store8 { align: u32, offset: u32 },
     I64Store { align: u32, offset: u32 },
     F32Store { align: u32, offset: u32 },
     F64Store { align: u32, offset: u32 },
 }
 
+/// Wasm types as they appear on the stack.
 #[derive(Copy, Clone)]
 pub enum Type {
     I32,
     I64,
     F32,
     F64,
+}
+
+/// Memory layout used to store values in the linear memory, they describes how to load a value
+/// onto the stack.
+#[derive(Copy, Clone)]
+pub enum MemoryLayout {
+    // Not yet exhaustive.
+    // Unsigned types ('Ux') doesn't perform sign extension on load into I32 or I64
+    U8,
+    I32,
+    I64,
+    F32,
+    F64,
+}
+
+impl Binop {
+    /// Return the type produced as the result of the execution of this binop.
+    pub fn get_t(&self) -> Type {
+        match self {
+            Binop::I32Xor => Type::I32,
+            Binop::I32Or => Type::I32,
+            Binop::I32And => Type::I32,
+            Binop::I32Add => Type::I32,
+            Binop::I32Sub => Type::I32,
+            Binop::I32Mul => Type::I32,
+            Binop::I32Div => Type::I32,
+            Binop::I32Rem => Type::I32,
+
+            Binop::I64Xor => Type::I64,
+            Binop::I64Or => Type::I64,
+            Binop::I64And => Type::I64,
+            Binop::I64Add => Type::I64,
+            Binop::I64Sub => Type::I64,
+            Binop::I64Mul => Type::I64,
+            Binop::I64Div => Type::I64,
+            Binop::I64Rem => Type::I64,
+
+            Binop::F32Add => Type::F32,
+            Binop::F32Sub => Type::F32,
+            Binop::F32Mul => Type::F32,
+            Binop::F32Div => Type::F32,
+
+            Binop::F64Add => Type::F64,
+            Binop::F64Sub => Type::F64,
+            Binop::F64Mul => Type::F64,
+            Binop::F64Div => Type::F64,
+        }
+    }
+}
+
+impl Relop {
+    /// Return the type produced as the result of the execution of this binop.
+    pub fn get_t(&self) -> Type {
+        match self {
+            Relop::I32Eq => Type::I32,
+            Relop::I32Ne => Type::I32,
+            Relop::I32Lt => Type::I32,
+            Relop::I32Gt => Type::I32,
+            Relop::I32Le => Type::I32,
+            Relop::I32Ge => Type::I32,
+
+            Relop::I64Eq => Type::I64,
+            Relop::I64Ne => Type::I64,
+            Relop::I64Lt => Type::I64,
+            Relop::I64Gt => Type::I64,
+            Relop::I64Le => Type::I64,
+            Relop::I64Ge => Type::I64,
+
+            Relop::F32Eq => Type::F32,
+            Relop::F32Ne => Type::F32,
+            Relop::F32Lt => Type::F32,
+            Relop::F32Gt => Type::F32,
+            Relop::F32Le => Type::F32,
+            Relop::F32Ge => Type::F32,
+
+            Relop::F64Eq => Type::F64,
+            Relop::F64Ne => Type::F64,
+            Relop::F64Lt => Type::F64,
+            Relop::F64Gt => Type::F64,
+            Relop::F64Le => Type::F64,
+            Relop::F64Ge => Type::F64,
+        }
+    }
+}
+
+/// Possible aligments, in bytes (A8 -> aligment of 8)
+pub enum Aligment {
+    A8,
+    A4,
+    A1,
 }
 
 impl fmt::Display for Program {
@@ -293,16 +406,16 @@ impl fmt::Display for Block {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Local { local } => write!(f, "{}", local),
-            Statement::Unop { unop } => write!(f, "{}", unop),
-            Statement::Binop { binop } => write!(f, "{}", binop),
-            Statement::Relop { relop } => write!(f, "{}", relop),
-            Statement::Parametric { param } => write!(f, "{}", param),
-            Statement::Block { block } => write!(f, "{}", block),
-            Statement::Control { cntrl } => write!(f, "{}", cntrl),
-            Statement::Call { call } => write!(f, "{}", call),
-            Statement::Const { val } => write!(f, "{}", val),
-            Statement::Memory { mem } => write!(f, "{}", mem),
+            Statement::Local(local) => write!(f, "{}", local),
+            Statement::Unop(unop) => write!(f, "{}", unop),
+            Statement::Binop(binop) => write!(f, "{}", binop),
+            Statement::Relop(relop) => write!(f, "{}", relop),
+            Statement::Parametric(param) => write!(f, "{}", param),
+            Statement::Block(block) => write!(f, "{}", block),
+            Statement::Control(cntrl) => write!(f, "{}", cntrl),
+            Statement::Call(call) => write!(f, "{}", call),
+            Statement::Const(val) => write!(f, "{}", val),
+            Statement::Memory(mem) => write!(f, "{}", mem),
         }
     }
 }
@@ -323,6 +436,7 @@ impl fmt::Display for Value {
             Value::I64(x) => write!(f, "i64.const {}", x),
             Value::F32(x) => write!(f, "f32.const {}", x),
             Value::F64(x) => write!(f, "f64.const {}", x),
+            Value::DataPointer(x) => write!(f, "i32.const ptr:{}", x)
         }
     }
 }
@@ -454,11 +568,15 @@ impl fmt::Display for Memory {
         match self {
             Memory::Size => write!(f, "memory.size"),
             Memory::Grow => write!(f, "memory.grow"),
+            Memory::I32Load8u { align, offset } => write!(f, "i32.load8_u {}, {}", align, offset),
             Memory::I32Load { align, offset } => write!(f, "i32.load {}, {}", align, offset),
+            Memory::I64Load8u { align, offset } => write!(f, "i54.load8_u {}, {}", align, offset),
             Memory::I64Load { align, offset } => write!(f, "i64.load {}, {}", align, offset),
             Memory::F32Load { align, offset } => write!(f, "f32.load {}, {}", align, offset),
             Memory::F64Load { align, offset } => write!(f, "f64.load {}, {}", align, offset),
+            Memory::I32Store8 { align, offset } => write!(f, "i32.store8 {}, {}", align, offset),
             Memory::I32Store { align, offset } => write!(f, "i32.store {}, {}", align, offset),
+            Memory::I64Store8 { align, offset } => write!(f, "i64.store8 {}, {}", align, offset),
             Memory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
             Memory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
             Memory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),

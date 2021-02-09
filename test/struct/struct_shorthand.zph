@@ -1,0 +1,15 @@
+standalone package struct_shorthand
+
+expose main as _start
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fun main(): i32 {
+    let x = 40
+    let p = Point { x, y: 2 }
+	return p.x + p.y
+}
+

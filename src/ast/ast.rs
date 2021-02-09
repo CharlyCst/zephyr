@@ -1,6 +1,8 @@
+use std::fmt;
+
+pub use crate::ctx::{ModId, ModulePath};
 use crate::error::Location;
 use crate::mir::Value as MirValue;
-use std::fmt;
 
 ////// Zephyr AST nodes //////
 
@@ -19,9 +21,35 @@ pub enum PackageKind {
 }
 
 pub enum Value {
-    Integer { val: u64, loc: Location },
-    Float { val: f64, loc: Location },
-    Boolean { val: bool, loc: Location },
+    Integer {
+        val: u64,
+        loc: Location,
+    },
+    Float {
+        val: f64,
+        loc: Location,
+    },
+    Boolean {
+        val: bool,
+        loc: Location,
+    },
+    Str {
+        val: String,
+        loc: Location,
+    },
+    Struct {
+        /// Namespaces are reserved for HIR resolution.
+        namespace: Option<ModId>,
+        ident: String,
+        fields: Vec<FieldValue>,
+        loc: Location,
+    },
+}
+
+pub struct FieldValue {
+    pub ident: String,
+    pub expr: Expression,
+    pub loc: Location,
 }
 
 #[derive(Copy, Clone)]
@@ -52,23 +80,21 @@ pub enum UnaryOperator {
 
 pub struct Parameter {
     pub ident: String,
-    pub t: String,
+    pub t: Path,
     pub loc: Location,
 }
 
 pub struct Variable {
+    /// Namespaces are reserver for HIR resolution
+    pub namespace: Option<ModId>,
     pub ident: String,
     pub t: Option<String>,
     pub loc: Location,
 }
 
 pub enum Expression {
-    Variable {
-        var: Variable,
-    },
-    Literal {
-        value: Value,
-    },
+    Variable(Variable),
+    Literal(Value),
     Binary {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
@@ -89,24 +115,22 @@ pub enum Expression {
 }
 
 pub enum Statement {
-    ExprStmt {
-        expr: Box<Expression>,
-    },
+    ExprStmt(Expression),
     LetStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        var: Variable,
+        expr: Expression,
     },
     AssignStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        target: Expression,
+        expr: Expression,
     },
     IfStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
         else_block: Option<Block>,
     },
     WhileStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
     },
     ReturnStmt {
@@ -120,16 +144,33 @@ pub enum Declaration {
     Use(Use),
     Expose(Expose),
     Imports(Imports),
+    Struct(Struct),
 }
 
 pub struct Program {
     pub package: Package,
     pub funs: Vec<Function>,
+    pub structs: Vec<Struct>,
     /// Functions exposed to the host runtime.
     pub exposed: Vec<Expose>,
     ///Functions imported from the host runtime.
     pub imports: Vec<Imports>,
     pub used: Vec<Use>,
+}
+
+impl Program {
+    /// Merges the properties of another AST into this one, this is used for instance when a
+    /// package spans multiples files to get back a single AST.
+    ///
+    /// The `Package` property is kept, it is the responsibility of the caller to ensure that
+    /// packages are merged in a coherent fashion.
+    pub fn merge(&mut self, other: Self) {
+        self.funs.extend(other.funs);
+        self.structs.extend(other.structs);
+        self.exposed.extend(other.exposed);
+        self.imports.extend(other.imports);
+        self.used.extend(other.used);
+    }
 }
 
 #[derive(Clone)]
@@ -144,6 +185,20 @@ pub struct Package {
 pub struct Imports {
     pub from: String,
     pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
+}
+
+pub struct Struct {
+    pub ident: String,
+    pub fields: Vec<StructField>,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct StructField {
+    pub is_pub: bool,
+    pub ident: String,
+    pub t: String,
     pub loc: Location,
 }
 
@@ -173,8 +228,14 @@ pub struct Expose {
 
 #[derive(Clone)]
 pub struct Use {
-    pub path: String,
+    pub path: ModulePath,
     pub alias: Option<String>,
+    pub loc: Location,
+}
+
+pub struct Path {
+    pub root: String,
+    pub path: Vec<String>,
     pub loc: Location,
 }
 
@@ -209,10 +270,12 @@ pub enum AsmMemory {
     I64Load { align: u32, offset: u32 },
     F32Load { align: u32, offset: u32 },
     F64Load { align: u32, offset: u32 },
+    I32Load8u { align: u32, offset: u32 },
     I32Store { align: u32, offset: u32 },
     I64Store { align: u32, offset: u32 },
     F32Store { align: u32, offset: u32 },
     F64Store { align: u32, offset: u32 },
+    I32Store8 { align: u32, offset: u32 },
 }
 
 pub enum AsmControl {
@@ -270,7 +333,7 @@ impl fmt::Display for Function {
             .map(|v| {
                 let mut param = v.ident.clone();
                 param.push_str(" ");
-                param.push_str(&v.t);
+                param.push_str(&format!("{}", v.t));
                 param
             })
             .collect::<Vec<String>>()
@@ -329,12 +392,23 @@ impl fmt::Display for Block {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
-            Expression::Literal { value: v } => match v {
+            Expression::Variable(v) => write!(f, "{}", v.ident),
+            Expression::Literal(v) => match v {
                 Value::Boolean { val: true, .. } => write!(f, "true"),
                 Value::Boolean { val: false, .. } => write!(f, "false"),
                 Value::Integer { val: n, .. } => write!(f, "{}", n),
                 Value::Float { val: x, .. } => write!(f, "{}", x),
+                Value::Str { val: s, .. } => write!(f, "{}", s),
+                Value::Struct { ident, fields, .. } => write!(
+                    f,
+                    "{} {{ {} }}",
+                    ident,
+                    fields
+                        .iter()
+                        .map(|FieldValue { ident, expr, .. }| format!("{}: {}", ident, expr))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ),
             },
             Expression::Call { fun, args } => write!(
                 f,
@@ -382,9 +456,9 @@ impl fmt::Display for Expression {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::ExprStmt { expr } => write!(f, "{};", expr),
+            Statement::ExprStmt(expr) => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
-            Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
+            Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
                 expr,
                 block,
@@ -402,6 +476,17 @@ impl fmt::Display for Statement {
                 None => write!(f, "return;"),
             },
         }
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut path = self.root.clone();
+        for access in &self.path {
+            path.push('.');
+            path.push_str(access);
+        }
+        write!(f, "{}", path)
     }
 }
 
@@ -452,10 +537,14 @@ impl fmt::Display for AsmMemory {
             AsmMemory::I64Load { align, offset } => write!(f, "i64.load {}, {}", align, offset),
             AsmMemory::F32Load { align, offset } => write!(f, "f32.load {}, {}", align, offset),
             AsmMemory::F64Load { align, offset } => write!(f, "f64.load {}, {}", align, offset),
+            AsmMemory::I32Load8u { align, offset } => {
+                write!(f, "i32.load8_u {}, {}", align, offset)
+            }
             AsmMemory::I32Store { align, offset } => write!(f, "i32.store {}, {}", align, offset),
             AsmMemory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
             AsmMemory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
             AsmMemory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
+            AsmMemory::I32Store8 { align, offset } => write!(f, "i32.store8 {}, {}", align, offset),
         }
     }
 }

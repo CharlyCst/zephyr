@@ -1,0 +1,11 @@
+standalone package empty_struct
+
+expose main as _start
+
+struct Point {}
+
+fun main(): i32 {
+    let coordinates = Point {}
+	return 42
+}
+

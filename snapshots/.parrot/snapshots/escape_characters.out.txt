@@ -1,0 +1,4 @@
+    7 |     let s = "abc\d"
+                        [33m^^[0m
+[33m[1mWarning:[0m[33m Invalid escape sequence: '\d'[0m
+

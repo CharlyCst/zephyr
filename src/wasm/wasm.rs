@@ -2,6 +2,10 @@ use super::opcode;
 use super::opcode::to_leb;
 use crate::hir::FunId;
 
+pub type Offset = u32;
+
+pub const PAGE_SIZE: u32 = 0xffff;
+
 pub struct Function {
     pub param_types: Vec<Type>,
     pub ret_types: Vec<Type>,
@@ -53,7 +57,7 @@ impl WasmVec {
         }
     }
 
-    /// Extend the WasmVec with an iterator of bytes representing on item.
+    /// Extend the WasmVec with an iterator of bytes representing one item.
     pub fn extend_item<T: IntoIterator<Item = u8>>(&mut self, iter: T) {
         self.vec.extend(iter);
         self.size += 1;
@@ -79,5 +83,55 @@ impl std::iter::IntoIterator for WasmVec {
     fn into_iter(self) -> Self::IntoIter {
         let content_iter = self.vec.into_iter();
         to_leb(self.size).into_iter().chain(content_iter)
+    }
+}
+
+impl From<Vec<u8>> for WasmVec {
+    /// Build a WasmVec from a raw buffer of data.
+    /// Each byte is counted as one element.
+    fn from(data: Vec<u8>) -> Self {
+        Self {
+            size: data.len() as u64,
+            vec: data,
+        }
+    }
+}
+
+pub struct DataSegment {
+    mem_idx: u32,
+    offset: u32,
+    data: WasmVec,
+}
+
+impl DataSegment {
+    pub fn new(mem_idx: u32, offset: u32, data: WasmVec) -> Self {
+        Self {
+            mem_idx,
+            offset,
+            data,
+        }
+    }
+
+    pub fn encode(self) -> Vec<u8> {
+        let mut data_segment = Vec::new();
+        // mem_idx
+        data_segment.extend(to_leb(self.mem_idx as u64));
+        // offset
+        data_segment.push(opcode::INSTR_I32_CST);
+        data_segment.extend(to_leb(self.offset as u64));
+        data_segment.push(opcode::INSTR_END);
+        // data
+        data_segment.extend(self.data);
+
+        data_segment
+    }
+}
+
+impl std::iter::IntoIterator for DataSegment {
+    type Item = u8;
+    type IntoIter = std::vec::IntoIter<u8>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.encode().into_iter()
     }
 }

@@ -1,0 +1,8 @@
+   11 |         y: 0
+                 [31m^[0m
+[31m[1mError:[0m[31m Expect closing brace '}' after struct instantiation[0m
+
+   13 | }
+        [31m^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose' or 'from ... import'.[0m
+

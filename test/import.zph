@@ -1,4 +1,4 @@
-standalone runtime package "import"
+standalone runtime package _import
 
 expose main as _start
 

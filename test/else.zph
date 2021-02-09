@@ -1,4 +1,4 @@
-standalone package "else"
+standalone package _else
 
 expose main as _start
 

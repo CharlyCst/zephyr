@@ -1,0 +1,12 @@
+standalone package too_many_fields
+
+expose main as _start
+
+struct S {
+    a: i32
+}
+
+fun main(): i32 {
+    let s = S { a: 0, b: 42, c: 14 }
+    return 0
+}

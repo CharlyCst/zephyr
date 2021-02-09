@@ -1,8 +1,8 @@
 /// The malloc package handles memory management, it exposes a malloc and free
 /// implementation.
-package "mem"
+package mem
 
-use "core/utils"
+use core.utils
 
 //////// Test ////////
 // To be removed    //

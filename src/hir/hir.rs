@@ -1,8 +1,10 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, NameId};
-use crate::driver::PackageDeclarations;
+use super::names::{AsmStatement, Data, DataId, NameId};
+use super::types::Type as NameType;
+use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 
+use std::collections::HashMap;
 use std::fmt;
 
 const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
@@ -11,19 +13,20 @@ const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
 const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
 const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
-pub use super::names::FunId;
+pub use super::names::{FunId, StructId};
 pub use crate::ast::Package;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
     Tuple(TupleType),
+    Struct(StructId),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ScalarType {
     I32,
     I64,
@@ -32,13 +35,13 @@ pub enum ScalarType {
     Bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum IntegerType {
     I32,
     I64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     I32,
     I64,
@@ -48,7 +51,7 @@ pub enum NumericType {
 
 pub type TupleType = Vec<Type>;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub ret: TupleType,
@@ -63,14 +66,39 @@ impl FunctionType {
 pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
-    pub pub_decls: PackageDeclarations,
+    pub data: HashMap<DataId, Data>,
+    pub structs: HashMap<StructId, Struct>,
+    pub pub_decls: ModuleDeclarations,
     pub package: Package,
+}
+
+impl Program {
+    /// Merge external HIR declaration into this program, this is used typically to collect all
+    /// declarations before building the MIR.
+    pub fn merge(&mut self, other: Self) {
+        self.funs.extend(other.funs);
+        self.imports.extend(other.imports);
+        self.structs.extend(other.structs);
+    }
 }
 
 pub struct Imports {
     pub from: String,
     pub prototypes: Vec<FunctionPrototype>,
     pub loc: Location,
+}
+
+// TODO: switch from Imports to Import, the prototypes should be stored with functions using
+// `FunKind`.
+pub struct Import {
+    pub from: String,
+    pub prototypes: Vec<FunId>,
+    pub loc: Location,
+}
+
+pub enum FunKind {
+    Fun(Function),
+    Extern(FunctionPrototype),
 }
 
 pub struct Function {
@@ -94,6 +122,22 @@ pub struct FunctionPrototype {
     pub fun_id: FunId,
 }
 
+#[derive(Clone)]
+pub struct Struct {
+    pub ident: String,
+    pub s_id: StructId,
+    pub fields: HashMap<String, StructField>,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+#[derive(Clone)]
+pub struct StructField {
+    pub is_pub: bool,
+    pub t: Type,
+    pub loc: Location,
+}
+
 pub struct LocalVariable {
     pub id: LocalId,
     pub t: Type,
@@ -110,24 +154,22 @@ pub struct Block {
 }
 
 pub enum Statement {
-    ExprStmt {
-        expr: Box<Expression>,
-    },
+    ExprStmt(Expression),
     LetStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        var: Variable,
+        expr: Expression,
     },
     AssignStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        target: PlaceExpression,
+        expr: Expression,
     },
     IfStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
         else_block: Option<Block>,
     },
     WhileStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
     },
     ReturnStmt {
@@ -143,13 +185,10 @@ pub struct Variable {
     pub t: Type,
 }
 
+/// An expression that produces a value.
 pub enum Expression {
-    Variable {
-        var: Variable,
-    },
-    Literal {
-        value: Value,
-    },
+    Variable(Variable),
+    Literal(Value),
     Binary {
         expr_left: Box<Expression>,
         binop: Binop,
@@ -171,6 +210,29 @@ pub enum Expression {
         fun: Box<Expression>,
         args: Vec<Expression>,
         t: FunctionType,
+        loc: Location,
+    },
+    Access {
+        expr: Box<Expression>,
+        field: String,
+        struct_id: StructId,
+        t: Type,
+        loc: Location,
+    },
+    Nop {
+        loc: Location,
+    },
+}
+
+/// An expression that produces a place, that is a slot in which a value can be stored (memory
+/// address, variable index and so on).
+pub enum PlaceExpression {
+    Variable(Variable),
+    Access {
+        expr: Box<Expression>,
+        field: String,
+        struct_id: StructId,
+        t: Type,
         loc: Location,
     },
 }
@@ -213,6 +275,18 @@ pub enum Value {
     F32(f32, Location),
     F64(f64, Location),
     Bool(bool, Location),
+    Struct {
+        struct_id: StructId,
+        fields: Vec<FieldValue>,
+        loc: Location,
+    },
+    DataPointer(DataId, Location), // A pointer to a memory location
+}
+
+pub struct FieldValue {
+    pub ident: String,
+    pub expr: Box<Expression>,
+    pub loc: Location,
 }
 
 /// The available unary operations, type represents operant type.
@@ -263,21 +337,45 @@ pub enum Memory {
     F64Store { align: u32, offset: u32 },
 }
 
+/// Lift an HIR type into a name type.
+pub fn lift_t(t: &Type) -> NameType {
+    match t {
+        Type::Scalar(x) => match x {
+            ScalarType::I32 => NameType::I32,
+            ScalarType::I64 => NameType::I64,
+            ScalarType::F32 => NameType::F32,
+            ScalarType::F64 => NameType::F64,
+            ScalarType::Bool => NameType::Bool,
+        },
+        Type::Struct(s_id) => NameType::Struct(*s_id),
+        Type::Tuple(_) => todo!(), // Tuples are not yet supported
+        Type::Fun(fun) => {
+            let params = fun.params.iter().map(|p| lift_t(p)).collect();
+            let ret = fun.ret.iter().map(|r| lift_t(r)).collect();
+            NameType::Fun(params, ret)
+        }
+    }
+}
+
 impl Expression {
     pub fn get_loc(&self) -> Location {
         match self {
-            Expression::Variable { var } => var.loc,
-            Expression::Literal { value } => match value {
+            Expression::Variable(var) => var.loc,
+            Expression::Literal(value) => match value {
                 Value::F64(_, loc) => *loc,
                 Value::F32(_, loc) => *loc,
                 Value::I64(_, loc) => *loc,
                 Value::I32(_, loc) => *loc,
                 Value::Bool(_, loc) => *loc,
+                Value::Struct { loc, .. } => *loc,
+                Value::DataPointer(_, loc) => *loc,
             },
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,
             Expression::CallIndirect { loc, .. } => *loc,
+            Expression::Access { loc, .. } => *loc,
+            Expression::Nop { loc } => *loc,
         }
     }
 }
@@ -339,6 +437,7 @@ impl fmt::Display for Type {
         match self {
             Type::Scalar(t) => write!(f, "{}", t),
             Type::Fun(t) => write!(f, "{}", t),
+            Type::Struct(s_id) => write!(f, "struct #{}", s_id),
             Type::Tuple(t) => write!(
                 f,
                 "({})",
@@ -475,8 +574,8 @@ impl fmt::Display for Block {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Variable { var: v, .. } => write!(f, "{}", v.ident),
-            Expression::Literal { value: v } => write!(f, "{}", v),
+            Expression::Variable(v) => write!(f, "{}", v.ident),
+            Expression::Literal(v) => write!(f, "{}", v),
             Expression::CallDirect { fun_id, args, .. } => write!(
                 f,
                 "(fun {})({})",
@@ -505,6 +604,17 @@ impl fmt::Display for Expression {
                 expr_right,
                 ..
             } => write!(f, "({} {} {})", expr_left, binop, expr_right),
+            Expression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+            Expression::Nop { .. } => write!(f, "nop"),
+        }
+    }
+}
+
+impl fmt::Display for PlaceExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PlaceExpression::Variable(v) => write!(f, "{}", v.ident),
+            PlaceExpression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
         }
     }
 }
@@ -512,9 +622,9 @@ impl fmt::Display for Expression {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::ExprStmt { expr } => write!(f, "{};", expr),
+            Statement::ExprStmt ( expr ) => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
-            Statement::AssignStmt { var, expr } => write!(f, "{} = {};", var.ident, expr),
+            Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
                 expr,
                 block,
@@ -558,6 +668,19 @@ impl fmt::Display for Value {
                     write!(f, "false")
                 }
             }
+            Value::DataPointer(data_id, _) => write!(f, "data #{}", data_id),
+            Value::Struct {
+                struct_id, fields, ..
+            } => write!(
+                f,
+                "struct #{} {{ {} }}",
+                struct_id,
+                fields
+                    .iter()
+                    .map(|f| f.ident.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", ")
+            ),
         }
     }
 }

@@ -1,7 +1,0 @@
-standalone runtime package "runtime_a"
-
-from test import {}
-
-fun main(): i32 {
-    return 42
-}

@@ -1,0 +1,17 @@
+standalone package _struct
+
+expose main as _start
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fun main(): i32 {
+    let coordinates = Point { x: 40, y: 2 }
+	return manhattan_distance(coordinates)
+}
+
+fun manhattan_distance(p: Point): i32 {
+    return p.x + p.y
+}

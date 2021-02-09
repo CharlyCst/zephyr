@@ -1,9 +1,12 @@
 use super::names;
+use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 use crate::hir::Package;
-use crate::driver::PackageDeclarations;
 
+use std::collections::HashMap;
 use std::fmt;
+
+pub use names::{DataId, StructId};
 
 pub mod id {
     pub const _T_ID_BUG: usize = 0;
@@ -12,9 +15,10 @@ pub mod id {
     pub const T_ID_FLOAT: usize = 3;
     pub const T_ID_NUMERIC: usize = 4;
     pub const T_ID_BASIC: usize = 5;
+    pub const T_ID_UNIT: usize = 6;
 }
 // Please update this const when adding/removing default T_ID
-const NB_DEFAULT_T_ID: usize = 6;
+const NB_DEFAULT_T_ID: usize = 7;
 
 pub type TypeId = usize;
 
@@ -29,23 +33,34 @@ pub enum Type {
     Unit,
     Bug, // Used to signal that an error occurred somewhere
     Fun(Vec<Type>, Vec<Type>),
+    Struct(names::StructId),
 }
 
 pub struct TypedProgram {
     pub funs: Vec<names::Function>,
     pub imports: Vec<names::Imports>,
+    pub data: HashMap<DataId, names::Data>,
+    pub structs: HashMap<StructId, names::Struct>,
     pub names: names::NameStore,
     pub types: TypeStore,
-    pub pub_decls: PackageDeclarations,
+    pub pub_decls: ModuleDeclarations,
     pub package: Package,
 }
 
 pub enum TypeConstraint {
     Arguments(Vec<TypeId>, TypeId, Vec<Location>, Location), // Arguments(args_types, fun_type, args_loc, call_loc)
     Equality(TypeId, TypeId, Location),
-    Included(TypeId, TypeId, Location), // Included(t_1, t_2) <=> t_1 ⊂ y_2
-    Return(TypeId, TypeId, Location),   // Return(fun_type, returned_type)
+    Field(TypeId, TypeId, String, Location), // a: t_1, b: t_2 => a.b: t_2
+    Included(TypeId, TypeId, Location),      // Included(t_1, t_2) <=> t_1 ⊂ y_2
+    Return(TypeId, TypeId, Location),        // Return(fun_type, returned_type)
+    StructLiteral {
+        struct_t_id: TypeId,
+        fields: Vec<FieldContstraint>, // ident, t_id, loc
+        loc: Location,
+    },
 }
+
+pub type FieldContstraint = (String, TypeId, Location);
 
 pub struct ConstraintStore {
     constraints: Vec<TypeConstraint>,
@@ -67,7 +82,7 @@ impl ConstraintStore {
 }
 
 pub struct TypeStore {
-    types: Vec<Type>,
+    types: Vec<Type>, // We may want to switch to a HashMap to get globally unique t_id
 }
 
 impl TypeStore {
@@ -78,7 +93,7 @@ impl TypeStore {
             types.push(Type::Bug)
         }
         types[id::T_ID_BOOL] = Type::Bool; // This one is actually used as a result value
-        TypeStore { types: types }
+        TypeStore { types }
     }
 
     pub fn get(&self, id: TypeId) -> &Type {
@@ -124,6 +139,7 @@ impl TypeVarStore {
             Location::dummy(),
             vec![Type::Bool, Type::F32, Type::F64, Type::I32, Type::I64],
         );
+        store.fresh(Location::dummy(), vec![Type::Unit]);
 
         store
     }
@@ -140,7 +156,7 @@ impl TypeVarStore {
         candidate.sort_unstable(); // Ensure sorted elements
         let id = self.types.len();
         self.types.push(TypeVariable {
-            loc: loc,
+            loc,
             types: candidate,
         });
         id
@@ -171,6 +187,16 @@ impl<'a> IntoIterator for &'a ConstraintStore {
     }
 }
 
+impl IntoIterator for ConstraintStore {
+    type Item = TypeConstraint;
+    type IntoIter = std::vec::IntoIter<TypeConstraint>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let c = self.constraints;
+        c.into_iter()
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -195,6 +221,7 @@ impl fmt::Display for Type {
                     .join(", ");
                 write!(f, "fun({}) {}", p_types, r_types)
             }
+            Type::Struct(id) => write!(f, "struct #{}", id),
         }
     }
 }
@@ -252,7 +279,19 @@ impl fmt::Display for ConstraintStore {
                         .map(|a| format!("{}", a))
                         .collect::<Vec<String>>()
                         .join(", ");
-                    store.push_str(&format!("  {:>4} λ {}\n", fun_t, args))
+                    store.push_str(&format!("  {:>4} λ. {:>3}\n", fun_t, args))
+                }
+                TypeConstraint::Field(obj_t, field_t, ref field, _) => {
+                    store.push_str(&format!("  {:>4} .{} {:>3}\n", obj_t, field, field_t))
+                }
+                TypeConstraint::StructLiteral {
+                    struct_t_id,
+                    fields,
+                    ..
+                } => {
+                    for (ref field, t_id, _) in fields {
+                        store.push_str(&format!("  {:>4} .{} {:>3}\n", struct_t_id, field, t_id))
+                    }
                 }
             };
         }

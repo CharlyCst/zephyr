@@ -1,0 +1,9 @@
+standalone package str_escape
+
+expose main as _start
+
+fun main(): i32 {
+    // All the 6 characters should be escaped.
+    let s = "\"\\\n\r\t\0"
+    return 36 + s.len
+}

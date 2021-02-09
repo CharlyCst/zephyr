@@ -1,0 +1,4 @@
+    6 |     if S { x: 0 } == 0 {
+                    [31m^[0m
+[31m[1mError:[0m[31m Expect statement ender, try to add a line break[0m
+

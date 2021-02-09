@@ -35,6 +35,7 @@ impl<'a> Scanner<'a> {
             (String::from("return"), TokenType::Return),
             (String::from("runtime"), TokenType::Runtime),
             (String::from("standalone"), TokenType::Standalone),
+            (String::from("struct"), TokenType::Struct),
             (String::from("true"), TokenType::True),
             (String::from("use"), TokenType::Use),
             (String::from("var"), TokenType::Var),
@@ -215,10 +216,24 @@ impl<'a> Scanner<'a> {
         tokens.push(token);
     }
 
+    /// Get the location from the beginning of the token up to the current position.
     fn get_loc(&self) -> Location {
         Location {
             pos: self.start as u32,
             len: (self.current - self.start) as u32,
+            f_id: self.f_id,
+        }
+    }
+
+    /// Get the location of a previous groups of character.
+    ///
+    /// params:
+    ///  - back: how many character since the start of the location.
+    ///  - len: the number of characters after the start of the location.
+    fn get_previous_loc(&self, back: u32, len: u32) -> Location {
+        Location {
+            pos: (self.current as u32).checked_sub(back).unwrap(),
+            len,
             f_id: self.f_id,
         }
     }
@@ -295,23 +310,36 @@ impl<'a> Scanner<'a> {
 
     /// Consumes any (non carriage-return) characters between double quotes
     fn string(&mut self, tokens: &mut Vec<Token>) {
+        let mut str_val = String::new();
         // Consume until the next char is a double quote
-        while !self.is_at_end() && self.peek() != '"' {
-            let c = self.advance();
-            // Exit if the double quote is not found on this line
-            if c == '\n' {
-                self.err.report(
-                    self.get_loc(),
-                    String::from("string literal should start and end on the same line"),
-                );
+        while !self.is_at_end() {
+            match self.advance() {
+                '\\' => match self.advance() {
+                    '\\' => str_val.push('\\'),
+                    'n' => str_val.push('\n'),
+                    'r' => str_val.push('\r'),
+                    't' => str_val.push('\t'),
+                    '0' => str_val.push('\0'),
+                    '"' => str_val.push('"'),
+                    c => {
+                        let loc = self.get_previous_loc(2, 2);
+                        self.err
+                            .warn(loc, format!("Invalid escape sequence: '\\{}'", c));
+                        str_val.push(c);
+                    }
+                },
+                '"' => break, // End of string
+                '\n' => {
+                    // Exit if the double quote is not found on this line
+                    self.err.report(
+                        self.get_loc(),
+                        String::from("string literal should start and end on the same line"),
+                    );
+                    break;
+                }
+                c => str_val.push(c),
             }
         }
-        // Advance to consume the ending double quote
-        self.advance();
-        let str_val = self.code[self.start + 1..self.current - 1]
-            .iter()
-            .cloned()
-            .collect::<String>();
         self.add_token(tokens, TokenType::StringLit(str_val));
     }
 

@@ -1,0 +1,15 @@
+standalone package struct_assign
+
+expose main as _start
+
+struct Point {
+    x: i32
+    y: i32
+}
+
+fun main(): i32 {
+    let coordinates = Point { x: 40, y: 0 }
+    coordinates.x = 42
+	return coordinates.x
+}
+

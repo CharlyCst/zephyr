@@ -64,6 +64,7 @@ impl<'a> Parser<'a> {
             package,
             exposed,
             funs,
+            structs: vec![],
             imports: vec![],
             used: vec![],
         }
@@ -159,11 +160,11 @@ impl<'a> Parser<'a> {
         let token = self.advance();
         let loc = token.loc;
         let name = match token.t {
-            TokenType::StringLit(ref s) => s.clone(),
+            TokenType::Identifier(ref s) => s.clone(),
             _ => {
                 self.err.report(
                     loc,
-                    String::from("Expected a string after 'package' declaration."),
+                    String::from("Expected a name after 'package' declaration."),
                 );
                 return Err(());
             }
@@ -337,7 +338,11 @@ impl<'a> Parser<'a> {
 
             params.push(ast::Parameter {
                 ident,
-                t,
+                t: ast::Path {
+                    root: t,
+                    path: vec![],
+                    loc,
+                },
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {

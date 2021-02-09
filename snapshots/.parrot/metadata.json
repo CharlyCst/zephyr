@@ -104,8 +104,8 @@
       "tags": [
         "driver"
       ],
-      "exit_code": 64,
-      "stdout": "circular_import.out",
+      "exit_code": 65,
+      "stdout": "circular-import.out",
       "stderr": null
     },
     {
@@ -120,18 +120,6 @@
       "stderr": null
     },
     {
-      "cmd": "../target/debug/zephyr multiple_runtimes",
-      "name": "multiple-runtimes",
-      "description": "There can be at most one runtime, the driver should rise an error otherwise.\n#driver #runtime",
-      "tags": [
-        "driver",
-        "runtime"
-      ],
-      "exit_code": 0,
-      "stdout": "multiple-runtimes.out",
-      "stderr": null
-    },
-    {
       "cmd": "../target/debug/zephyr unauthorized_import.zph",
       "name": "unauthorized-import",
       "description": "Imports are only allowed in 'runtime' packages, the compiler should rise and error if another kind of package defines an import.\n#resolver #import #runtime",
@@ -142,6 +130,73 @@
       ],
       "exit_code": 65,
       "stdout": "unauthorized-import.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr struct_in_if.zph",
+      "name": "struct-in-if",
+      "description": "A struct literal expression inside an 'if' statement causes an ambiguity, and thus has been disallowed.\nThe final user may encounter this error from time to time, it is thus of great importance to output a precise error message explaining the situation. To fix is to put parenthesis around the struct literal.\n#grammar #parser",
+      "tags": [
+        "grammar",
+        "parser"
+      ],
+      "exit_code": 65,
+      "stdout": "struct-in-if.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr missing_fields.zph",
+      "name": "missing-fields",
+      "description": "When instantiating a struct with fewer fields than needed, an error message should indicate the missing fields.\n#typing",
+      "tags": [
+        "typing"
+      ],
+      "exit_code": 65,
+      "stdout": "missing-fields.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr too_many_fields.zph",
+      "name": "too-many-fields",
+      "description": "When instantiating a struct with fields that does not exist, the compiler should indicate which fields should be removed.\n#typing",
+      "tags": [
+        "typing"
+      ],
+      "exit_code": 65,
+      "stdout": "too-many-fields.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr --check equal_typing_rules.zph",
+      "name": "check",
+      "description": "The '--check' argument can be used to type-check a program.",
+      "tags": [],
+      "exit_code": 65,
+      "stdout": "check.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr incomplete_struct_field.zph",
+      "name": "incomplete_struct_field",
+      "description": "Should raise an explicit error when an expression is missing after a field's colon \":\".\n#struct #error",
+      "tags": [
+        "struct",
+        "error"
+      ],
+      "exit_code": 65,
+      "stdout": "incomplete_struct_field.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr escape_char.zph -o a.wasm",
+      "name": "escape_characters",
+      "description": "If an invalid escape sequence is found an warning should be raised explaining that the sequence is not valid.\n#scan #str",
+      "tags": [
+        "scan",
+        "str"
+      ],
+      "exit_code": 0,
+      "stdout": "escape_characters.out",
       "stderr": null
     }
   ]

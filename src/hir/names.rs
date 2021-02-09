@@ -1,22 +1,44 @@
 use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
 use crate::ast::{BinaryOperator, Package, UnaryOperator};
+use crate::ctx::ModId;
 use crate::error::Location;
 use crate::mir::Value as MirValue;
+use std::collections::HashMap;
 use std::fmt;
 
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
 pub type NameId = usize;
 pub type FunId = u64;
+pub type StructId = u64;
+pub type DataId = u64;
+pub type TypeNamespace = HashMap<StructId, Struct>;
 
-/// A type program, ready to be converted to MIR.
+/// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
+    pub data: HashMap<DataId, Data>,
+    pub structs: HashMap<StructId, Struct>,
     pub names: NameStore,
     pub types: TypeVarStore,
     pub constraints: ConstraintStore,
     pub package: Package,
+}
+
+/// All the kind of values that can be found in the Value Namespace.
+pub enum ValueKind {
+    Function(FunId, NameId),
+    Module(ModId),
+}
+
+/// All the kind of types that can be found in the Type Namespace.
+pub enum TypeKind {
+    Struct(StructId),
+}
+
+pub enum Data {
+    Str(DataId, Vec<u8>),
 }
 
 pub struct Imports {
@@ -46,9 +68,29 @@ pub struct FunctionPrototype {
     pub loc: Location,
 }
 
+pub struct Struct {
+    pub ident: String,
+    pub s_id: StructId,
+    pub fields: HashMap<String, StructField>,
+    pub is_pub: bool,
+    pub loc: Location,
+}
+
+pub struct StructField {
+    pub is_pub: bool,
+    pub t: Type,
+    pub loc: Location,
+}
+
 #[derive(Clone)]
-pub enum Declaration {
+pub enum ValueDeclaration {
     Function { t: Type, fun_id: FunId },
+    Module(ModId),
+}
+
+#[derive(Clone)]
+pub enum TypeDeclaration {
+    Struct(StructId),
 }
 
 pub enum Body {
@@ -61,24 +103,22 @@ pub struct Block {
 }
 
 pub enum Statement {
-    ExprStmt {
-        expr: Box<Expression>,
-    },
+    ExprStmt(Expression),
     LetStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        var: Variable,
+        expr: Expression,
     },
     AssignStmt {
-        var: Box<Variable>,
-        expr: Box<Expression>,
+        target: Expression,
+        expr: Expression,
     },
     IfStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
         else_block: Option<Block>,
     },
     WhileStmt {
-        expr: Box<Expression>,
+        expr: Expression,
         block: Block,
     },
     ReturnStmt {
@@ -109,17 +149,43 @@ pub enum Value {
         loc: Location,
         t_id: TypeId,
     },
+    Str {
+        data_id: DataId,
+        len: u64,
+        loc: Location,
+        t_id: TypeId,
+    },
+    Struct {
+        ident: String,
+        loc: Location,
+        fields: Vec<FieldValue>,
+        t_id: TypeId,
+    },
+}
+
+pub struct FieldValue {
+    pub ident: String,
+    pub expr: Box<Expression>,
+    pub loc: Location,
+    pub t_id: TypeId,
 }
 
 pub enum Expression {
-    Variable {
-        var: Variable,
-    },
-    Literal {
-        value: Value,
-    },
+    Variable(Variable),
+    Literal(Value),
     Function {
         fun_id: FunId,
+        loc: Location,
+    },
+    Access {
+        expr: Box<Expression>,
+        field: String,
+        t_id: TypeId,
+        struct_t_id: TypeId,
+        loc: Location,
+    },
+    Namespace {
+        mod_id: ModId,
         loc: Location,
     },
     Binary {
@@ -155,13 +221,17 @@ pub enum Expression {
 impl Expression {
     pub fn get_loc(&self) -> Location {
         match self {
-            Expression::Variable { var } => var.loc,
-            Expression::Literal { value } => match value {
+            Expression::Variable(var) => var.loc,
+            Expression::Literal(value) => match value {
                 Value::Boolean { loc, .. } => *loc,
                 Value::Integer { loc, .. } => *loc,
                 Value::Float { loc, .. } => *loc,
+                Value::Str { loc, .. } => *loc,
+                Value::Struct { loc, .. } => *loc,
             },
             Expression::Function { loc, .. } => *loc,
+            Expression::Access { loc, .. } => *loc,
+            Expression::Namespace { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,

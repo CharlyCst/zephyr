@@ -38,6 +38,7 @@ pub fn opcode_to_asm(
                 loc,
             })
         }
+        // Constants
         Opcode::I32Const => Ok(AsmStatement::Const {
             val: mir::Value::I32(integer(args, "i32.const", loc)? as i32),
             loc,
@@ -46,6 +47,7 @@ pub fn opcode_to_asm(
             val: mir::Value::I64(integer(args, "i64.const", loc)?),
             loc,
         }),
+        // Locals
         Opcode::LocalGet => {
             let (ident, arg_loc) = identifier(args, "local.get", loc)?;
             Ok(AsmStatement::Local {
@@ -66,6 +68,7 @@ pub fn opcode_to_asm(
                 loc: loc.merge(arg_loc),
             })
         }
+        // Memory
         Opcode::MemorySize => Ok(AsmStatement::Memory {
             mem: AsmMemory::Size,
             loc,
@@ -74,17 +77,11 @@ pub fn opcode_to_asm(
             mem: AsmMemory::Grow,
             loc,
         }),
+        // Loads
         Opcode::I32Load => {
             let (align, offset) = memarg(args, "i32.load", loc)?;
             Ok(AsmStatement::Memory {
                 mem: AsmMemory::I32Load { align, offset },
-                loc,
-            })
-        }
-        Opcode::I32Store => {
-            let (align, offset) = memarg(args, "i32.store", loc)?;
-            Ok(AsmStatement::Memory {
-                mem: AsmMemory::I32Store { align, offset },
                 loc,
             })
         }
@@ -95,24 +92,10 @@ pub fn opcode_to_asm(
                 loc,
             })
         }
-        Opcode::I64Store => {
-            let (align, offset) = memarg(args, "i64.store", loc)?;
-            Ok(AsmStatement::Memory {
-                mem: AsmMemory::I64Store { align, offset },
-                loc,
-            })
-        }
         Opcode::F32Load => {
             let (align, offset) = memarg(args, "f32.load", loc)?;
             Ok(AsmStatement::Memory {
                 mem: AsmMemory::F32Load { align, offset },
-                loc,
-            })
-        }
-        Opcode::F32Store => {
-            let (align, offset) = memarg(args, "f32.store", loc)?;
-            Ok(AsmStatement::Memory {
-                mem: AsmMemory::F32Store { align, offset },
                 loc,
             })
         }
@@ -123,10 +106,46 @@ pub fn opcode_to_asm(
                 loc,
             })
         }
+        Opcode::I32Load8u => {
+            let (align, offset) = memarg(args, "i32.load8_u", loc)?;
+            Ok(AsmStatement::Memory {
+                mem: AsmMemory::I32Load8u { align, offset },
+                loc,
+            })
+        }
+        // Stores
+        Opcode::I32Store => {
+            let (align, offset) = memarg(args, "i32.store", loc)?;
+            Ok(AsmStatement::Memory {
+                mem: AsmMemory::I32Store { align, offset },
+                loc,
+            })
+        }
+        Opcode::I64Store => {
+            let (align, offset) = memarg(args, "i64.store", loc)?;
+            Ok(AsmStatement::Memory {
+                mem: AsmMemory::I64Store { align, offset },
+                loc,
+            })
+        }
+        Opcode::F32Store => {
+            let (align, offset) = memarg(args, "f32.store", loc)?;
+            Ok(AsmStatement::Memory {
+                mem: AsmMemory::F32Store { align, offset },
+                loc,
+            })
+        }
         Opcode::F64Store => {
             let (align, offset) = memarg(args, "f64.store", loc)?;
             Ok(AsmStatement::Memory {
                 mem: AsmMemory::F64Store { align, offset },
+                loc,
+            })
+        }
+        Opcode::I32Store8 => {
+            let (align, offset) = memarg(args, "i32.store8", loc)?;
+            Ok(AsmStatement::Memory {
+                mem: AsmMemory::I32Store8 { align, offset },
                 loc,
             })
         }

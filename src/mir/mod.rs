@@ -1,6 +1,5 @@
-use crate::cli::Config;
+use crate::ctx::{Ctx, KnownFunctions};
 use crate::error::ErrorHandler;
-use crate::hir::Program as HirProgram;
 
 pub use mir::*;
 
@@ -9,19 +8,20 @@ mod mir;
 
 pub use mir::Program;
 
-pub fn to_mir<'a>(
-    hir_program: HirProgram,
+pub fn to_mir(
+    ctx: &Ctx,
+    known_funs: &KnownFunctions,
     error_handler: &mut ErrorHandler,
-    config: &Config,
+    verbose: bool,
 ) -> mir::Program {
-    if config.verbose {
+    if verbose {
         println!("\n/// MIR Production ///\n");
     }
 
     let mut mir_producer = hir_to_mir::MIRProducer::new(error_handler);
-    let mir = mir_producer.reduce(hir_program);
+    let mir = mir_producer.reduce(ctx, known_funs);
 
-    if config.verbose {
+    if verbose {
         println!("{}", mir);
     }
 

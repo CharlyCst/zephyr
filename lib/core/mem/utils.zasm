@@ -1,4 +1,4 @@
-package "mem"
+package mem
 
 /// Increases the memory size by a given number of pages and return the old
 /// memory size, or -1 if the operation failed.
@@ -20,9 +20,21 @@ pub fun read_i32(addr: i32): i32 {
     i32.load 2 0
 }
 
+/// Reads an u8 from memory, returned as an i32.
+pub fun read_u8(addr: i32): i32 {
+    local.get addr
+    i32.load8_u 0 0
+}
+
 /// Set an i32 at the given memory address, expects an alignment of 32 at least.
 pub fun set_i32(addr: i32, val: i32) {
     local.get addr
     local.get val
     i32.store 2 0
+}
+
+pub fun set_u8(addr: i32, val: i32) {
+    local.get addr
+    local.get val
+    i32.store8 0 0
 }

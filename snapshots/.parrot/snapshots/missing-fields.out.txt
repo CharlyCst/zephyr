@@ -1,0 +1,4 @@
+   12 |     let s = S { b: 42 }
+                    [31m^^^^^^^^^^^[0m
+[31m[1mError:[0m[31m Missing fields: 'a', 'c'[0m
+
