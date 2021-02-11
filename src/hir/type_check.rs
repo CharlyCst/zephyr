@@ -1,14 +1,14 @@
-use super::hir::lift_t;
 use super::names::{
-    Function, Imports, NameStore, ResolvedProgram, StructId, TypeDeclaration, TypeNamespace,
-    ValueDeclaration,
+    Function, Imports, ResolvedProgram, StructStore, TypeDeclaration, ValueDeclaration,
 };
+use super::store::StructId;
+use super::types;
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{
-    ConstraintStore, FieldContstraint, Type, TypeConstraint, TypeId, TypeStore, TypeVarStore,
-    TypedProgram,
+    ConstraintStore, FieldContstraint, FunctionType, Type, TypeConstraint, TypeVarTypes, TypeVarId,
+    TypeVarStore, TypedProgram,
 };
-use crate::ctx::{Ctx, ModuleDeclarations, ModId};
+use crate::ctx::{Ctx, ModId, ModuleDeclarations};
 use crate::error::{ErrorHandler, Location};
 
 use std::cmp::Ordering;
@@ -34,7 +34,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Type check a ResolvedProgram.
     pub fn check(&mut self, prog: ResolvedProgram) -> TypedProgram {
-        let mut type_vars = prog.types;
+        let mut type_vars = prog.type_vars;
         let mut constraints = prog.constraints;
         let mut progress = true;
 
@@ -57,34 +57,34 @@ impl<'a> TypeChecker<'a> {
         let store = self.build_store(&type_vars);
         let pub_decls = self.get_pub_decls(
             prog.package.id,
-            &store,
-            &prog.names,
             &prog.funs,
             &prog.imports,
             &prog.structs,
         );
 
         TypedProgram {
+            pub_decls,
             funs: prog.funs,
             imports: prog.imports,
             structs: prog.structs,
             data: prog.data,
             names: prog.names,
-            types: store,
-            pub_decls,
+            types: prog.types,
+            type_vars: store,
+            fun_types: prog.fun_types,
             package: prog.package,
         }
     }
 
     /// Build a `TypeStore` from a `TypeVarStore`, should be called once constraints have been
     /// satisfyied.
-    fn build_store(&mut self, var_store: &TypeVarStore) -> TypeStore {
+    fn build_store(&mut self, var_store: &TypeVarStore) -> TypeVarTypes {
         let integers = var_store.get(T_ID_INTEGER);
         let floats = var_store.get(T_ID_FLOAT);
-        let mut store = TypeStore::new();
-        for var in var_store {
+        let mut store = TypeVarTypes::new();
+        for (var, var_id) in var_store {
             if var.types.len() == 1 {
-                store.put(var.types[0].clone())
+                store.insert(var_id, var.types[0].clone());
             } else if var.types.len() == 0 {
                 // TODO: add location
                 self.err.report(
@@ -94,9 +94,9 @@ impl<'a> TypeChecker<'a> {
             } else {
                 // Choose arbitrary type if applicable
                 if var.types == integers.types {
-                    store.put(Type::I64);
+                    store.insert(var_id, types::I64);
                 } else if var.types == floats.types {
-                    store.put(Type::F64);
+                    store.insert(var_id, types::F64);
                 } else {
                     // TODO: improve error handling...
                     self.err
@@ -113,46 +113,34 @@ impl<'a> TypeChecker<'a> {
     fn get_pub_decls(
         &mut self,
         mod_id: ModId,
-        types: &TypeStore,
-        names: &NameStore,
         funs: &Vec<Function>,
         imports: &Vec<Imports>,
-        type_namespace: &TypeNamespace,
+        type_namespace: &StructStore,
     ) -> ModuleDeclarations {
         let mut pub_decls = ModuleDeclarations::new(mod_id);
+        // Functions
         for fun in funs {
             if fun.is_pub {
-                let name = names.get(fun.n_id);
-                let t = types.get(name.t_id);
-                pub_decls.val_decls.insert(
-                    fun.ident.clone(),
-                    ValueDeclaration::Function {
-                        t: t.clone(),
-                        fun_id: fun.fun_id,
-                    },
-                );
+                pub_decls
+                    .val_decls
+                    .insert(fun.ident.clone(), ValueDeclaration::Function(fun.fun_id));
             }
         }
+        // Imports
         for import in imports {
             pub_decls.runtime_modules.insert(import.from.clone());
             for fun in &import.prototypes {
-                let name = names.get(fun.n_id);
-                let t = types.get(name.t_id);
-                pub_decls.val_decls.insert(
-                    fun.ident.clone(),
-                    ValueDeclaration::Function {
-                        t: t.clone(),
-                        fun_id: fun.fun_id,
-                    },
-                );
+                pub_decls
+                    .val_decls
+                    .insert(fun.ident.clone(), ValueDeclaration::Function(fun.fun_id));
             }
         }
-        for (t_id, t) in type_namespace {
+        // Types
+        for (t_id, t) in type_namespace.iter() {
             if t.is_pub {
-                pub_decls.type_decls.insert(
-                    t.ident.clone(),
-                    TypeDeclaration::Struct(*t_id),
-                );
+                pub_decls
+                    .type_decls
+                    .insert(t.ident.clone(), TypeDeclaration::Struct(*t_id));
             }
         }
 
@@ -166,36 +154,70 @@ impl<'a> TypeChecker<'a> {
         constr: TypeConstraint,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-        types: &TypeNamespace,
+        structs: &StructStore,
     ) -> Result<Progress, ()> {
         match constr {
+            TypeConstraint::Is(t_id, ref t, loc) => {
+                self.constr_is(t_id, t, loc, store)
+            }
             TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
                 self.constr_equality(t_id_1, t_id_2, loc, store, constraints)
             }
             TypeConstraint::Included(t_id_1, t_id_2, loc) => {
                 self.constr_included(t_id_1, t_id_2, loc, store, constraints)
             }
-            TypeConstraint::Return(t_id_fun, t_id, loc) => {
-                self.constr_return(t_id_fun, t_id, loc, store, constraints)
-            }
-            TypeConstraint::Field(obj_t_id, field_t_id, ref field, loc) => {
-                self.constr_field(obj_t_id, field_t_id, field, loc, store, constraints, types)
-            }
-            TypeConstraint::Arguments(ref args_t_id, fun_t_id, ref locs, loc) => {
-                self.constr_arguments(&args_t_id, fun_t_id, &locs, loc, store, constraints)
-            }
+            TypeConstraint::Return {
+                fun_t_id,
+                ret_t_id,
+                loc,
+            } => self.constr_return(fun_t_id, ret_t_id, loc, store, constraints),
+            TypeConstraint::Field(obj_t_id, field_t_id, ref field, loc) => self.constr_field(
+                obj_t_id,
+                field_t_id,
+                field,
+                loc,
+                store,
+                constraints,
+                structs,
+            ),
+            TypeConstraint::Arguments {
+                ref args_t_id,
+                fun_t_id,
+                loc,
+            } => self.constr_arguments(args_t_id, fun_t_id, loc, store, constraints),
             TypeConstraint::StructLiteral {
                 struct_t_id,
                 fields,
                 loc,
-            } => self.constr_struct(struct_t_id, fields, loc, store, constraints, types),
+            } => self.constr_struct(struct_t_id, fields, loc, store, constraints, structs),
         }
+    }
+
+    fn constr_is(
+        &mut self,
+        t_id: TypeVarId,
+        t: &Type,
+        loc: Location,
+        store: &mut TypeVarStore,
+    ) -> Result<Progress, ()> {
+        let candidates = &store.get(t_id).types;
+
+        for candidate in candidates {
+            if candidate == &Type::Any || t == candidate {
+                store.replace(t_id, vec![t.clone()]);
+                return Ok(Progress::Some);
+            }
+        }
+
+        self.err
+            .report(loc, String::from("Type constraint can not be satisfied"));
+        Err(())
     }
 
     fn constr_equality(
         &mut self,
-        t_id_1: TypeId,
-        t_id_2: TypeId,
+        t_id_1: TypeVarId,
+        t_id_2: TypeVarId,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
@@ -266,8 +288,8 @@ impl<'a> TypeChecker<'a> {
 
     fn constr_included(
         &mut self,
-        t_id_1: TypeId,
-        t_id_2: TypeId,
+        t_id_1: TypeVarId,
+        t_id_2: TypeVarId,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
@@ -325,15 +347,13 @@ impl<'a> TypeChecker<'a> {
 
     fn constr_return(
         &mut self,
-        t_id_fun: TypeId,
-        t_id: TypeId,
-        _loc: Location,
+        t_id_fun: TypeVarId,
+        t_id: TypeVarId,
+        loc: Location,
         store: &mut TypeVarStore,
-        _constraints: &mut ConstraintStore,
+        constraints: &mut ConstraintStore,
     ) -> Result<Progress, ()> {
         let t_fun = store.get(t_id_fun);
-        let ts = store.get(t_id);
-
         if t_fun.types.len() != 1 {
             self.err.report_internal(
                 t_fun.loc,
@@ -343,7 +363,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         let ret_t = match &t_fun.types[0] {
-            Type::Fun(_, ret_t) => ret_t,
+            Type::Fun(FunctionType { ret, .. }) => (**ret).clone(),
             _ => {
                 self.err.report_internal(
                     t_fun.loc,
@@ -353,74 +373,44 @@ impl<'a> TypeChecker<'a> {
             }
         };
 
-        if ret_t.len() == 0 {
-            if ts.types.len() == 0 {
-                return Ok(Progress::Some);
-            } else if ts.types[0] == Type::Any {
-                // TODO: do we accept type any?
-                return Ok(Progress::Some);
-            } else {
-                self.err
-                    .report(t_fun.loc, String::from("Function returns no value"));
-                return Err(());
-            }
-        } else if ret_t.len() != 1 {
-            self.err.report_internal(
-                t_fun.loc,
-                String::from("Function returning multiple values are not yet supported"),
-            );
-            return Err(());
-        }
-
-        let ret_t = &ret_t[0];
-        for t in &ts.types {
-            if t == ret_t || *t == Type::Any {
-                let typ = vec![ret_t.clone()];
-                store.replace(t_id, typ);
-                return Ok(Progress::Some);
-            }
-        }
-
-        self.err
-            .report(ts.loc, String::from("Return value has wrong type"));
-        return Err(());
+        constraints.add(TypeConstraint::Is(t_id, ret_t, loc));
+        Ok(Progress::Some)
     }
 
     fn constr_field(
         &mut self,
-        struct_t_id: TypeId,
-        field_t_id: TypeId,
+        struct_t_id: TypeVarId,
+        field_t_id: TypeVarId,
         field: &String,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-        types: &TypeNamespace,
+        structs: &StructStore,
     ) -> Result<Progress, ()> {
         let field_t = if let Ok(t) = self.get_struct_field_t(
             struct_t_id,
             field,
             loc,
             "Can not access field of a non struct type",
-            types,
+            structs,
             store,
         ) {
             t
         } else {
             return Err(());
         };
-        let t_id = store.fresh(loc, vec![field_t]);
-        constraints.add(TypeConstraint::Equality(t_id, field_t_id, loc));
+        constraints.add(TypeConstraint::Is(field_t_id, field_t, loc));
         Ok(Progress::Some)
     }
 
     fn constr_struct(
         &mut self,
-        struct_t_id: TypeId,
+        struct_t_id: TypeVarId,
         fields: Vec<FieldContstraint>,
         loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-        types: &TypeNamespace,
+        structs: &StructStore,
     ) -> Result<Progress, ()> {
         let mut ok = true;
         let fields_len = fields.len();
@@ -432,7 +422,7 @@ impl<'a> TypeChecker<'a> {
                 field,
                 *field_loc,
                 "Can not access field of a non struct type",
-                types,
+                structs,
                 store,
             ) {
                 t
@@ -445,7 +435,7 @@ impl<'a> TypeChecker<'a> {
         }
 
         // Missing fields
-        let n_fields = self.get_struct_fields_len(struct_t_id, loc, types, store)?;
+        let n_fields = self.get_struct_fields_len(struct_t_id, loc, structs, store)?;
         if fields_len < n_fields {
             // Rare event, simple but not very efficient code
             let fields = fields
@@ -454,7 +444,7 @@ impl<'a> TypeChecker<'a> {
                 .collect::<Vec<&str>>();
             let mut missing_fields = Vec::new();
             let struc_fields = self
-                .get_struct_fields(struct_t_id, loc, types, store)
+                .get_struct_fields(struct_t_id, loc, structs, store)
                 .unwrap(); // TODO: replace by `?`
             for field in struc_fields {
                 if !fields.contains(&field.as_str()) {
@@ -478,13 +468,12 @@ impl<'a> TypeChecker<'a> {
 
     fn constr_arguments(
         &mut self,
-        args_t_id: &Vec<TypeId>,
-        fun_t_id: TypeId,
-        locs: &Vec<Location>, // Arguments location
-        loc: Location,        // Function location
+        args_t_id: &Vec<(TypeVarId, Location)>,
+        fun_t_id: TypeVarId,
+        loc: Location,
         store: &mut TypeVarStore,
         constraints: &mut ConstraintStore,
-    ) -> Result<Progress, ()>{
+    ) -> Result<Progress, ()> {
         let t_fun = store.get(fun_t_id);
 
         if t_fun.types.len() != 1 {
@@ -492,7 +481,10 @@ impl<'a> TypeChecker<'a> {
             return Err(());
         }
 
-        if let Type::Fun(ref f_args, _) = t_fun.types[0].clone() {
+        if let Type::Fun(FunctionType {
+            params: ref f_args, ..
+        }) = t_fun.types[0].clone()
+        {
             if f_args.len() != args_t_id.len() {
                 self.err.report(
                     loc,
@@ -504,21 +496,13 @@ impl<'a> TypeChecker<'a> {
                 );
                 return Err(());
             }
-            if f_args.len() != locs.len() {
-                self.err.report_internal(
-                    loc,
-                    format!("Expected {} locations but got {}", f_args.len(), locs.len()),
-                )
-            }
-            for ((f_arg, t_arg), loc) in f_args.iter().zip(args_t_id.iter()).zip(locs.iter()) {
-                let candidate = vec![f_arg.clone()];
-                let fresh_t_id = store.fresh(*loc, candidate);
-                constraints.add(TypeConstraint::Equality(*t_arg, fresh_t_id, *loc));
+            for (f_arg, (t_arg, loc)) in f_args.iter().zip(args_t_id.iter()) {
+                constraints.add(TypeConstraint::Is(*t_arg, f_arg.clone(), *loc));
             }
             Ok(Progress::Some)
         } else {
             self.err.report(loc, String::from("Call a non-function"));
-           Err(())
+            Err(())
         }
     }
 
@@ -527,15 +511,15 @@ impl<'a> TypeChecker<'a> {
     /// the type can not be infered (multiple candidates).
     fn get_struct_field_t(
         &mut self,
-        struct_t_id: TypeId,
+        struct_t_id: TypeVarId,
         field: &str,
         loc: Location,
         error: &str,
-        types: &TypeNamespace,
+        structs: &StructStore,
         store: &mut TypeVarStore,
     ) -> Result<Type, ()> {
         let s_id = self.get_struct_id_from_t_id(struct_t_id, loc, store, error)?;
-        if let Some(struc) = types.get(&s_id) {
+        if let Some(struc) = structs.get(s_id) {
             // Defined in the current package
             match struc.fields.get(field) {
                 Some(f) => Ok(f.t.clone()),
@@ -550,7 +534,7 @@ impl<'a> TypeChecker<'a> {
         } else if let Some(struc) = self.ctx.get_s(s_id) {
             // Defined in the global context
             match struc.fields.get(field) {
-                Some(f) => Ok(lift_t(&f.t)),
+                Some(f) => Ok(f.t.lift()),
                 None => {
                     self.err.report(
                         loc,
@@ -569,9 +553,9 @@ impl<'a> TypeChecker<'a> {
     /// Return the number of fields in the struct.
     fn get_struct_fields_len(
         &mut self,
-        struct_t_id: TypeId,
+        struct_t_id: TypeVarId,
         loc: Location,
-        types: &TypeNamespace,
+        structs: &StructStore,
         store: &mut TypeVarStore,
     ) -> Result<usize, ()> {
         let s_id = self.get_struct_id_from_t_id(
@@ -580,7 +564,7 @@ impl<'a> TypeChecker<'a> {
             store,
             "Could not get number of fields",
         )?;
-        if let Some(struc) = types.get(&s_id) {
+        if let Some(struc) = structs.get(s_id) {
             // Defined in the current package
             Ok(struc.fields.len())
         } else if let Some(struc) = self.ctx.get_s(s_id) {
@@ -596,9 +580,9 @@ impl<'a> TypeChecker<'a> {
     /// Return a vec of fields names for this struct.
     fn get_struct_fields(
         &mut self,
-        struct_t_id: TypeId,
+        struct_t_id: TypeVarId,
         loc: Location,
-        types: &TypeNamespace,
+        structs: &StructStore,
         store: &mut TypeVarStore,
     ) -> Result<Vec<String>, ()> {
         let s_id = self.get_struct_id_from_t_id(
@@ -607,7 +591,7 @@ impl<'a> TypeChecker<'a> {
             store,
             "Could not get number of fields",
         )?;
-        if let Some(struc) = types.get(&s_id) {
+        if let Some(struc) = structs.get(s_id) {
             // Defined in the current package
             Ok(struc
                 .fields
@@ -631,7 +615,7 @@ impl<'a> TypeChecker<'a> {
     /// Retrieve a struct_id from a type_id, raise an error if type_id does not map to a struct.
     fn get_struct_id_from_t_id(
         &mut self,
-        struct_t_id: TypeId,
+        struct_t_id: TypeVarId,
         loc: Location,
         store: &mut TypeVarStore,
         error: &str,
@@ -656,4 +640,3 @@ impl<'a> TypeChecker<'a> {
         }
     }
 }
-

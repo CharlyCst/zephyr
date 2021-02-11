@@ -4,7 +4,8 @@ pub use crate::ctx::{ModId, ModulePath};
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 
-////// Zephyr AST nodes //////
+
+// ——————————————————————————————— Zephyr AST —————————————————————————————— //
 
 /// A package type describes how the package is organised in the filesystem.
 #[derive(Clone)]
@@ -248,7 +249,7 @@ pub enum Body {
     Asm(Vec<AsmStatement>),
 }
 
-////// Zephyr ASM statements //////
+// ——————————————————————————————— Zephyr ASM —————————————————————————————— //
 
 pub enum AsmStatement {
     Local { local: AsmLocal, loc: Location },
@@ -287,7 +288,7 @@ pub enum AsmParametric {
     Drop,
 }
 
-////// Display utilities //////
+// ———————————————————————————————— Display ———————————————————————————————— //
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

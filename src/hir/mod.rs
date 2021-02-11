@@ -10,15 +10,17 @@ pub use self::names::{
 };
 pub use self::types::TypeId;
 pub use crate::ast::Package;
-pub use hir::Program;
 pub use hir::*;
 pub use names::{Data, DataId};
+pub use store::Identifier;
+pub use store::known_ids;
 
 mod asm_validate;
 mod ast_to_hir;
 mod hir;
 mod names;
 mod resolver;
+mod store;
 mod type_check;
 mod types;
 
@@ -37,7 +39,7 @@ pub fn to_hir<'a>(
         println!("\n/// Name Resolution ///\n");
 
         println!("{}\n", program.names);
-        println!("{}\n", program.types);
+        println!("{}\n", program.type_vars);
         println!("{}\n", program.constraints);
 
         println!("\n/// Type Checking ///\n");
@@ -47,7 +49,7 @@ pub fn to_hir<'a>(
     let typed_program = type_checker.check(program);
 
     if verbose {
-        println!("{}", typed_program.types);
+        println!("{}", &typed_program.type_vars);
         println!("\n/// Asm Validation ///\n");
     }
 
@@ -57,7 +59,7 @@ pub fn to_hir<'a>(
     error_handler.flush_and_exit_if_err();
 
     if verbose {
-        println!("\n/// MIR Production ///\n");
+        println!("\n/// HIR Production ///\n");
     }
 
     let mut hir_producer = ast_to_hir::HirProducer::new(error_handler);

@@ -1,4 +1,6 @@
-use super::types::{ConstraintStore, Type, TypeId, TypeVarStore};
+use super::store::Store;
+use super::types::{ConstraintStore, Type, TypeVarId, TypeVarStore};
+use crate::ast;
 use crate::ast::{BinaryOperator, Package, UnaryOperator};
 use crate::ctx::ModId;
 use crate::error::Location;
@@ -6,33 +8,37 @@ use crate::mir::Value as MirValue;
 use std::collections::HashMap;
 use std::fmt;
 
+pub use super::store::{DataId, FunId, StructId, TypeId};
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
 pub type NameId = usize;
-pub type FunId = u64;
-pub type StructId = u64;
-pub type DataId = u64;
-pub type TypeNamespace = HashMap<StructId, Struct>;
+pub type DataStore = Store<DataId, Data>;
+pub type TypeStore = Store<TypeId, Type>;
+pub type StructStore = Store<StructId, Struct>;
+pub type FunStore = Store<FunId, Function>;
 
 /// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
     pub funs: Vec<Function>,
+    pub data: DataStore,
+    pub structs: StructStore,
+    pub types: TypeStore,
+    pub fun_types: HashMap<FunId, TypeId>,
     pub imports: Vec<Imports>,
-    pub data: HashMap<DataId, Data>,
-    pub structs: HashMap<StructId, Struct>,
     pub names: NameStore,
-    pub types: TypeVarStore,
+    pub type_vars: TypeVarStore,
     pub constraints: ConstraintStore,
     pub package: Package,
 }
 
 /// All the kind of values that can be found in the Value Namespace.
 pub enum ValueKind {
-    Function(FunId, NameId),
+    Function(FunId, TypeId),
     Module(ModId),
 }
 
 /// All the kind of types that can be found in the Type Namespace.
+#[allow(dead_code)]
 pub enum TypeKind {
     Struct(StructId),
 }
@@ -55,7 +61,15 @@ pub struct Function {
     pub is_pub: bool,
     pub exposed: Option<String>,
     pub loc: Location,
-    pub n_id: NameId,
+    pub fun_id: FunId,
+}
+
+pub struct DeclaredFunction {
+    pub ident: String,
+    pub params: Vec<(ast::Parameter, Type)>,
+    pub body: ast::Body,
+    pub is_pub: bool,
+    pub loc: Location,
     pub fun_id: FunId,
 }
 
@@ -84,7 +98,7 @@ pub struct StructField {
 
 #[derive(Clone)]
 pub enum ValueDeclaration {
-    Function { t: Type, fun_id: FunId },
+    Function(FunId),
     Module(ModId),
 }
 
@@ -137,29 +151,29 @@ pub enum Value {
     Integer {
         val: u64,
         loc: Location,
-        t_id: TypeId,
+        t_id: TypeVarId,
     },
     Float {
         val: f64,
         loc: Location,
-        t_id: TypeId,
+        t_id: TypeVarId,
     },
     Boolean {
         val: bool,
         loc: Location,
-        t_id: TypeId,
+        t_id: TypeVarId,
     },
     Str {
         data_id: DataId,
         len: u64,
         loc: Location,
-        t_id: TypeId,
+        t_id: TypeVarId,
     },
     Struct {
         ident: String,
         loc: Location,
         fields: Vec<FieldValue>,
-        t_id: TypeId,
+        t_id: TypeVarId,
     },
 }
 
@@ -167,7 +181,7 @@ pub struct FieldValue {
     pub ident: String,
     pub expr: Box<Expression>,
     pub loc: Location,
-    pub t_id: TypeId,
+    pub t_id: TypeVarId,
 }
 
 pub enum Expression {
@@ -180,8 +194,8 @@ pub enum Expression {
     Access {
         expr: Box<Expression>,
         field: String,
-        t_id: TypeId,
-        struct_t_id: TypeId,
+        t_id: TypeVarId,
+        struct_t_id: TypeVarId,
         loc: Location,
     },
     Namespace {
@@ -193,28 +207,29 @@ pub enum Expression {
         binop: BinaryOperator,
         expr_right: Box<Expression>,
         loc: Location,
-        t_id: TypeId,    // Result type
-        op_t_id: TypeId, // Operands types
+        t_id: TypeVarId,    // Result type
+        op_t_id: TypeVarId, // Operands types
     },
     Unary {
         unop: UnaryOperator,
         expr: Box<Expression>,
         loc: Location,
-        op_t_id: TypeId,
+        op_t_id: TypeVarId,
     },
     CallDirect {
         fun_id: FunId,
         args: Vec<Expression>,
         loc: Location,
-        fun_t_id: TypeId,
-        ret_t_id: TypeId,
+        fun_t_id: TypeVarId,
+        ret_t_id: TypeVarId,
     },
+    #[allow(dead_code)]
     CallIndirect {
         fun: Box<Expression>,
         args: Vec<Expression>,
         loc: Location,
-        fun_t_id: TypeId,
-        ret_t_id: TypeId,
+        fun_t_id: TypeVarId,
+        ret_t_id: TypeVarId,
     },
 }
 
@@ -291,7 +306,7 @@ pub struct Name {
     pub n_id: NameId,
     pub name: String,
     pub loc: Location,
-    pub t_id: TypeId,
+    pub t_id: TypeVarId,
 }
 
 pub struct NameStore {
@@ -307,7 +322,7 @@ impl NameStore {
         &self.names[id]
     }
 
-    pub fn fresh(&mut self, name: String, loc: Location, t_id: TypeId) -> NameId {
+    pub fn fresh(&mut self, name: String, loc: Location, t_id: TypeVarId) -> NameId {
         let id = self.names.len();
         let n = Name {
             n_id: id,

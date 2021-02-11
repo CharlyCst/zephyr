@@ -188,4 +188,13 @@ name = "zephyr-lang"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "zephyr-lang-derive",
+]
+
+[[package]]
+name = "zephyr-lang-derive"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]

@@ -12,6 +12,7 @@
 use super::utils::ModulePath;
 use crate::error::ErrorHandler;
 use crate::hir::{FunId, FunKind, ScalarType, Struct, StructId, Type};
+use crate::hir::known_ids::*;
 
 const CORE: &str = "core";
 
@@ -48,14 +49,14 @@ impl KnownValues {
     pub fn uninitialized() -> Self {
         // The module ID 0 is reserved, thus a value ID of 0 will never collide.
         Self {
-            funs: KnownFunctions { malloc: 0 },
-            structs: KnownStructs { str: 0 },
+            funs: KnownFunctions { malloc: MALLOC_ID },
+            structs: KnownStructs { str: STR_ID },
         }
     }
 
     /// Check if the IDs are initialized.
     pub fn is_initialized(&self) -> bool {
-        self.funs.malloc != 0
+        self.funs.malloc != MALLOC_ID
     }
 }
 
@@ -81,7 +82,7 @@ impl KnownStructPaths {
     }
 }
 
-//////////////////////////////////// Some validation ////////////////////////////////////
+// —————————————————————————————— Validation ——————————————————————————————— //
 
 pub fn validate_malloc(fun: &FunKind, err: &mut ErrorHandler) -> Result<FunId, ()> {
     let (fun_id, loc, params, ret) = match fun {
@@ -92,7 +93,7 @@ pub fn validate_malloc(fun: &FunKind, err: &mut ErrorHandler) -> Result<FunId, (
         err.report_internal(loc, String::from("Unexpected types for malloc parameters"));
         return Err(());
     }
-    if ret != &vec![Type::Scalar(ScalarType::I32)] {
+    if ret.as_ref() != &Type::Scalar(ScalarType::I32) {
         err.report_internal(loc, String::from("Unexpected return value in malloc"));
         return Err(());
     }

@@ -135,9 +135,8 @@ impl<'a> Compiler<'a> {
             params.push(t);
         }
 
-        for ret in proto.ret_t.iter() {
-            let t = mir_t_to_wasm(*ret);
-            results.push(t);
+        for t in proto.ret_t {
+            results.push(mir_t_to_wasm(t));
         }
 
         wasm::Import {
@@ -402,6 +401,7 @@ impl<'a> Compiler<'a> {
                         code.extend(to_leb(align as u64));
                         code.extend(to_leb(offset as u64));
                     }
+                    mir::Memory::Nop => (),
                 },
             }
         }

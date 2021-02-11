@@ -9,9 +9,9 @@ use crate::hir::{
     Binop as HirBinop, Block as HirBlock, Body as HirBody, Data as HirData, Expression as Expr,
     FunKind, Function as HirFun, FunctionPrototype as HirFunProto, Import as HirImport,
     IntegerType as HirIntergerType, LocalId as HirLocalId, LocalVariable as HirLocalVariable,
-    NumericType as HirNumericType, PlaceExpression as PlaceExpr, ScalarType as HirScalarType,
-    Statement as S, Struct as HirStruct, TupleType as HirTupleType, Type as HirType,
-    Unop as HirUnop, Value as V,
+    NonNullScalarType as HirNonNullScalarType, NumericType as HirNumericType,
+    PlaceExpression as PlaceExpr, ScalarType as HirScalarType, Statement as S, Struct as HirStruct,
+    Type as HirType, Unop as HirUnop, Value as V,
 };
 
 enum FromBinop {
@@ -24,7 +24,7 @@ struct State<'a> {
     bb_id: BasicBlockId,
     local_id: LocalId,
     /// A mapping from HIR local variable ID to MIR local variable ID
-    locals: HashMap<HirLocalId, LocalId>,
+    locals: HashMap<HirLocalId, Vec<LocalId>>,
     structs: &'a HashMap<StructId, Struct>,
     funs: &'a KnownFunctions,
 }
@@ -55,19 +55,16 @@ impl<'a> State<'a> {
     }
 
     /// Returns the MIR local ID corresponding to an HIR ID, creates a fresh binding if necessary.
-    pub fn get_local_id(&mut self, id: HirLocalId) -> LocalId {
-        match self.locals.get(&id) {
-            Some(new_id) => *new_id,
-            None => self.remap_local_id(id),
-        }
+    ///
+    /// ! Locals are assumed to be registered first, this function will panic if this assumption
+    /// fail to be satisfied.
+    pub fn get_local_ids(&mut self, id: HirLocalId) -> &Vec<LocalId> {
+        self.locals.get(&id).unwrap()
     }
 
-    /// Creates a fresh local variable ID and adds a mapping from HIR ID -> fresh MIR ID in the
-    /// `locals` map.
-    fn remap_local_id(&mut self, id: HirLocalId) -> LocalId {
-        let new_id = self.fresh_local_id();
-        self.locals.insert(id, new_id);
-        new_id
+    /// Creates a new mapping Hir Local -> Vec<Mir Local>
+    fn register_locals(&mut self, id: HirLocalId, locals: Vec<LocalId>) {
+        self.locals.insert(id, locals);
     }
 }
 
@@ -134,7 +131,7 @@ impl<'a> MIRProducer<'a> {
             // Collect alignments and sizes
             for (field_name, field) in &s.fields {
                 // Compute memory layout of the field
-                let (t, layout) = match try_into_mir_layout(&field.t) {
+                let t = match try_into_mir_layout(&field.t) {
                     Ok(t) => t,
                     Err(e) => {
                         self.err.report_internal_no_loc(e);
@@ -143,25 +140,25 @@ impl<'a> MIRProducer<'a> {
                 };
                 let (alignment, size) = get_aligment(&field.t);
                 match alignment {
-                    Aligment::A1 => align_1.push((field_name, size, t, layout)),
-                    Aligment::A4 => align_4.push((field_name, size, t, layout)),
-                    Aligment::A8 => align_8.push((field_name, size, t, layout)),
+                    Alignment::A1 => align_1.push((field_name, size, t)),
+                    Alignment::A4 => align_4.push((field_name, size, t)),
+                    Alignment::A8 => align_8.push((field_name, size, t)),
                 }
             }
             // Decide of the layout, this can be optimized in the future
             let mut offset = 0;
-            for (field_name, size, t, layout) in align_8.drain(..) {
-                offset = align_offset(offset, 8);
-                fields.insert(field_name.to_owned(), StructField { offset, layout, t });
+            for (field_name, size, t) in align_8.drain(..) {
+                offset = align_offset(offset, Alignment::A8);
+                fields.insert(field_name.to_owned(), StructField { offset, t });
                 offset += size;
             }
-            for (field_name, size, t, layout) in align_4.drain(..) {
-                offset = align_offset(offset, 4);
-                fields.insert(field_name.to_owned(), StructField { offset, layout, t });
+            for (field_name, size, t) in align_4.drain(..) {
+                offset = align_offset(offset, Alignment::A8);
+                fields.insert(field_name.to_owned(), StructField { offset, t });
                 offset += size;
             }
-            for (field_name, size, t, layout) in align_1.drain(..) {
-                fields.insert(field_name.to_owned(), StructField { offset, layout, t });
+            for (field_name, size, t) in align_1.drain(..) {
+                fields.insert(field_name.to_owned(), StructField { offset, t });
                 offset += size;
             }
             // Layout is now fixed
@@ -193,23 +190,29 @@ impl<'a> MIRProducer<'a> {
     fn reduce_fun(&mut self, fun: &HirFun, s: &mut State) -> Result<Function, String> {
         let t = &fun.t;
         let mut param_t = Vec::with_capacity(t.params.len());
-        let mut ret_t = Vec::with_capacity(t.ret.len());
         let mut locals = Vec::with_capacity(fun.locals.len());
         let mut params = Vec::with_capacity(fun.params.len());
 
         // Convert params and return types
         for t in &t.params {
-            param_t.push(try_into_mir_t(&t)?);
+            param_t.extend(try_into_mir_t(&t)?);
         }
-        for t in &t.ret {
-            ret_t.push(try_into_mir_t(&t)?);
-        }
+        let ret_t = try_into_mir_t(&t.ret)?;
         // Register params and local variables
-        for param_local_id in &fun.params {
-            params.push(s.remap_local_id(*param_local_id));
+        assert!(fun.params.len() == fun.t.params.len());
+        for (param_local_id, param_t) in fun.params.iter().zip(fun.t.params.iter()) {
+            let mir_param_t = try_into_mir_t(param_t)?;
+            let mut local_ids = Vec::with_capacity(mir_param_t.len());
+            for _ in try_into_mir_t(param_t)? {
+                local_ids.push(s.fresh_local_id());
+            }
+            params.extend(local_ids.clone());
+            s.register_locals(*param_local_id, local_ids);
         }
         for l in &fun.locals {
-            locals.push(self.reduce_local_variable(l, s)?);
+            let mir_locals = self.reduce_local_variable(l, s)?;
+            s.register_locals(l.id, mir_locals.iter().map(|l| l.id).collect());
+            locals.extend(mir_locals);
         }
         // Reduce function body
         let (block, block_locals) = match &fun.body {
@@ -267,7 +270,9 @@ impl<'a> MIRProducer<'a> {
                 }
                 S::LetStmt { var, expr } => {
                     self.reduce_expr(&expr, stmts, locals, s)?;
-                    stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))));
+                    for l_id in s.get_local_ids(var.n_id).iter().rev() {
+                        stmts.push(Statement::Local(Local::Set(*l_id)));
+                    }
                 }
                 S::ExprStmt(expr) => {
                     let values = self.reduce_expr(&expr, stmts, locals, s)?;
@@ -386,7 +391,7 @@ impl<'a> MIRProducer<'a> {
                     // Now fill the fields with their values
                     for field in fields {
                         let (layout, offset) = if let Some(f) = struc.fields.get(&field.ident) {
-                            (f.layout, f.offset)
+                            (&f.t, f.offset)
                         } else {
                             self.err.report_internal_no_loc(format!(
                                 "Field does not exist in MIR struct: '{}'",
@@ -397,13 +402,23 @@ impl<'a> MIRProducer<'a> {
                         // Put memory location and value on top of stack
                         stmts.push(Statement::Local(Local::Get(pointer_l_id)));
                         let values_types = self.reduce_expr(&*field.expr, stmts, locals, s)?;
-                        if values_types.len() != 1 {
-                            self.err.report_internal_no_loc(format!("Fields can only be initialized with expressions producing exactly one value for now, got {}", values_types.len()));
+                        if values_types.len() != layout.len() {
+                            self.err.report_internal_no_loc(format!(
+                                "Number of value miss match in field: expected {}, got {}",
+                                values_types.len(),
+                                layout.len()
+                            ));
                             continue;
                         }
-                        let t = values_types.first().unwrap();
-                        // Store the value
-                        stmts.push(Statement::Memory(get_store_instr(*t, layout, offset)?));
+                        // Store values one by one
+                        for (t, (t_2, t_layout, t_offset)) in values_types.iter().zip(layout) {
+                            assert!(t == t_2);
+                            stmts.push(Statement::Memory(get_store_instr(
+                                *t,
+                                *t_layout,
+                                offset + t_offset,
+                            )?));
+                        }
                     }
                     // Put the struct pointer on top of the stack
                     stmts.push(Statement::Local(Local::Get(pointer_l_id)));
@@ -411,8 +426,10 @@ impl<'a> MIRProducer<'a> {
                 }
             },
             Expr::Variable(var) => {
-                stmts.push(Statement::Local(Local::Get(s.get_local_id(var.n_id))));
-                vec![try_into_mir_t(&var.t)?]
+                for l_id in s.get_local_ids(var.n_id) {
+                    stmts.push(Statement::Local(Local::Get(*l_id)));
+                }
+                try_into_mir_t(&var.t)?
             }
             Expr::Binary {
                 expr_left,
@@ -509,7 +526,7 @@ impl<'a> MIRProducer<'a> {
                     self.reduce_expr(arg, stmts, locals, s)?;
                 }
                 stmts.push(Statement::Call(Call::Direct(*fun_id)));
-                try_into_mir_tuple_t(&t.ret)?
+                try_into_mir_t(&t.ret)?
             }
             Expr::CallIndirect { loc, .. } => {
                 self.err
@@ -524,13 +541,17 @@ impl<'a> MIRProducer<'a> {
             } => {
                 let struc = s.structs.get(struct_id).unwrap();
                 let field = struc.fields.get(field).unwrap();
+                let mut types = Vec::with_capacity(field.t.len());
                 self.reduce_expr(expr, stmts, locals, s)?;
-                stmts.push(Statement::Memory(get_load_instr(
-                    field.t,
-                    field.layout,
-                    field.offset,
-                )?));
-                vec![field.t]
+                for (t, layout, offset) in &field.t {
+                    stmts.push(Statement::Memory(get_load_instr(
+                        *t,
+                        *layout,
+                        field.offset + offset,
+                    )?));
+                    types.push(*t);
+                }
+                types
             }
             Expr::Nop { .. } => vec![],
         };
@@ -549,7 +570,9 @@ impl<'a> MIRProducer<'a> {
         match target {
             PlaceExpr::Variable(var) => {
                 self.reduce_expr(&expr, stmts, locals, s)?;
-                stmts.push(Statement::Local(Local::Set(s.get_local_id(var.n_id))))
+                for l_id in s.get_local_ids(var.n_id).iter().rev() {
+                    stmts.push(Statement::Local(Local::Set(*l_id)));
+                }
             }
             PlaceExpr::Access {
                 expr: target_expr,
@@ -559,12 +582,31 @@ impl<'a> MIRProducer<'a> {
             } => {
                 let struc = s.structs.get(&struct_id).unwrap();
                 let field = struc.fields.get(field).unwrap();
-                let store_instr = get_store_instr(field.t, field.layout, field.offset)?;
-                // Push the address on the stack
+                let offset = field.offset;
+                // Compute and store the address
+                let address_l_id = s.fresh_local_id();
+                locals.push(LocalVariable {
+                    t: Type::I32,
+                    id: address_l_id,
+                });
                 self.reduce_expr(&target_expr, stmts, locals, s)?;
-                // Push the value on the stack
+                stmts.push(Statement::Local(Local::Set(address_l_id)));
+                // Push the values on the stack
                 self.reduce_expr(&expr, stmts, locals, s)?;
-                stmts.push(Statement::Memory(store_instr));
+                // Iterate on types in reverse order (stack => last in, first out)
+                for (t, t_layout, t_offset) in field.t.iter().rev() {
+                    // Create a local to store temporary result
+                    let l_id = s.fresh_local_id();
+                    locals.push(LocalVariable { t: *t, id: l_id });
+                    stmts.push(Statement::Local(Local::Set(l_id)));
+                    // Push the address on the stack
+                    stmts.push(Statement::Local(Local::Get(address_l_id)));
+                    // Push the value on the stack
+                    stmts.push(Statement::Local(Local::Get(l_id)));
+                    // Store the value
+                    let store_instr = get_store_instr(*t, *t_layout, offset + t_offset)?;
+                    stmts.push(Statement::Memory(store_instr));
+                }
             }
         }
         Ok(())
@@ -574,10 +616,13 @@ impl<'a> MIRProducer<'a> {
         &mut self,
         local: &HirLocalVariable,
         s: &mut State,
-    ) -> Result<LocalVariable, String> {
-        let t = try_into_mir_t(&local.t)?;
-        let id = s.get_local_id(local.id);
-        Ok(LocalVariable { id, t })
+    ) -> Result<Vec<LocalVariable>, String> {
+        let types = try_into_mir_t(&local.t)?;
+        let mut locals = Vec::with_capacity(types.len());
+        for t in types {
+            locals.push(LocalVariable { id: s.fresh_local_id(), t })
+        }
+        Ok(locals)
     }
 
     fn reduce_asm_statements(
@@ -604,9 +649,15 @@ impl<'a> MIRProducer<'a> {
             AsmStatement::Const { ref val, .. } => Ok(Statement::Const(val.clone())),
             AsmStatement::Local { local, .. } => match local {
                 AsmLocal::Get { var, .. } => {
-                    Ok(Statement::Local(Local::Get(s.get_local_id(var.n_id))))
+                    let locals = s.get_local_ids(var.n_id);
+                    assert!(locals.len() == 1);
+                    Ok(Statement::Local(Local::Get(locals[0])))
                 }
-                AsmLocal::Set { var } => Ok(Statement::Local(Local::Set(s.get_local_id(var.n_id)))),
+                AsmLocal::Set { var } => {
+                    let locals = s.get_local_ids(var.n_id);
+                    assert!(locals.len() == 1);
+                    Ok(Statement::Local(Local::Set(locals[0])))
+                }
             },
             AsmStatement::Control { cntrl, .. } => match cntrl {
                 AsmControl::Return => Ok(Statement::Control(Control::Return)),
@@ -690,20 +741,17 @@ impl<'a> MIRProducer<'a> {
 
     fn reduce_prototype(&mut self, proto: &HirFunProto) -> Result<FunctionPrototype, String> {
         let mut param_t = Vec::with_capacity(proto.t.params.len());
-        let mut ret_t = Vec::with_capacity(proto.t.ret.len());
 
         for param in &proto.t.params {
             match try_into_mir_t(&param) {
-                Ok(t) => param_t.push(t),
+                Ok(t) => param_t.extend(t),
                 Err(s) => return Err(s),
             }
         }
-        for param in &proto.t.ret {
-            match try_into_mir_t(&param) {
-                Ok(t) => ret_t.push(t),
-                Err(s) => return Err(s),
-            }
-        }
+        let ret_t = match try_into_mir_t(&proto.t.ret) {
+            Ok(t) => t,
+            Err(s) => return Err(s),
+        };
 
         Ok(FunctionPrototype {
             ident: proto.ident.clone(),
@@ -733,18 +781,18 @@ fn get_binop(binop: &HirBinop) -> FromBinop {
             HirIntergerType::I64 => FromBinop::Binop(Binop::I64Xor),
         },
         HirBinop::Eq(t) => match t {
-            HirScalarType::I32 => FromBinop::Relop(Relop::I32Eq),
-            HirScalarType::I64 => FromBinop::Relop(Relop::I64Eq),
-            HirScalarType::F32 => FromBinop::Relop(Relop::F32Eq),
-            HirScalarType::F64 => FromBinop::Relop(Relop::F64Eq),
-            HirScalarType::Bool => FromBinop::Relop(Relop::I32Eq),
+            HirNonNullScalarType::I32 => FromBinop::Relop(Relop::I32Eq),
+            HirNonNullScalarType::I64 => FromBinop::Relop(Relop::I64Eq),
+            HirNonNullScalarType::F32 => FromBinop::Relop(Relop::F32Eq),
+            HirNonNullScalarType::F64 => FromBinop::Relop(Relop::F64Eq),
+            HirNonNullScalarType::Bool => FromBinop::Relop(Relop::I32Eq),
         },
         HirBinop::Ne(t) => match t {
-            HirScalarType::I32 => FromBinop::Relop(Relop::I32Ne),
-            HirScalarType::I64 => FromBinop::Relop(Relop::I64Ne),
-            HirScalarType::F32 => FromBinop::Relop(Relop::F32Ne),
-            HirScalarType::F64 => FromBinop::Relop(Relop::F64Ne),
-            HirScalarType::Bool => FromBinop::Relop(Relop::I32Ne),
+            HirNonNullScalarType::I32 => FromBinop::Relop(Relop::I32Ne),
+            HirNonNullScalarType::I64 => FromBinop::Relop(Relop::I64Ne),
+            HirNonNullScalarType::F32 => FromBinop::Relop(Relop::F32Ne),
+            HirNonNullScalarType::F64 => FromBinop::Relop(Relop::F64Ne),
+            HirNonNullScalarType::Bool => FromBinop::Relop(Relop::I32Ne),
         },
         HirBinop::Gt(t) => match t {
             HirNumericType::I32 => FromBinop::Relop(Relop::I32Gt),
@@ -804,69 +852,84 @@ fn get_binop(binop: &HirBinop) -> FromBinop {
 }
 
 /// Convert a scalar value into its MIR representation.
-fn get_mir_t(t: &HirScalarType) -> Type {
+fn get_mir_t(t: &HirScalarType) -> Option<Type> {
     match t {
-        HirScalarType::I32 => Type::I32,
-        HirScalarType::I64 => Type::I64,
-        HirScalarType::F32 => Type::F32,
-        HirScalarType::F64 => Type::F64,
-        HirScalarType::Bool => Type::I32,
+        HirScalarType::I32 => Some(Type::I32),
+        HirScalarType::I64 => Some(Type::I64),
+        HirScalarType::F32 => Some(Type::F32),
+        HirScalarType::F64 => Some(Type::F64),
+        HirScalarType::Bool => Some(Type::I32),
+        HirScalarType::Null => None,
     }
-}
-
-/// Convert a scalar value into its memory representation.
-fn get_mir_t_layout(t: &HirScalarType) -> MemoryLayout {
-    match t {
-        HirScalarType::I32 => MemoryLayout::I32,
-        HirScalarType::I64 => MemoryLayout::I64,
-        HirScalarType::F32 => MemoryLayout::F32,
-        HirScalarType::F64 => MemoryLayout::F64,
-        HirScalarType::Bool => MemoryLayout::U8,
-    }
-}
-
-/// Try to convert a hir typle type into its MIR representation.
-fn try_into_mir_tuple_t(t: &HirTupleType) -> Result<Vec<Type>, String> {
-    let mut mir_t = Vec::with_capacity(t.len());
-    for hir_t in t {
-        mir_t.push(try_into_mir_t(hir_t)?);
-    }
-    Ok(mir_t)
 }
 
 /// Try to convert an arbitrary HIR type to an MIR type.
 /// For now advanced types such as functions and tuples are not supported.
-fn try_into_mir_t(t: &HirType) -> Result<Type, String> {
+fn try_into_mir_t(t: &HirType) -> Result<Vec<Type>, String> {
     match t {
-        HirType::Scalar(t) => Ok(get_mir_t(t)),
+        HirType::Scalar(t) => Ok(match get_mir_t(t) {
+            Some(t) => vec![t],
+            None => vec![],
+        }),
         HirType::Fun(_) => Err(String::from("Function as value are not yet supported.")),
         HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
         // For now structs are always boxed and represented by a pointer to their location
-        HirType::Struct(_) => Ok(Type::I32),
+        HirType::Struct(_) => Ok(vec![Type::I32]),
     }
 }
 
-fn try_into_mir_layout(t: &HirType) -> Result<(Type, MemoryLayout), String> {
+/// Try to convert an arbitrary HIR type to any number of MIR types along with their layouts.
+fn try_into_mir_layout(t: &HirType) -> Result<Vec<(Type, MemoryLayout, Offset)>, String> {
     match t {
-        HirType::Scalar(t) => Ok((get_mir_t(t), get_mir_t_layout(t))),
+        HirType::Scalar(t) => Ok(match get_mir_t(t) {
+            Some(t) => vec![(t, t.layout(), 0)],
+            None => vec![],
+        }),
         HirType::Fun(_) => Err(String::from("Functions as value are not yet supported.")),
-        HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
+        HirType::Tuple(t) => {
+            let mut types = Vec::with_capacity(t.0.len());
+            let mut offset = 0;
+            for t in &t.0 {
+                let (alignment, size) = get_aligment(t);
+                offset = align_offset(offset, alignment);
+                for (t, t_layout, t_offset) in try_into_mir_layout(t)? {
+                    types.push((t, t_layout, offset + t_offset));
+                }
+                offset = offset + size;
+            }
+            Ok(types)
+        }
         // For now structs are always boxed and represented by a pointer to their location
-        HirType::Struct(_) => Ok((Type::I32, MemoryLayout::I32)),
+        HirType::Struct(_) => Ok(vec![(Type::I32, MemoryLayout::I32, 0)]),
     }
 }
 
 /// Returns the alignment and size a given type occupy in memory.
-fn get_aligment(t: &HirType) -> (Aligment, u32) {
+fn get_aligment(t: &HirType) -> (Alignment, u32) {
     match t {
         HirType::Scalar(x) => match x {
-            HirScalarType::I32 => (Aligment::A4, 4),
-            HirScalarType::I64 => (Aligment::A8, 8),
-            HirScalarType::F32 => (Aligment::A4, 4),
-            HirScalarType::F64 => (Aligment::A8, 8),
-            HirScalarType::Bool => (Aligment::A1, 1),
+            HirScalarType::I32 => (Alignment::A4, 4),
+            HirScalarType::I64 => (Alignment::A8, 8),
+            HirScalarType::F32 => (Alignment::A4, 4),
+            HirScalarType::F64 => (Alignment::A8, 8),
+            HirScalarType::Bool => (Alignment::A1, 1),
+            HirScalarType::Null => (Alignment::A1, 0),
         },
-        HirType::Struct(_) => (Aligment::A4, 4), // Represented as a i32 pointer for now
+        HirType::Struct(_) => (Alignment::A4, 4), // Represented as a i32 pointer for now
+        HirType::Tuple(t) => {
+            let mut size = 0;
+            let mut alignment = Alignment::A1;
+            for t in &t.0 {
+                let (t_align, t_size) = get_aligment(t);
+                if size == 0 {
+                    // Aligment of the first type with non-zero size
+                    alignment = t_align;
+                }
+                size = align_offset(size, t_align);
+                size += t_size;
+            }
+            (alignment, size)
+        }
         _ => todo!("Only scalar and struct are supported inside structures at the time"), //
     }
 }
@@ -920,7 +983,8 @@ fn get_store_instr(t: Type, l: MemoryLayout, offset: u32) -> Result<Memory, Stri
 }
 
 /// If the offset does not have the target alignment, increase the offset so that is has.
-fn align_offset(offset: u32, target_alignment: u32) -> u32 {
+fn align_offset(offset: u32, target_alignment: Alignment) -> u32 {
+    let target_alignment = target_alignment.bytes();
     if offset % target_alignment == 0 {
         offset
     } else {
@@ -934,22 +998,22 @@ mod tests {
 
     #[test]
     fn offset() {
-        assert_eq!(align_offset(0, 8), 0);
-        assert_eq!(align_offset(1, 8), 8);
-        assert_eq!(align_offset(5, 8), 8);
-        assert_eq!(align_offset(7, 8), 8);
-        assert_eq!(align_offset(8, 8), 8);
-        assert_eq!(align_offset(9, 8), 16);
-        assert_eq!(align_offset(20, 8), 24);
+        assert_eq!(align_offset(0, Alignment::A8), 0);
+        assert_eq!(align_offset(1, Alignment::A8), 8);
+        assert_eq!(align_offset(5, Alignment::A8), 8);
+        assert_eq!(align_offset(7, Alignment::A8), 8);
+        assert_eq!(align_offset(8, Alignment::A8), 8);
+        assert_eq!(align_offset(9, Alignment::A8), 16);
+        assert_eq!(align_offset(20, Alignment::A8), 24);
 
-        assert_eq!(align_offset(0, 4), 0);
-        assert_eq!(align_offset(1, 4), 4);
-        assert_eq!(align_offset(2, 4), 4);
-        assert_eq!(align_offset(3, 4), 4);
-        assert_eq!(align_offset(4, 4), 4);
-        assert_eq!(align_offset(5, 4), 8);
+        assert_eq!(align_offset(0, Alignment::A4), 0);
+        assert_eq!(align_offset(1, Alignment::A4), 4);
+        assert_eq!(align_offset(2, Alignment::A4), 4);
+        assert_eq!(align_offset(3, Alignment::A4), 4);
+        assert_eq!(align_offset(4, Alignment::A4), 4);
+        assert_eq!(align_offset(5, Alignment::A4), 8);
 
-        assert_eq!(align_offset(42, 1), 42);
-        assert_eq!(align_offset(43, 1), 43);
+        assert_eq!(align_offset(42, Alignment::A1), 42);
+        assert_eq!(align_offset(43, Alignment::A1), 43);
     }
 }

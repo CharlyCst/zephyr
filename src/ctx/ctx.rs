@@ -18,6 +18,7 @@ pub type ModId = u32;
 
 type StructMap = HashMap<hir::StructId, hir::Struct>;
 type DataMap = HashMap<hir::DataId, hir::Data>;
+type TypeMap = HashMap<hir::TypeId, hir::Type>;
 type FunMap = HashMap<hir::FunId, hir::FunKind>;
 type ModMap = HashMap<ModId, ModulePath>;
 type ReverseModMap = HashMap<ModulePath, ModId>;
@@ -27,6 +28,7 @@ type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
 pub struct Ctx {
     // HIR elements
     structs: StructMap,
+    types: TypeMap,
     data: DataMap,
     funs: FunMap,
     mods: ModMap,
@@ -45,6 +47,7 @@ impl Ctx {
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
+            types: HashMap::new(),
             data: HashMap::new(),
             funs: HashMap::new(),
             mods: HashMap::new(),
@@ -66,6 +69,16 @@ impl Ctx {
     /// Get a structure from its ID.
     pub fn get_s(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
         self.structs.get(&s_id)
+    }
+
+    /// Get a type from its ID.
+    pub fn get_type(&self, t_id: hir::TypeId) -> Option<&hir::Type> {
+        self.types.get(&t_id)
+    }
+
+    /// Get a function from its ID.
+    pub fn get_fun(&self, fun_id: hir::FunId) -> Option<&hir::FunKind> {
+        self.funs.get(&fun_id)
     }
 
     /// Get module declarations from the module ID.
@@ -321,7 +334,7 @@ impl Ctx {
         let malloc_decl = self
             .get_public_decls(&modules.malloc, err, resolver)?
             .clone();
-        let malloc = self.get_fun(&malloc_decl, "malloc", &modules.malloc, err)?;
+        let malloc = self.get_fun_from_decls(&malloc_decl, "malloc", &modules.malloc, err)?;
         let malloc = known_functions::validate_malloc(malloc, err)?;
         Ok(KnownFunctions { malloc })
     }
@@ -366,7 +379,7 @@ impl Ctx {
     ///  - fun: the identifier of the function.
     ///  - module: a path to the module.
     ///  - err: an error handler.
-    fn get_fun(
+    fn get_fun_from_decls(
         &self,
         public_decls: &ModuleDeclarations,
         fun: &str,
@@ -375,7 +388,7 @@ impl Ctx {
     ) -> Result<&hir::FunKind, ()> {
         if let Some(fun) = public_decls.val_decls.get(fun) {
             let fun_id = match fun {
-                hir::ValueDeclaration::Function { t: _, fun_id } => *fun_id,
+                hir::ValueDeclaration::Function(fun_id) => *fun_id,
                 _ => return Err(()),
             };
             let fun = self

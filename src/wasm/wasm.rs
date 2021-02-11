@@ -1,6 +1,5 @@
 use super::opcode;
 use super::opcode::to_leb;
-use crate::hir::FunId;
 
 pub type Offset = u32;
 
@@ -11,7 +10,7 @@ pub struct Function {
     pub ret_types: Vec<Type>,
     pub type_idx: usize, // Used by encode
     pub exposed: Option<String>,
-    pub fun_id: FunId,
+    pub fun_id: u64,
     pub body: Vec<opcode::Instr>,
 }
 

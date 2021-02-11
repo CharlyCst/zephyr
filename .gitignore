@@ -1,8 +1,16 @@
+# Editors
 .vscode
 .vim
+
+# Artifacts
 /target
+/derive/target
+
+# Wasm files
 /out/*.wasm
 /test_out/*.wasm
 /snapshots/*.wasm
 /examples/*.wasm
+
+# Other
 .gdb*

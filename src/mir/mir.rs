@@ -7,12 +7,13 @@ pub use crate::ctx::ModuleDeclarations;
 pub use crate::hir::{DataId, FunId, StructId};
 
 pub type Data = Vec<u8>;
+pub type Offset = u32;
 
 pub struct Program {
     pub funs: Vec<Function>,
     pub structs: HashMap<StructId, Struct>,
     pub imports: Vec<Imports>,
-    pub data: HashMap<DataId, Data>
+    pub data: HashMap<DataId, Data>,
 }
 
 pub struct Imports {
@@ -49,9 +50,8 @@ pub struct Struct {
 }
 
 pub struct StructField {
-    pub offset: u32,
-    pub layout: MemoryLayout,
-    pub t: Type,
+    pub offset: Offset,                       // Offset of the field
+    pub t: Vec<(Type, MemoryLayout, Offset)>, // (type, layout, offset)
 }
 
 pub struct LocalVariable {
@@ -209,15 +209,27 @@ pub enum Memory {
     I64Store { align: u32, offset: u32 },
     F32Store { align: u32, offset: u32 },
     F64Store { align: u32, offset: u32 },
+    Nop,
 }
 
 /// Wasm types as they appear on the stack.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum Type {
     I32,
     I64,
     F32,
     F64,
+}
+
+impl Type {
+    pub fn layout(&self) -> MemoryLayout {
+        match self {
+            Type::I32 => MemoryLayout::I32,
+            Type::I64 => MemoryLayout::I64,
+            Type::F32 => MemoryLayout::F32,
+            Type::F64 => MemoryLayout::F64,
+        }
+    }
 }
 
 /// Memory layout used to store values in the linear memory, they describes how to load a value
@@ -226,11 +238,26 @@ pub enum Type {
 pub enum MemoryLayout {
     // Not yet exhaustive.
     // Unsigned types ('Ux') doesn't perform sign extension on load into I32 or I64
+    Null,
     U8,
     I32,
     I64,
     F32,
     F64,
+}
+
+impl MemoryLayout {
+    /// Return the offset of the data next to the one with this memory layout.
+    pub fn offset(&self) -> u32 {
+        match self {
+            MemoryLayout::Null => 0,
+            MemoryLayout::U8 => 1,
+            MemoryLayout::I32 => 4,
+            MemoryLayout::I64 => 8,
+            MemoryLayout::F32 => 4,
+            MemoryLayout::F64 => 8,
+        }
+    }
 }
 
 impl Binop {
@@ -304,10 +331,21 @@ impl Relop {
 }
 
 /// Possible aligments, in bytes (A8 -> aligment of 8)
-pub enum Aligment {
+#[derive(Copy, Clone)]
+pub enum Alignment {
     A8,
     A4,
     A1,
+}
+
+impl Alignment {
+    pub fn bytes(&self) -> u32 {
+        match self {
+            Alignment::A1 => 1,
+            Alignment::A4 => 4,
+            Alignment::A8 => 8,
+        }
+    }
 }
 
 impl fmt::Display for Program {
@@ -436,7 +474,7 @@ impl fmt::Display for Value {
             Value::I64(x) => write!(f, "i64.const {}", x),
             Value::F32(x) => write!(f, "f32.const {}", x),
             Value::F64(x) => write!(f, "f64.const {}", x),
-            Value::DataPointer(x) => write!(f, "i32.const ptr:{}", x)
+            Value::DataPointer(x) => write!(f, "i32.const ptr:{}", x),
         }
     }
 }
@@ -580,6 +618,7 @@ impl fmt::Display for Memory {
             Memory::I64Store { align, offset } => write!(f, "i64.store {}, {}", align, offset),
             Memory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
             Memory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
+            Memory::Nop => write!(f, "nop"),
         }
     }
 }

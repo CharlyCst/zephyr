@@ -1,24 +1,30 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, Data, DataId, NameId};
-use super::types::Type as NameType;
+use super::names::{AsmStatement, DataStore};
+use super::store::Store;
+use super::types::{
+    FunctionType as NameFunctionType, ScalarType as NameScalarType, TupleType as NameTupleType,
+    Type as NameType,
+};
 use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 
 use std::collections::HashMap;
 use std::fmt;
 
-const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
-const TYPE_I64: Type = Type::Scalar(ScalarType::I64);
-const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
-const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
-const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
-
-pub use super::names::{FunId, StructId};
+pub use super::names::{DataId, FunId, NameId, StructId};
 pub use crate::ast::Package;
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
-#[derive(Clone, Eq, PartialEq)]
+pub const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
+pub const TYPE_I64: Type = Type::Scalar(ScalarType::I64);
+pub const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
+pub const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
+pub const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
+
+// —————————————————————————————————— Types ————————————————————————————————— //
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
@@ -26,13 +32,14 @@ pub enum Type {
     Struct(StructId),
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ScalarType {
     I32,
     I64,
     F32,
     F64,
     Bool,
+    Null,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -49,25 +56,109 @@ pub enum NumericType {
     F64,
 }
 
-pub type TupleType = Vec<Type>;
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum NonNullScalarType {
+    I32,
+    I64,
+    F32,
+    F64,
+    Bool,
+}
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TupleType(pub Vec<Type>);
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FunctionType {
     pub params: Vec<Type>,
-    pub ret: TupleType,
+    pub ret: Box<Type>,
+}
+
+impl Type {
+    pub fn lift(&self) -> NameType {
+        match self {
+            Type::Scalar(x) => NameType::Scalar(x.lift()),
+            Type::Struct(s_id) => NameType::Struct(*s_id),
+            Type::Tuple(tup) => NameType::Tuple(tup.lift()), // Tuples are not yet supported
+            Type::Fun(fun) => NameType::Fun(fun.lift()),
+        }
+    }
+}
+
+impl ScalarType {
+    pub fn lift(&self) -> NameScalarType {
+        match self {
+            ScalarType::I32 => NameScalarType::I32,
+            ScalarType::I64 => NameScalarType::I64,
+            ScalarType::F32 => NameScalarType::F32,
+            ScalarType::F64 => NameScalarType::F64,
+            ScalarType::Bool => NameScalarType::Bool,
+            ScalarType::Null => NameScalarType::Null,
+        }
+    }
+}
+
+impl TupleType {
+    pub fn lift(&self) -> NameTupleType {
+        NameTupleType(self.0.iter().map(|t| t.lift()).collect())
+    }
 }
 
 impl FunctionType {
-    pub fn new(args: Vec<Type>, ret: Vec<Type>) -> Self {
-        FunctionType { params: args, ret }
+    pub fn new(params: Vec<Type>, ret: Type) -> Self {
+        FunctionType {
+            params,
+            ret: Box::new(ret),
+        }
+    }
+
+    pub fn lift(&self) -> NameFunctionType {
+        NameFunctionType {
+            params: self.params.iter().map(|p| p.lift()).collect(),
+            ret: Box::new(self.ret.lift()),
+        }
     }
 }
+
+impl IntegerType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            IntegerType::I32 => ScalarType::I32,
+            IntegerType::I64 => ScalarType::I64,
+        }
+    }
+}
+
+impl NumericType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            NumericType::I32 => ScalarType::I32,
+            NumericType::I64 => ScalarType::I64,
+            NumericType::F32 => ScalarType::F32,
+            NumericType::F64 => ScalarType::F64,
+        }
+    }
+}
+
+impl NonNullScalarType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            NonNullScalarType::I32 => ScalarType::I32,
+            NonNullScalarType::I64 => ScalarType::I64,
+            NonNullScalarType::F32 => ScalarType::F32,
+            NonNullScalarType::F64 => ScalarType::F64,
+            NonNullScalarType::Bool => ScalarType::Bool,
+        }
+    }
+}
+
+// ———————————————————————————————————— Ast ————————————————————————————————— //
 
 pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
-    pub data: HashMap<DataId, Data>,
-    pub structs: HashMap<StructId, Struct>,
+    pub data: DataStore,
+    pub structs: Store<StructId, Struct>,
     pub pub_decls: ModuleDeclarations,
     pub package: Package,
 }
@@ -104,7 +195,7 @@ pub enum FunKind {
 pub struct Function {
     pub ident: String,
     pub params: Vec<LocalId>,
-    pub t: FunctionType,
+    pub t: FunctionType, // TODO: should we keep the type in a type store?
     pub locals: Vec<LocalVariable>,
     pub body: Body,
     pub loc: Location,
@@ -308,8 +399,8 @@ pub enum Binop {
     BinaryAnd(IntegerType),
     BinaryOr(IntegerType),
 
-    Eq(ScalarType),
-    Ne(ScalarType),
+    Eq(NonNullScalarType),
+    Ne(NonNullScalarType),
     Lt(NumericType),
     Gt(NumericType),
     Le(NumericType),
@@ -335,26 +426,6 @@ pub enum Memory {
     I64Store { align: u32, offset: u32 },
     F32Store { align: u32, offset: u32 },
     F64Store { align: u32, offset: u32 },
-}
-
-/// Lift an HIR type into a name type.
-pub fn lift_t(t: &Type) -> NameType {
-    match t {
-        Type::Scalar(x) => match x {
-            ScalarType::I32 => NameType::I32,
-            ScalarType::I64 => NameType::I64,
-            ScalarType::F32 => NameType::F32,
-            ScalarType::F64 => NameType::F64,
-            ScalarType::Bool => NameType::Bool,
-        },
-        Type::Struct(s_id) => NameType::Struct(*s_id),
-        Type::Tuple(_) => todo!(), // Tuples are not yet supported
-        Type::Fun(fun) => {
-            let params = fun.params.iter().map(|p| lift_t(p)).collect();
-            let ret = fun.ret.iter().map(|r| lift_t(r)).collect();
-            NameType::Fun(params, ret)
-        }
-    }
 }
 
 impl Expression {
@@ -402,8 +473,8 @@ impl Binop {
             Binop::Gt(t) => t.get_t(),
             Binop::Le(t) => t.get_t(),
             Binop::Lt(t) => t.get_t(),
-            Binop::Ne(t) => *t,
-            Binop::Eq(t) => *t,
+            Binop::Ne(t) => t.get_t(),
+            Binop::Eq(t) => t.get_t(),
             Binop::Div(t) => t.get_t(),
             Binop::Mul(t) => t.get_t(),
             Binop::Sub(t) => t.get_t(),
@@ -412,25 +483,7 @@ impl Binop {
     }
 }
 
-impl IntegerType {
-    pub fn get_t(&self) -> ScalarType {
-        match self {
-            IntegerType::I32 => ScalarType::I32,
-            IntegerType::I64 => ScalarType::I64,
-        }
-    }
-}
-
-impl NumericType {
-    pub fn get_t(&self) -> ScalarType {
-        match self {
-            NumericType::I32 => ScalarType::I32,
-            NumericType::I64 => ScalarType::I64,
-            NumericType::F32 => ScalarType::F32,
-            NumericType::F64 => ScalarType::F64,
-        }
-    }
-}
+// ———————————————————————————————— Display ————————————————————————————————— //
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -441,7 +494,7 @@ impl fmt::Display for Type {
             Type::Tuple(t) => write!(
                 f,
                 "({})",
-                t.iter()
+                t.0.iter()
                     .map(|t| format!("{}", t))
                     .collect::<Vec<String>>()
                     .join(", ")
@@ -458,6 +511,7 @@ impl fmt::Display for ScalarType {
             ScalarType::I64 => write!(f, "i64"),
             ScalarType::I32 => write!(f, "i32"),
             ScalarType::Bool => write!(f, "bool"),
+            ScalarType::Null => write!(f, "null"),
         }
     }
 }
@@ -470,13 +524,7 @@ impl fmt::Display for FunctionType {
             .map(|t| format!("{}", t))
             .collect::<Vec<String>>()
             .join(", ");
-        let ret = self
-            .ret
-            .iter()
-            .map(|t| format!("{}", t))
-            .collect::<Vec<String>>()
-            .join(", ");
-        write!(f, "({}) -> ({})", args, ret)
+        write!(f, "fun ({}): {}", args, self.ret)
     }
 }
 
@@ -488,7 +536,7 @@ impl fmt::Display for Program {
             .map(|fun| format!("{}", fun))
             .collect::<Vec<String>>()
             .join("\n\n");
-        write!(f, "MIR {{\n{}\n}}", funs)
+        write!(f, "HIR {{\n{}\n}}", funs)
     }
 }
 
@@ -501,13 +549,7 @@ impl fmt::Display for Function {
             .map(|t| format!("{}", t))
             .collect::<Vec<String>>()
             .join(", ");
-        let ret = self
-            .t
-            .ret
-            .iter()
-            .map(|t| format!("{}", t))
-            .collect::<Vec<String>>()
-            .join(", ");
+        let ret = &self.t.ret;
         let locals = self
             .locals
             .iter()
@@ -622,7 +664,7 @@ impl fmt::Display for PlaceExpression {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::ExprStmt ( expr ) => write!(f, "{};", expr),
+            Statement::ExprStmt(expr) => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
             Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
