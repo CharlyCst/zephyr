@@ -520,17 +520,7 @@ impl<'a> Parser<'a> {
         )
         .ok()?;
         let t_loc = self.peek().loc;
-        let t = if let Token {
-            t: TokenType::Identifier(ref t),
-            ..
-        } = self.advance()
-        {
-            t.clone()
-        } else {
-            self.err.report(t_loc, String::from("Expect a type"));
-            self.synchronize();
-            return None;
-        };
+        let t = self.type_().ok()?;
         let loc = loc.merge(t_loc);
         Some(StructField {
             is_pub,
@@ -593,8 +583,8 @@ impl<'a> Parser<'a> {
             )
             .ok();
 
-            let t = match self.path() {
-                Ok(path) => path,
+            let t = match self.type_() {
+                Ok(t) => t,
                 Err(()) => {
                     self.err.silent_report();
                     return params;
@@ -615,17 +605,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'result' grammar element
-    fn result(&mut self) -> Option<(String, Location)> {
+    fn result(&mut self) -> Option<(Type, Location)> {
         if self.next_match(TokenType::Colon) {
-            let token = self.peek();
-            if let TokenType::Identifier(ref t) = token.t {
-                let result = Some((t.clone(), self.peek().loc));
-                self.advance();
-                result
-            } else {
-                let loc = token.loc;
-                self.err.report(loc, String::from("Expected a type"));
-                return None;
+            let loc = self.peek().loc;
+            match self.type_() {
+                Ok(t) => Some((t, loc.merge(self.peek().loc))),
+                Err(()) => None,
             }
         } else {
             None
@@ -1162,7 +1147,28 @@ impl<'a> Parser<'a> {
         Ok(path)
     }
 
-    // Helper functions
+    fn type_(&mut self) -> Result<Type, ()> {
+        if self.next_match(TokenType::LeftPar) {
+            // Tuple type
+            let mut paths = vec![self.type_()?];
+            while self.next_match(TokenType::Comma) {
+                paths.push(self.type_()?);
+            }
+            // Consumes optionnal comma
+            self.next_match(TokenType::Comma);
+            // Consumes the closing parenthesis
+            self.next_match_report_synchronize(
+                TokenType::RightPar,
+                "Expected a right parenthesis ')'",
+            )?;
+            Ok(Type::Tuple(paths))
+        } else {
+            // Simple type
+            Ok(Type::Simple(self.path()?))
+        }
+    }
+
+    // ——————————————————————————— Helper Functions ———————————————————————————— //
 
     fn warn_if_struct_not_capitalized(&mut self, ident: &str, loc: Location) {
         if let Some(c) = ident.chars().next() {

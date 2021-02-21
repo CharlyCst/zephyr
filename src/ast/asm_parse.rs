@@ -279,16 +279,10 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let result = if self.next_match(TokenType::Colon) {
-            let token = self.peek();
-            if let TokenType::Identifier(ref result) = token.t {
-                let loc = token.loc;
-                let result = result.clone();
-                self.advance();
-                Some((result, loc))
-            } else {
-                let loc = token.loc;
-                self.err.report(loc, String::from("Expected a type."));
-                None
+            let loc = self.peek().loc;
+            match self.type_() {
+                Ok(t) => Some((t, loc.merge(self.peek().loc))),
+                Err(()) => None,
             }
         } else {
             None
@@ -338,11 +332,11 @@ impl<'a> Parser<'a> {
 
             params.push(ast::Parameter {
                 ident,
-                t: ast::Path {
+                t: ast::Type::Simple(ast::Path {
                     root: t,
                     path: vec![],
                     loc,
-                },
+                }),
                 loc: var_loc,
             });
             if !self.next_match(TokenType::Comma) {
@@ -383,7 +377,7 @@ impl<'a> Parser<'a> {
         Ok(stmts)
     }
 
-    /// Parses the 'statement' grammar element
+    /// Parses the 'statement' grammar element.
     fn statement(&mut self) -> Result<AsmStatement, ()> {
         let token = self.peek();
         let loc = token.loc;
@@ -421,6 +415,64 @@ impl<'a> Parser<'a> {
         } else {
             self.err.report(loc, String::from("Expected a statement."));
             Err(())
+        }
+    }
+
+    /// Parses the 'type' grammar element.
+    ///
+    /// TODO: can probably be re-factored
+    fn type_(&mut self) -> Result<ast::Type, ()> {
+        if self.next_match(TokenType::LeftPar) {
+            // Tuple type
+            let token = self.advance();
+            let loc = token.loc;
+            let t = match &token.t {
+                TokenType::Identifier(ident) => ast::Type::Simple(ast::Path {
+                    root: ident.clone(),
+                    path: vec![],
+                    loc,
+                }),
+                _ => {
+                    self.err.report(loc, String::from("Expected type"));
+                    self.back();
+                    return Err(());
+                }
+            };
+            let mut types = vec![t];
+            while self.next_match(TokenType::Comma) {
+                let token = self.advance();
+                let loc = token.loc;
+                let t = match &token.t {
+                    TokenType::Identifier(ident) => ast::Type::Simple(ast::Path {
+                        root: ident.clone(),
+                        path: vec![],
+                        loc,
+                    }),
+                    _ => {
+                        self.err.report(loc, String::from("Expected type"));
+                        self.back();
+                        return Err(());
+                    }
+                };
+                types.push(t);
+            }
+            Ok(ast::Type::Tuple(types))
+        } else {
+            // Simple type
+            let token = self.advance();
+            let loc = token.loc;
+            match &token.t {
+                TokenType::Identifier(ident) => Ok(ast::Type::Simple(ast::Path {
+                    root: ident.clone(),
+                    path: vec![],
+                    loc,
+                })),
+                _ => {
+                    self.back();
+                    self.err.report(loc, String::from("Expected type"));
+                    Err(())
+                }
+            }
         }
     }
 }

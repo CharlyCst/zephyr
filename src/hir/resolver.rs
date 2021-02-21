@@ -1,9 +1,11 @@
+use super::hir::FunKind;
 use super::names::*;
 use super::store::Store;
 use super::types;
 use super::types::id::*;
-use super::types::{ConstraintStore, FunctionType, Type, TypeConstraint, TypeVarId, TypeVarStore};
-use super::hir::FunKind;
+use super::types::{
+    ConstraintStore, FunctionType, TupleType, Type, TypeConstraint, TypeVarId, TypeVarStore,
+};
 use crate::ast;
 use crate::ctx::{Ctx, KnownValues, ModId, ModuleDeclarations, TypeDeclaration, ValueDeclaration};
 use crate::error::{ErrorHandler, Location};
@@ -310,11 +312,7 @@ impl<'a> NameResolver<'a> {
                 else_block,
             } => {
                 let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
-                state.new_constraint(TypeConstraint::Is(
-                    expr_t_id,
-                    types::BOOL,
-                    expr.get_loc(),
-                ));
+                state.new_constraint(TypeConstraint::Is(expr_t_id, types::BOOL, expr.get_loc()));
                 let block = self.resolve_block(block, state, locals, fun_id);
                 let else_block = if let Some(else_block) = else_block {
                     let else_block = self.resolve_block(else_block, state, locals, fun_id);
@@ -330,11 +328,7 @@ impl<'a> NameResolver<'a> {
             }
             ast::Statement::WhileStmt { expr, block } => {
                 let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
-                state.new_constraint(TypeConstraint::Is(
-                    expr_t_id,
-                    types::BOOL,
-                    expr.get_loc(),
-                ));
+                state.new_constraint(TypeConstraint::Is(expr_t_id, types::BOOL, expr.get_loc()));
                 let block = self.resolve_block(block, state, locals, fun_id);
                 Statement::WhileStmt { expr, block }
             }
@@ -552,7 +546,7 @@ impl<'a> NameResolver<'a> {
                     fields,
                     loc,
                 } => {
-                    let t = self.get_type(&ident, namespace, loc, state);
+                    let t = self.get_type_from_str(&ident, namespace, loc, state);
                     let t_id = state.type_vars.fresh(loc, vec![Type::Any]);
                     if let Ok(t) = t {
                         state.new_constraint(TypeConstraint::Is(t_id, t, loc));
@@ -850,7 +844,7 @@ impl<'a> NameResolver<'a> {
             let mut params = Vec::new();
             let mut declared_params = Vec::new();
             for param in fun.params {
-                let t = match self.get_type_from_path(&param.t, state) {
+                let t = match self.get_type(&param.t, state) {
                     Some(t) => t,
                     None => {
                         self.err
@@ -863,10 +857,10 @@ impl<'a> NameResolver<'a> {
             }
 
             // Check result type
-            let ret = if let Some((t, loc)) = &fun.result {
-                match self.get_type(t, None, *loc, state) {
-                    Ok(t) => t,
-                    Err(_) => types::BUG,
+            let ret = if let Some((t, _)) = &fun.result {
+                match self.get_type(t, state) {
+                    Some(t) => t,
+                    None => types::BUG,
                 }
             } else {
                 types::NULL
@@ -932,7 +926,7 @@ impl<'a> NameResolver<'a> {
             let mut params = Vec::new();
             // Check parameter types
             for param in proto.params.iter() {
-                if let Some(known_t) = check_base_type_from_path(&param.t) {
+                if let Some(known_t) = check_base_type_from_type(&param.t) {
                     params.push(known_t);
                 } else {
                     self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
@@ -941,7 +935,7 @@ impl<'a> NameResolver<'a> {
 
             // Check result type
             let ret = if let Some((t, loc)) = &proto.result {
-                if let Some(known_t) = check_base_type(&t) {
+                if let Some(known_t) = check_base_type_from_type(t) {
                     known_t
                 } else {
                     self.err.report(*loc, format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
@@ -1029,8 +1023,8 @@ impl<'a> NameResolver<'a> {
         for field in struc.fields {
             let loc = field.loc;
             let is_pub = field.is_pub;
-            let t = self.get_type(&field.t, None, loc, state);
-            if let Ok(t) = t {
+            let t = self.get_type(&field.t, state);
+            if let Some(t) = t {
                 fields.insert(field.ident, StructField { t, loc, is_pub });
             }
         }
@@ -1174,7 +1168,7 @@ impl<'a> NameResolver<'a> {
     /// Get a type from a (possibly namespaced) string.
     ///
     /// Will raise an error if the type does not exists.
-    fn get_type(
+    fn get_type_from_str(
         &mut self,
         t: &str,
         namespace: Option<ModId>,
@@ -1228,7 +1222,24 @@ impl<'a> NameResolver<'a> {
         }
     }
 
-    /// Get a type from a path.
+    /// Get a type from an AST Type.
+    fn get_type(&mut self, ast_t: &ast::Type, state: &State) -> Option<Type> {
+        match ast_t {
+            ast::Type::Simple(path) => self.get_type_from_path(path, state),
+            ast::Type::Tuple(tup) => {
+                let mut types = Vec::new();
+                for t in tup {
+                    if let Some(t) = self.get_type(t, state) {
+                        types.push(t);
+                    } else {
+                        types.push(types::BUG);
+                    }
+                }
+                Some(Type::Tuple(TupleType(types)))
+            }
+        }
+    }
+
     fn get_type_from_path(&mut self, path: &ast::Path, state: &State) -> Option<Type> {
         // Check for built-in type
         if path.path.is_empty() {
@@ -1264,17 +1275,19 @@ impl<'a> NameResolver<'a> {
     fn get_fun_t_from_id(&mut self, fun_id: FunId, state: &State) -> Result<FunctionType, ()> {
         let fun_t = match state.fun_types.get(&fun_id) {
             Some(fun_t) => fun_t,
-            None => return match state.ctx.get_fun(fun_id) {
-                Some(FunKind::Fun(f)) => Ok(f.t.lift()),
-                Some(FunKind::Extern(f)) => Ok(f.t.lift()),
-                None => {
-                    self.err.report_internal_no_loc(format!(
-                        "Function with id '{}' is not in state or ctx",
-                        fun_id
-                    ));
-                    Err(())
+            None => {
+                return match state.ctx.get_fun(fun_id) {
+                    Some(FunKind::Fun(f)) => Ok(f.t.lift()),
+                    Some(FunKind::Extern(f)) => Ok(f.t.lift()),
+                    None => {
+                        self.err.report_internal_no_loc(format!(
+                            "Function with id '{}' is not in state or ctx",
+                            fun_id
+                        ));
+                        Err(())
+                    }
                 }
-            },
+            }
         };
         match state.types.get(*fun_t) {
             Some(Type::Fun(t)) => Ok(t.clone()),
@@ -1372,10 +1385,14 @@ fn check_base_type(t: &str) -> Option<Type> {
 /// Return the corresponding base type, if any.
 ///
 /// See `check_base_type` for more details.
-fn check_base_type_from_path(t: &ast::Path) -> Option<Type> {
-    if !t.path.is_empty() {
-        None
+fn check_base_type_from_type(t: &ast::Type) -> Option<Type> {
+    if let ast::Type::Simple(t) = t {
+        if !t.path.is_empty() {
+            None
+        } else {
+            check_base_type(&t.root)
+        }
     } else {
-        check_base_type(&t.root)
+        None
     }
 }

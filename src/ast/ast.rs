@@ -4,7 +4,6 @@ pub use crate::ctx::{ModId, ModulePath};
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 
-
 // ——————————————————————————————— Zephyr AST —————————————————————————————— //
 
 /// A package type describes how the package is organised in the filesystem.
@@ -81,7 +80,7 @@ pub enum UnaryOperator {
 
 pub struct Parameter {
     pub ident: String,
-    pub t: Path,
+    pub t: Type,
     pub loc: Location,
 }
 
@@ -199,14 +198,14 @@ pub struct Struct {
 pub struct StructField {
     pub is_pub: bool,
     pub ident: String,
-    pub t: String,
+    pub t: Type,
     pub loc: Location,
 }
 
 pub struct Function {
     pub ident: String,
     pub params: Vec<Parameter>,
-    pub result: Option<(String, Location)>,
+    pub result: Option<(Type, Location)>,
     pub body: Body,
     pub is_pub: bool,
     pub loc: Location,
@@ -216,7 +215,7 @@ pub struct FunctionPrototype {
     pub ident: String,
     pub alias: Option<String>,
     pub params: Vec<Parameter>,
-    pub result: Option<(String, Location)>,
+    pub result: Option<(Type, Location)>,
     pub is_pub: bool,
     pub loc: Location,
 }
@@ -238,6 +237,11 @@ pub struct Path {
     pub root: String,
     pub path: Vec<String>,
     pub loc: Location,
+}
+
+pub enum Type {
+    Simple(Path),
+    Tuple(Vec<Type>),
 }
 
 pub struct Block {
@@ -340,9 +344,7 @@ impl fmt::Display for Function {
             .collect::<Vec<String>>()
             .join(", ");
         let result_type = if let Some((ref t, _)) = self.result {
-            let mut t = t.clone();
-            t.push_str(" ");
-            t
+            format!("{} ", t)
         } else {
             String::from("")
         };
@@ -488,6 +490,22 @@ impl fmt::Display for Path {
             path.push_str(access);
         }
         write!(f, "{}", path)
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Simple(t) => write!(f, "{}", t),
+            Type::Tuple(types) => {
+                let types = types
+                    .iter()
+                    .map(|t| format!("{}", t))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "({})", types)
+            }
+        }
     }
 }
 

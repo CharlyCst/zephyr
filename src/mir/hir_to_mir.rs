@@ -620,7 +620,10 @@ impl<'a> MIRProducer<'a> {
         let types = try_into_mir_t(&local.t)?;
         let mut locals = Vec::with_capacity(types.len());
         for t in types {
-            locals.push(LocalVariable { id: s.fresh_local_id(), t })
+            locals.push(LocalVariable {
+                id: s.fresh_local_id(),
+                t,
+            })
         }
         Ok(locals)
     }
@@ -864,7 +867,6 @@ fn get_mir_t(t: &HirScalarType) -> Option<Type> {
 }
 
 /// Try to convert an arbitrary HIR type to an MIR type.
-/// For now advanced types such as functions and tuples are not supported.
 fn try_into_mir_t(t: &HirType) -> Result<Vec<Type>, String> {
     match t {
         HirType::Scalar(t) => Ok(match get_mir_t(t) {
@@ -872,7 +874,13 @@ fn try_into_mir_t(t: &HirType) -> Result<Vec<Type>, String> {
             None => vec![],
         }),
         HirType::Fun(_) => Err(String::from("Function as value are not yet supported.")),
-        HirType::Tuple(_) => Err(String::from("Tuples are not yet supported.")),
+        HirType::Tuple(t) => {
+            let mut types = Vec::with_capacity(t.0.len());
+            for t in &t.0 {
+                types.extend(try_into_mir_t(t)?);
+            }
+            Ok(types)
+        }
         // For now structs are always boxed and represented by a pointer to their location
         HirType::Struct(_) => Ok(vec![Type::I32]),
     }
