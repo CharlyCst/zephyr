@@ -844,24 +844,14 @@ impl<'a> NameResolver<'a> {
             let mut params = Vec::new();
             let mut declared_params = Vec::new();
             for param in fun.params {
-                let t = match self.get_type(&param.t, state) {
-                    Some(t) => t,
-                    None => {
-                        self.err
-                            .report(param.loc, format!("Type '{}' does not exist", &param.t));
-                        types::BUG
-                    }
-                };
+                let t = self.get_type(&param.t, state);
                 params.push(t.clone());
                 declared_params.push((param, t));
             }
 
             // Check result type
             let ret = if let Some((t, _)) = &fun.result {
-                match self.get_type(t, state) {
-                    Some(t) => t,
-                    None => types::BUG,
-                }
+                self.get_type(t, state)
             } else {
                 types::NULL
             };
@@ -1024,9 +1014,7 @@ impl<'a> NameResolver<'a> {
             let loc = field.loc;
             let is_pub = field.is_pub;
             let t = self.get_type(&field.t, state);
-            if let Some(t) = t {
-                fields.insert(field.ident, StructField { t, loc, is_pub });
-            }
+            fields.insert(field.ident, StructField { t, loc, is_pub });
         }
 
         Some(Struct {
@@ -1223,28 +1211,31 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Get a type from an AST Type.
-    fn get_type(&mut self, ast_t: &ast::Type, state: &State) -> Option<Type> {
+    ///
+    /// An error will be raised if a type can't be resolved, and a `Bug` type will be used as
+    /// placeholder.
+    fn get_type(&mut self, ast_t: &ast::Type, state: &State) -> Type {
         match ast_t {
             ast::Type::Simple(path) => self.get_type_from_path(path, state),
             ast::Type::Tuple(tup) => {
                 let mut types = Vec::new();
                 for t in tup {
-                    if let Some(t) = self.get_type(t, state) {
-                        types.push(t);
-                    } else {
-                        types.push(types::BUG);
-                    }
+                    types.push(self.get_type(t, state));
                 }
-                Some(Type::Tuple(TupleType(types)))
+                Type::Tuple(TupleType(types))
             }
         }
     }
 
-    fn get_type_from_path(&mut self, path: &ast::Path, state: &State) -> Option<Type> {
+    /// Get a type from an AST path.
+    ///
+    /// An error will be raised if a type can't be resolved, and a 'Bug' type will be used as
+    /// placeholder.
+    fn get_type_from_path(&mut self, path: &ast::Path, state: &State) -> Type {
         // Check for built-in type
         if path.path.is_empty() {
             if let Some(t) = check_built_in_type(&path.root) {
-                return Some(t);
+                return t;
             }
         }
         let mut ident = &path.root;
@@ -1255,17 +1246,17 @@ impl<'a> NameResolver<'a> {
                 None => {
                     self.err
                         .report(path.loc, format!("Could not resolve '{}'", ident));
-                    return None;
+                    return types::BUG;
                 }
             }
             ident = access;
         }
         match namespace.get_type(ident) {
-            Some(t) => Some(t),
+            Some(t) => t,
             None => {
                 self.err
                     .report(path.loc, format!("Type '{}' does not exist", ident));
-                None
+                types::BUG
             }
         }
     }
