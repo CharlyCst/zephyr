@@ -51,6 +51,7 @@ call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
 primary        -> INTEGER | FLOAT | BOOLEAN | STRING | IDENTIFIER
                 | struct_literal | "false" | "true" | "(" expression ")"
+                | "(" ( expression "," )+ expression? ")"
 
 arguments      -> ( expression ( "," expression )* ","? )?
 struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"

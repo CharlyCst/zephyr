@@ -340,7 +340,7 @@ impl<'a> MIRProducer<'a> {
     }
 
     /// Push new statements that execute the given expression and return the types of values added
-    /// on top of the heap.
+    /// on top of the stack.
     fn reduce_expr(
         &mut self,
         expression: &Expr,
@@ -373,6 +373,13 @@ impl<'a> MIRProducer<'a> {
                 V::DataPointer(data_id, _) => {
                     stmts.push(Statement::Const(Value::DataPointer(*data_id)));
                     vec![Type::I32]
+                }
+                V::Tuple(values, _) => {
+                    let mut types = Vec::with_capacity(values.len());
+                    for val in values {
+                        types.extend(self.reduce_expr(val, stmts, locals, s)?);
+                    }
+                    types
                 }
                 V::Struct {
                     struct_id, fields, ..

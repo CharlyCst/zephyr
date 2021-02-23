@@ -1,0 +1,12 @@
+standalone package nested
+
+expose main as _start
+
+fun main(): i32 {
+    let tup = (0, (1, 2))
+    return test(tup)
+}
+
+fun test(tup: (i32, (i32, i32))): i32 {
+    return 42
+}

@@ -280,6 +280,23 @@ impl<'a> HirProducer<'a> {
                     }
                     _ => return Err(String::from("Struct literal of non struct type.")),
                 },
+                V::Tuple {
+                    values, t_id, loc, ..
+                } => match s
+                    .type_vars
+                    .get(&t_id)
+                    .ok_or(format!("Invalid t_id '{}'", t_id))?
+                {
+                    ASTTypes::Tuple(tup) => {
+                        assert!(tup.0.len() == values.len());
+                        let mut hir_values = Vec::with_capacity(values.len());
+                        for val in values {
+                            hir_values.push(self.reduce_expr(val, s)?);
+                        }
+                        Value::Tuple(hir_values, loc)
+                    },
+                    _ => return Err(String::from("Tuple literal of non tuple type.")),
+                },
             })),
             Expr::Variable(var) => {
                 let name = s.names.get(var.n_id);

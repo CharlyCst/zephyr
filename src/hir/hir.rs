@@ -371,6 +371,7 @@ pub enum Value {
         fields: Vec<FieldValue>,
         loc: Location,
     },
+    Tuple(Vec<Expression>, Location),
     DataPointer(DataId, Location), // A pointer to a memory location
 }
 
@@ -438,6 +439,7 @@ impl Expression {
                 Value::I64(_, loc) => *loc,
                 Value::I32(_, loc) => *loc,
                 Value::Bool(_, loc) => *loc,
+                Value::Tuple(_, loc) => *loc,
                 Value::Struct { loc, .. } => *loc,
                 Value::DataPointer(_, loc) => *loc,
             },
@@ -711,6 +713,14 @@ impl fmt::Display for Value {
                 }
             }
             Value::DataPointer(data_id, _) => write!(f, "data #{}", data_id),
+            Value::Tuple(tup, _) => write!(
+                f,
+                "({})",
+                tup.iter()
+                    .map(|val| format!("{}", val))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Value::Struct {
                 struct_id, fields, ..
             } => write!(

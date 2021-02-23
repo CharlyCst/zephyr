@@ -5,8 +5,8 @@ use super::store::StructId;
 use super::types;
 use super::types::id::{T_ID_FLOAT, T_ID_INTEGER};
 use super::types::{
-    ConstraintStore, FieldContstraint, FunctionType, Type, TypeConstraint, TypeVarTypes, TypeVarId,
-    TypeVarStore, TypedProgram,
+    ConstraintStore, FieldContstraint, FunctionType, TupleType, Type, TypeConstraint, TypeVarId,
+    TypeVarStore, TypeVarTypes, TypedProgram,
 };
 use crate::ctx::{Ctx, ModId, ModuleDeclarations};
 use crate::error::{ErrorHandler, Location};
@@ -55,12 +55,8 @@ impl<'a> TypeChecker<'a> {
         }
 
         let store = self.build_store(&type_vars);
-        let pub_decls = self.get_pub_decls(
-            prog.package.id,
-            &prog.funs,
-            &prog.imports,
-            &prog.structs,
-        );
+        let pub_decls =
+            self.get_pub_decls(prog.package.id, &prog.funs, &prog.imports, &prog.structs);
 
         TypedProgram {
             pub_decls,
@@ -157,9 +153,7 @@ impl<'a> TypeChecker<'a> {
         structs: &StructStore,
     ) -> Result<Progress, ()> {
         match constr {
-            TypeConstraint::Is(t_id, ref t, loc) => {
-                self.constr_is(t_id, t, loc, store)
-            }
+            TypeConstraint::Is(t_id, ref t, loc) => self.constr_is(t_id, t, loc, store),
             TypeConstraint::Equality(t_id_1, t_id_2, loc) => {
                 self.constr_equality(t_id_1, t_id_2, loc, store, constraints)
             }
@@ -190,6 +184,11 @@ impl<'a> TypeChecker<'a> {
                 fields,
                 loc,
             } => self.constr_struct(struct_t_id, fields, loc, store, constraints, structs),
+            TypeConstraint::TupleLiteral {
+                tuple_t_id,
+                values_t_ids,
+                loc,
+            } => self.constr_tuple(tuple_t_id, values_t_ids, loc, store, constraints),
         }
     }
 
@@ -503,6 +502,72 @@ impl<'a> TypeChecker<'a> {
         } else {
             self.err.report(loc, String::from("Call a non-function"));
             Err(())
+        }
+    }
+
+    fn constr_tuple(
+        &mut self,
+        tuple_t_id: TypeVarId,
+        values_t_ids: Vec<(TypeVarId, Location)>,
+        loc: Location,
+        store: &mut TypeVarStore,
+        constraints: &mut ConstraintStore,
+    ) -> Result<Progress, ()> {
+        // Two cases here:
+        //
+        // 1) The type of the tuple is fixed
+        // 2) The types of all the elements of the tuple are fixed
+        //
+        // This mean that the current algorithm does not handle cases where some of the values have
+        // an undetermined types, such as integers that can be either i32 or i64.
+        let t_tup = store.get(tuple_t_id);
+
+        if t_tup.types.len() == 1 && t_tup.types[0] != Type::Any {
+            let tup_loc = t_tup.loc;
+            let t_tup = &t_tup.types[0];
+            match t_tup {
+                Type::Tuple(tup) => {
+                    if tup.0.len() != values_t_ids.len() {
+                        self.err
+                            .report(loc, String::from("Tuple sizes do not match"));
+                        return Err(());
+                    }
+                    for (t, (t_id, loc)) in tup.0.iter().zip(values_t_ids) {
+                        constraints.add(TypeConstraint::Is(t_id, t.clone(), loc));
+                    }
+                    Ok(Progress::Some)
+                }
+                Type::Any => {
+                    panic!(); // Must be unreachable, type guard for any inf `if`
+                }
+                _ => {
+                    self.err.report(tup_loc, String::from("Expected a tuple"));
+                    Err(())
+                }
+            }
+        } else {
+            let mut types = Vec::with_capacity(values_t_ids.len());
+            for (val_t_id, _) in &values_t_ids {
+                let t_val = store.get(*val_t_id);
+                if t_val.types.len() == 1 {
+                    types.push(t_val.types[0].clone());
+                } else {
+                    // One of the type is still unknow, re-insert the tuple constraint
+                    constraints.add(TypeConstraint::TupleLiteral {
+                        tuple_t_id,
+                        values_t_ids,
+                        loc,
+                    });
+                    return Ok(Progress::None);
+                }
+            }
+            // The tuple type has been fully determined
+            constraints.add(TypeConstraint::Is(
+                tuple_t_id,
+                Type::Tuple(TupleType(types)),
+                loc,
+            ));
+            Ok(Progress::Some)
         }
     }
 

@@ -175,6 +175,11 @@ pub enum Value {
         fields: Vec<FieldValue>,
         t_id: TypeVarId,
     },
+    Tuple {
+        values: Vec<Expression>,
+        loc: Location,
+        t_id: TypeVarId,
+    }
 }
 
 pub struct FieldValue {
@@ -243,6 +248,7 @@ impl Expression {
                 Value::Float { loc, .. } => *loc,
                 Value::Str { loc, .. } => *loc,
                 Value::Struct { loc, .. } => *loc,
+                Value::Tuple { loc, ..} => *loc,
             },
             Expression::Function { loc, .. } => *loc,
             Expression::Access { loc, .. } => *loc,

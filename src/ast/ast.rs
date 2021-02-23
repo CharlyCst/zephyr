@@ -44,6 +44,10 @@ pub enum Value {
         fields: Vec<FieldValue>,
         loc: Location,
     },
+    Tuple {
+        values: Vec<Expression>,
+        loc: Location,
+    },
 }
 
 pub struct FieldValue {
@@ -409,6 +413,15 @@ impl fmt::Display for Expression {
                     fields
                         .iter()
                         .map(|FieldValue { ident, expr, .. }| format!("{}: {}", ident, expr))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ),
+                Value::Tuple { values, .. } => write!(
+                    f,
+                    "({})",
+                    values
+                        .iter()
+                        .map(|exp| format!("{}", exp))
                         .collect::<Vec<String>>()
                         .join(", ")
                 ),

@@ -170,6 +170,11 @@ pub enum TypeConstraint {
         fields: Vec<FieldContstraint>,
         loc: Location,
     },
+    TupleLiteral {
+        tuple_t_id: TypeVarId,
+        values_t_ids: Vec<(TypeVarId, Location)>,
+        loc: Location,
+    },
 }
 
 pub type FieldContstraint = (String, TypeVarId, Location); // ident, t_id, loc
@@ -402,6 +407,17 @@ impl fmt::Display for ConstraintStore {
                 } => {
                     for (ref field, t_id, _) in fields {
                         store.push_str(&format!("  {:>4} .{} {:>3}\n", struct_t_id, field, t_id))
+                    }
+                }
+                TypeConstraint::TupleLiteral {
+                    tuple_t_id,
+                    values_t_ids,
+                    ..
+                } => {
+                    let mut idx = 0;
+                    for (t_id, _) in values_t_ids {
+                        store.push_str(&format!("  {:>4}._{} {:>3}\n", tuple_t_id, idx, t_id));
+                        idx += 1;
                     }
                 }
             };

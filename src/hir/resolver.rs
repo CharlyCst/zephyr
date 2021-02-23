@@ -577,6 +577,28 @@ impl<'a> NameResolver<'a> {
                     });
                     Ok((expr, t_id))
                 }
+                ast::Value::Tuple { values, loc } => {
+                    let t_id = state.type_vars.fresh(loc, vec![Type::Any]);
+                    let mut values_t_ids = Vec::with_capacity(values.len());
+                    let mut resolved_values = Vec::with_capacity(values.len());
+                    for val in values {
+                        let (expr, val_t_id) = self.resolve_expression(val, state)?;
+                        let val_loc = expr.get_loc();
+                        resolved_values.push(expr);
+                        values_t_ids.push((val_t_id, val_loc));
+                    }
+                    state.new_constraint(TypeConstraint::TupleLiteral{
+                        tuple_t_id: t_id,
+                        values_t_ids,
+                        loc,
+                    });
+                    let expr = Expression::Literal(Value::Tuple {
+                        values: resolved_values,
+                        loc,
+                        t_id,
+                    });
+                    Ok((expr, t_id))
+                }
             },
             ast::Expression::Variable(var) => {
                 let value = self.get_value(&var.ident, var.namespace, var.loc, state)?;

@@ -1036,8 +1036,31 @@ impl<'a> Parser<'a> {
             }
             TokenType::LeftPar => {
                 let expr = self.expression(true)?;
-                self.next_match_report(TokenType::RightPar, "Expected closing parenthesis")?;
-                Ok(expr)
+                // If is parenthised expression
+                if self.next_match(TokenType::RightPar) {
+                    return Ok(expr);
+                }
+                // Else this is a tuple
+                self.next_match_report(
+                    TokenType::Comma,
+                    "Expected closing parenthesis or comma",
+                )?;
+                let mut values = vec![expr];
+                loop {
+                    if self.next_match(TokenType::RightPar) {
+                        break;
+                    }
+                    values.push(self.expression(true)?);
+                    if !self.next_match(TokenType::Comma) {
+                        self.next_match_report(
+                            TokenType::RightPar,
+                            "Expected a comma or closing parenthesis",
+                        )?;
+                        break;
+                    }
+                }
+                let loc = loc.merge(self.previous().loc);
+                Ok(Expression::Literal(Value::Tuple { values, loc }))
             }
             _ => Err(()),
         }
