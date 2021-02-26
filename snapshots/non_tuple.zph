@@ -1,0 +1,5 @@
+standalone package non_tuple
+
+fun main(): (i32,) {
+    return 42
+}

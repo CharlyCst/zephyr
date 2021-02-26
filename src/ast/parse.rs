@@ -1041,10 +1041,7 @@ impl<'a> Parser<'a> {
                     return Ok(expr);
                 }
                 // Else this is a tuple
-                self.next_match_report(
-                    TokenType::Comma,
-                    "Expected closing parenthesis or comma",
-                )?;
+                self.next_match_report(TokenType::Comma, "Expected closing parenthesis or comma")?;
                 let mut values = vec![expr];
                 loop {
                     if self.next_match(TokenType::RightPar) {
@@ -1173,13 +1170,16 @@ impl<'a> Parser<'a> {
     fn type_(&mut self) -> Result<Type, ()> {
         if self.next_match(TokenType::LeftPar) {
             // Tuple type
-            let mut paths = vec![self.type_()?];
-            while self.next_match(TokenType::Comma) {
+            let mut paths = vec![];
+            loop {
                 paths.push(self.type_()?);
+                // Stop if there is no comma or a closing parenthesis is found
+                if !self.next_match(TokenType::Comma) {
+                    break;
+                } else if let TokenType::RightPar = self.peek().t {
+                    break;
+                }
             }
-            // Consumes optionnal comma
-            self.next_match(TokenType::Comma);
-            // Consumes the closing parenthesis
             self.next_match_report_synchronize(
                 TokenType::RightPar,
                 "Expected a right parenthesis ')'",

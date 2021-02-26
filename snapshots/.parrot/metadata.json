@@ -198,6 +198,30 @@
       "exit_code": 0,
       "stdout": "escape_characters.out",
       "stderr": null
+    },
+    {
+      "cmd": "./target/debug/zephyr tuple_size.zph",
+      "name": "tuple-size-do-no-match",
+      "description": "If a tuple of incorrect size is received a type error should be raised.\n#typing #tuple",
+      "tags": [
+        "typing",
+        "tuple"
+      ],
+      "exit_code": 127,
+      "stdout": null,
+      "stderr": "tuple-size-do-no-match.err"
+    },
+    {
+      "cmd": "../target/debug/zephyr non_tuple.zph",
+      "name": "non-tuple",
+      "description": "Raise an error when receiving a non tuple when a tuple is expected.\n#typing #tuple",
+      "tags": [
+        "typing",
+        "tuple"
+      ],
+      "exit_code": 65,
+      "stdout": "non-tuple.out",
+      "stderr": null
     }
   ]
 }
