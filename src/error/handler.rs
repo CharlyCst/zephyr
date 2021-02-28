@@ -37,13 +37,18 @@ impl ErrorHandler {
         }
     }
 
-    /// Returns a file owned by the ErrorHandler.
+    /// Return a file owned by the ErrorHandler.
     pub fn get_file(&self, f_id: u16) -> Option<&str> {
         if let Some(s) = self.codes.get(&f_id) {
             Some(&*s)
         } else {
             None
         }
+    }
+
+    /// Return true if an error was reported.
+    pub fn has_error(&self) -> bool {
+        self.has_error
     }
 
     /// Report a warning without location.

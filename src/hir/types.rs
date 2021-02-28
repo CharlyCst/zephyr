@@ -29,7 +29,7 @@ const NB_DEFAULT_T_ID: usize = 7;
 
 // ————————————————————————————————— Types —————————————————————————————————— //
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Hash, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
@@ -39,7 +39,7 @@ pub enum Type {
     Any, // Used as a placeholder, the actual type will be infered
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Hash, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ScalarType {
     I32,
     I64,
@@ -49,10 +49,10 @@ pub enum ScalarType {
     Null,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Hash, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TupleType(pub Vec<Type>);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Hash, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub ret: Box<Type>,
@@ -305,14 +305,7 @@ impl IntoIterator for ConstraintStore {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Scalar(s) => match s {
-                ScalarType::I32 => write!(f, "i32"),
-                ScalarType::I64 => write!(f, "i64"),
-                ScalarType::F32 => write!(f, "f32"),
-                ScalarType::F64 => write!(f, "f64"),
-                ScalarType::Bool => write!(f, "bool"),
-                ScalarType::Null => write!(f, "null"),
-            },
+            Type::Scalar(s) => write!(f, "{}", s),
             Type::Any => write!(f, "any"),
             Type::Bug => write!(f, "bug"),
             Type::Fun(FunctionType { params, ret }) => {
@@ -333,6 +326,19 @@ impl fmt::Display for Type {
                 write!(f, "({})", types)
             }
             Type::Struct(id) => write!(f, "struct #{}", id),
+        }
+    }
+}
+
+impl fmt::Display for ScalarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScalarType::I32 => write!(f, "i32"),
+            ScalarType::I64 => write!(f, "i64"),
+            ScalarType::F32 => write!(f, "f32"),
+            ScalarType::F64 => write!(f, "f64"),
+            ScalarType::Bool => write!(f, "bool"),
+            ScalarType::Null => write!(f, "null"),
         }
     }
 }

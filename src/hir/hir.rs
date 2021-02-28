@@ -24,7 +24,7 @@ pub const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
 // —————————————————————————————————— Types ————————————————————————————————— //
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
@@ -32,7 +32,9 @@ pub enum Type {
     Struct(StructId),
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+// The order of scalars is important, the first (smallest) will be picked when more than one are
+// acceptable.
+#[derive(Debug, Hash, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ScalarType {
     I32,
     I64,
@@ -42,13 +44,13 @@ pub enum ScalarType {
     Null,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum IntegerType {
     I32,
     I64,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     I32,
     I64,
@@ -56,7 +58,7 @@ pub enum NumericType {
     F64,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum NonNullScalarType {
     I32,
     I64,
@@ -65,10 +67,10 @@ pub enum NonNullScalarType {
     Bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TupleType(pub Vec<Type>);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub ret: Box<Type>,
