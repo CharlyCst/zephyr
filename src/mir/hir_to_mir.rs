@@ -419,7 +419,7 @@ impl<'a> MIRProducer<'a> {
                         }
                         // Store values one by one
                         for (t, (t_2, t_layout, t_offset)) in values_types.iter().zip(layout) {
-                            assert!(t == t_2);
+                            assert_eq!(t, t_2);
                             stmts.push(Statement::Memory(get_store_instr(
                                 *t,
                                 *t_layout,

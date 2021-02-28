@@ -1,10 +1,9 @@
-use super::hir::ScalarType as HirScalar;
+use super::hir::{ScalarType as HirScalar, Type as HirType};
 use super::names::{
     AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, FunId, Function, NameId,
-    NameStore, TypeId, TypeStore,
+    NameStore, ResolvedProgram, TypeVar,
 };
-use super::types::TypedProgram;
-use super::types::{ScalarType as AstScalarType, Type as AstType, TypeVarTypes};
+use super::type_check::TypeChecker;
 use crate::error::{ErrorHandler, Location};
 use crate::mir::Value as MirValue;
 
@@ -19,24 +18,23 @@ enum Type {
     F64,
 }
 
-pub struct AsmValidator<'a, 'b> {
-    err: &'a mut ErrorHandler,
-    type_vars: &'b TypeVarTypes,
-    types: &'b TypeStore,
-    fun_types: &'b HashMap<FunId, TypeId>,
-    names: &'b NameStore,
-    funs: &'b Vec<Function>,
+pub struct AsmValidator<'err, 'a, 'ctx, 'ty> {
+    err: &'err mut ErrorHandler,
+    checker: &'a mut TypeChecker<'ctx, 'ty>,
+    fun_types: &'a HashMap<FunId, TypeVar>,
+    names: &'a NameStore,
+    funs: &'a Vec<Function>,
 }
 
-impl<'a, 'b> AsmValidator<'a, 'b> {
+impl<'err, 'a, 'ctx, 'ty> AsmValidator<'err, 'a, 'ctx, 'ty> {
     pub fn new(
-        prog: &'b TypedProgram,
-        error_handler: &'a mut ErrorHandler,
-    ) -> AsmValidator<'a, 'b> {
+        prog: &'a ResolvedProgram,
+        checker: &'a mut TypeChecker<'ctx, 'ty>,
+        error_handler: &'err mut ErrorHandler,
+    ) -> AsmValidator<'err, 'a, 'ctx, 'ty> {
         AsmValidator {
             err: error_handler,
-            type_vars: &prog.type_vars,
-            types: &prog.types,
+            checker,
             fun_types: &prog.fun_types,
             names: &prog.names,
             funs: &prog.funs,
@@ -201,18 +199,18 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
     /// Return the type associated to a given name ID.
     fn get_name_type(&mut self, n_id: NameId, loc: &Location) -> Result<Type, ()> {
         let name = self.names.get(n_id);
-        let t = self.type_vars.get(&name.t_id).ok_or(())?;
-        self.get_type(t, loc)
+        let t = self.checker.get_t(name.t_var).ok_or(())?;
+        self.get_type(&t, loc)
     }
 
     /// Convert a MIR type into a Wasm type, may rise an error.
-    fn get_type(&mut self, t: &AstType, loc: &Location) -> Result<Type, ()> {
+    fn get_type(&mut self, t: &HirType, loc: &Location) -> Result<Type, ()> {
         match t {
-            AstType::Scalar(AstScalarType::I32) => Ok(Type::I32),
-            AstType::Scalar(AstScalarType::I64) => Ok(Type::I64),
-            AstType::Scalar(AstScalarType::F32) => Ok(Type::F32),
-            AstType::Scalar(AstScalarType::F64) => Ok(Type::F64),
-            AstType::Scalar(AstScalarType::Bool) => Ok(Type::I32),
+            HirType::Scalar(HirScalar::I32) => Ok(Type::I32),
+            HirType::Scalar(HirScalar::I64) => Ok(Type::I64),
+            HirType::Scalar(HirScalar::F32) => Ok(Type::F32),
+            HirType::Scalar(HirScalar::F64) => Ok(Type::F64),
+            HirType::Scalar(HirScalar::Bool) => Ok(Type::I32),
             _ => {
                 self.err
                     .report(*loc, String::from("Invalid type in assembly function."));
@@ -224,11 +222,13 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
     /// Returns the return type of the function.
     fn get_fun_type(&mut self, fun: &Function) -> Result<Option<Type>, ()> {
         let fun_t_id = self.fun_types.get(&fun.fun_id).ok_or(())?;
-        let fun_t = self.types.get(*fun_t_id).ok_or(())?;
+        // TODO: this is quire expensive, we may want to add a function to get the return type
+        // directly
+        let fun_t = self.checker.get_t(*fun_t_id).ok_or(())?;
         let fun_t = match fun_t {
             // Only handle single return value
-            AstType::Fun(f) => match *f.ret {
-                AstType::Scalar(s) => s.lower(),
+            HirType::Fun(f) => match *f.ret {
+                HirType::Scalar(s) => s,
                 _ => {
                     self.err.report(
                         fun.loc,

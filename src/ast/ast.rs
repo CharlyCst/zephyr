@@ -209,7 +209,7 @@ pub struct StructField {
 pub struct Function {
     pub ident: String,
     pub params: Vec<Parameter>,
-    pub result: Option<(Type, Location)>,
+    pub result: Option<Type>,
     pub body: Body,
     pub is_pub: bool,
     pub loc: Location,
@@ -219,7 +219,7 @@ pub struct FunctionPrototype {
     pub ident: String,
     pub alias: Option<String>,
     pub params: Vec<Parameter>,
-    pub result: Option<(Type, Location)>,
+    pub result: Option<Type>,
     pub is_pub: bool,
     pub loc: Location,
 }
@@ -245,7 +245,16 @@ pub struct Path {
 
 pub enum Type {
     Simple(Path),
-    Tuple(Vec<Type>),
+    Tuple(Vec<Type>, Location),
+}
+
+impl Type {
+    pub fn get_loc(&self) -> Location {
+        match self {
+            Type::Simple(path) => path.loc,
+            Type::Tuple(_, loc) => *loc,
+        }
+    }
 }
 
 pub struct Block {
@@ -347,7 +356,7 @@ impl fmt::Display for Function {
             })
             .collect::<Vec<String>>()
             .join(", ");
-        let result_type = if let Some((ref t, _)) = self.result {
+        let result_type = if let Some(ref t) = self.result {
             format!("{} ", t)
         } else {
             String::from("")
@@ -510,7 +519,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Simple(t) => write!(f, "{}", t),
-            Type::Tuple(types) => {
+            Type::Tuple(types, _) => {
                 let types = types
                     .iter()
                     .map(|t| format!("{}", t))

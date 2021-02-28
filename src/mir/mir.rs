@@ -213,7 +213,7 @@ pub enum Memory {
 }
 
 /// Wasm types as they appear on the stack.
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Type {
     I32,
     I64,

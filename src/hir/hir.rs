@@ -1,10 +1,6 @@
 #![allow(dead_code)] // Call::Indirect
 use super::names::{AsmStatement, DataStore};
 use super::store::Store;
-use super::types::{
-    FunctionType as NameFunctionType, ScalarType as NameScalarType, TupleType as NameTupleType,
-    Type as NameType,
-};
 use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 
@@ -24,7 +20,7 @@ pub const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 
 // —————————————————————————————————— Types ————————————————————————————————— //
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
@@ -32,7 +28,9 @@ pub enum Type {
     Struct(StructId),
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+// The order of scalars is important, the first (smallest) will be picked when more than one are
+// acceptable.
+#[derive(Debug, Hash, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ScalarType {
     I32,
     I64,
@@ -42,13 +40,13 @@ pub enum ScalarType {
     Null,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum IntegerType {
     I32,
     I64,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     I32,
     I64,
@@ -56,7 +54,7 @@ pub enum NumericType {
     F64,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum NonNullScalarType {
     I32,
     I64,
@@ -65,42 +63,30 @@ pub enum NonNullScalarType {
     Bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TupleType(pub Vec<Type>);
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub ret: Box<Type>,
 }
 
 impl Type {
-    pub fn lift(&self) -> NameType {
+    /// Tries to convert this type into a scalar, return None if the conversion failed.
+    pub fn to_scalar(&self) -> Option<ScalarType> {
         match self {
-            Type::Scalar(x) => NameType::Scalar(x.lift()),
-            Type::Struct(s_id) => NameType::Struct(*s_id),
-            Type::Tuple(tup) => NameType::Tuple(tup.lift()), // Tuples are not yet supported
-            Type::Fun(fun) => NameType::Fun(fun.lift()),
+            Type::Scalar(s) => Some(*s),
+            _ => None,
         }
     }
-}
 
-impl ScalarType {
-    pub fn lift(&self) -> NameScalarType {
+    /// Tries to convert this type into a function, return None if the conversion failed.
+    pub fn to_fun(self) -> Option<FunctionType> {
         match self {
-            ScalarType::I32 => NameScalarType::I32,
-            ScalarType::I64 => NameScalarType::I64,
-            ScalarType::F32 => NameScalarType::F32,
-            ScalarType::F64 => NameScalarType::F64,
-            ScalarType::Bool => NameScalarType::Bool,
-            ScalarType::Null => NameScalarType::Null,
+            Type::Fun(f) => Some(f),
+            _ => None,
         }
-    }
-}
-
-impl TupleType {
-    pub fn lift(&self) -> NameTupleType {
-        NameTupleType(self.0.iter().map(|t| t.lift()).collect())
     }
 }
 
@@ -109,13 +95,6 @@ impl FunctionType {
         FunctionType {
             params,
             ret: Box::new(ret),
-        }
-    }
-
-    pub fn lift(&self) -> NameFunctionType {
-        NameFunctionType {
-            params: self.params.iter().map(|p| p.lift()).collect(),
-            ret: Box::new(self.ret.lift()),
         }
     }
 }

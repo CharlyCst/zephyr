@@ -605,13 +605,9 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'result' grammar element
-    fn result(&mut self) -> Option<(Type, Location)> {
+    fn result(&mut self) -> Option<Type> {
         if self.next_match(TokenType::Colon) {
-            let loc = self.peek().loc;
-            match self.type_() {
-                Ok(t) => Some((t, loc.merge(self.peek().loc))),
-                Err(()) => None,
-            }
+            self.type_().ok()
         } else {
             None
         }
@@ -1168,6 +1164,7 @@ impl<'a> Parser<'a> {
     }
 
     fn type_(&mut self) -> Result<Type, ()> {
+        let loc = self.peek().loc;
         if self.next_match(TokenType::LeftPar) {
             // Tuple type
             let mut paths = vec![];
@@ -1180,11 +1177,12 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
+            let tuple_loc = loc.merge(self.peek().loc);
             self.next_match_report_synchronize(
                 TokenType::RightPar,
                 "Expected a right parenthesis ')'",
             )?;
-            Ok(Type::Tuple(paths))
+            Ok(Type::Tuple(paths, tuple_loc))
         } else {
             // Simple type
             Ok(Type::Simple(self.path()?))

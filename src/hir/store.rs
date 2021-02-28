@@ -86,6 +86,7 @@ where
     }
 
     /// Add an item to the store, return a globally unique ID that identifies this item.
+    #[allow(dead_code)]
     pub fn add(&mut self, item: T) -> I {
         let id = self.fresh_id();
         self.data.insert(id.clone(), item);
@@ -124,7 +125,7 @@ where
         self.merged_mods.insert(other.mod_id);
     }
 
-    /// Transform a `Store<T>` into `Store<Q>` by applying a function to all its elements.
+    /// Transform a `Store<I, T>` into `Store<I, Q>` by applying a function to all its elements.
     ///
     /// If the transformation function return None, the item is dropped.
     pub fn transmute<Q, F>(self, mut fun: F) -> Store<I, Q>

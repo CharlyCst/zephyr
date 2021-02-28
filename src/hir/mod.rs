@@ -5,15 +5,14 @@ use crate::ctx::{Ctx, KnownValues, ModId};
 use crate::error::ErrorHandler;
 
 pub use self::names::{
-    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, NameId, TypeDeclaration,
-    ValueDeclaration,
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, NameId,
+    ValueDeclaration, TypeId,
 };
-pub use self::types::TypeId;
 pub use crate::ast::Package;
 pub use hir::*;
 pub use names::{Data, DataId};
-pub use store::Identifier;
 pub use store::known_ids;
+pub use store::Identifier;
 
 mod asm_validate;
 mod ast_to_hir;
@@ -22,7 +21,6 @@ mod names;
 mod resolver;
 mod store;
 mod type_check;
-mod types;
 
 pub fn to_hir<'a>(
     ast_program: ast::Program,
@@ -32,28 +30,25 @@ pub fn to_hir<'a>(
     error_handler: &mut ErrorHandler,
     verbose: bool,
 ) -> hir::Program {
+    let store = type_check::TyStore::new();
+    let mut checker = type_check::TypeChecker::new(ctx, &store);
     let mut name_resolver = resolver::NameResolver::new(error_handler);
-    let program = name_resolver.resolve(ast_program, namespace, ctx, known_values);
+    let program = name_resolver.resolve(ast_program, namespace, ctx, &mut checker, known_values);
 
     if verbose {
         println!("\n/// Name Resolution ///\n");
-
         println!("{}\n", program.names);
-        println!("{}\n", program.type_vars);
-        println!("{}\n", program.constraints);
-
         println!("\n/// Type Checking ///\n");
     }
 
-    let mut type_checker = type_check::TypeChecker::new(error_handler, ctx);
-    let typed_program = type_checker.check(program);
+    let _ = checker.type_check(&program.structs, error_handler);
 
     if verbose {
-        println!("{}", &typed_program.type_vars);
+        // TODO: display type checker mappings
         println!("\n/// Asm Validation ///\n");
     }
 
-    let mut asm_validator = asm_validate::AsmValidator::new(&typed_program, error_handler);
+    let mut asm_validator = asm_validate::AsmValidator::new(&program, &mut checker, error_handler);
     asm_validator.validate_asm();
 
     error_handler.flush_and_exit_if_err();
@@ -63,7 +58,7 @@ pub fn to_hir<'a>(
     }
 
     let mut hir_producer = ast_to_hir::HirProducer::new(error_handler);
-    let hir = hir_producer.reduce(typed_program);
+    let hir = hir_producer.reduce(program, &mut checker);
 
     if verbose {
         println!("{}", hir);

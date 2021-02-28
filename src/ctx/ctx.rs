@@ -67,7 +67,7 @@ impl Ctx {
     }
 
     /// Get a structure from its ID.
-    pub fn get_s(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
+    pub fn get_struct(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
         self.structs.get(&s_id)
     }
 
@@ -347,7 +347,7 @@ impl Ctx {
     ) -> Result<KnownStructs, ()> {
         let modules = KnownStructPaths::get();
         let str_decl = self.get_public_decls(&modules.str, err, resolver)?.clone();
-        let str = self.get_struct(&str_decl, "Str", &modules.str, err)?;
+        let str = self.get_struct_from_decl(&str_decl, "Str", &modules.str, err)?;
         let str = known_functions::validate_str(str, err)?;
         Ok(KnownStructs { str })
     }
@@ -410,7 +410,7 @@ impl Ctx {
     ///  - struc: the identifier of the struct.
     ///  - module: a path to the module.
     ///  - err: an error handler.
-    fn get_struct(
+    fn get_struct_from_decl(
         &self,
         public_decls: &ModuleDeclarations,
         struc: &str,
@@ -418,8 +418,11 @@ impl Ctx {
         err: &mut ErrorHandler,
     ) -> Result<&hir::Struct, ()> {
         if let Some(struc) = public_decls.type_decls.get(struc) {
-            let struct_id = match struc {
-                hir::TypeDeclaration::Struct(s_id) => s_id,
+            let struct_id = if let hir::Type::Struct(s_id) = struc {
+                s_id
+            } else {
+                err.report_no_loc(format!("Expected a struct, got '{}'", &struc));
+                return Err(());
             };
             let struc = self
                 .structs

@@ -279,11 +279,7 @@ impl<'a> Parser<'a> {
             return Err(());
         }
         let result = if self.next_match(TokenType::Colon) {
-            let loc = self.peek().loc;
-            match self.type_() {
-                Ok(t) => Some((t, loc.merge(self.peek().loc))),
-                Err(()) => None,
-            }
+            self.type_().ok()
         } else {
             None
         };
@@ -456,7 +452,7 @@ impl<'a> Parser<'a> {
                 };
                 types.push(t);
             }
-            Ok(ast::Type::Tuple(types))
+            Ok(ast::Type::Tuple(types, loc.merge(self.peek().loc)))
         } else {
             // Simple type
             let token = self.advance();
