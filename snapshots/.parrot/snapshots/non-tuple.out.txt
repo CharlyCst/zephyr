@@ -1,4 +1,4 @@
     4 |     return 42
             [31m^^^^^^[0m
-[31m[1mError:[0m[31m Type constraint can not be satisfied[0m
+[31m[1mError:[0m[31m Incompatible types[0m
 

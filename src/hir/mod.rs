@@ -5,8 +5,7 @@ use crate::ctx::{Ctx, KnownValues, ModId};
 use crate::error::ErrorHandler;
 
 pub use self::names::{
-    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, NameId,
-    ValueDeclaration, TypeId,
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, NameId, TypeId, ValueDeclaration,
 };
 pub use crate::ast::Package;
 pub use hir::*;
@@ -38,13 +37,14 @@ pub fn to_hir<'a>(
     if verbose {
         println!("\n/// Name Resolution ///\n");
         println!("{}\n", program.names);
+        println!("{}\n", checker);
         println!("\n/// Type Checking ///\n");
     }
 
     let _ = checker.type_check(&program.structs, error_handler);
 
     if verbose {
-        // TODO: display type checker mappings
+        println!("{}", checker);
         println!("\n/// Asm Validation ///\n");
     }
 

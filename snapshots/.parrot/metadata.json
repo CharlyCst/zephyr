@@ -35,7 +35,7 @@
         "fun"
       ],
       "exit_code": 65,
-      "stdout": "not_enough_args.out",
+      "stdout": "not-enough-args.out",
       "stderr": null
     },
     {

@@ -5,7 +5,10 @@ use crate::arena::Arena;
 use crate::ctx::Ctx;
 use crate::error::{ErrorHandler, Location};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+
+// —————————————————————————————————— Types ————————————————————————————————— //
 
 /// Indicates if some progress has been made.
 #[derive(Eq, PartialEq)]
@@ -16,31 +19,6 @@ enum Progress {
 
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
 pub struct TypeVar(usize);
-
-impl std::fmt::Display for TypeVar {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-enum TypeConstraint {
-    Access {
-        object: TypeVar,
-        field: TypeVar,
-        field_name: String,
-        loc: Location,
-    },
-    Call {
-        fun: TypeVar,
-        args: Vec<TypeVar>,
-        loc: Location,
-    },
-    Return {
-        fun: TypeVar,
-        ret: TypeVar,
-        loc: Location,
-    },
-}
 
 /// A type placeholder, the role of the type checker is to infer all the type variables given a set
 /// of constraints.
@@ -60,6 +38,30 @@ enum CompositeKind {
     Struct(StructId),
 }
 
+enum TypeConstraint {
+    Access {
+        object: TypeVar,
+        field: TypeVar,
+        field_name: String,
+        loc: Location,
+    },
+    Call {
+        fun: TypeVar,
+        args: Vec<TypeVar>,
+        loc: Location,
+    },
+    Return {
+        fun: TypeVar,
+        ret: TypeVar,
+        loc: Location,
+    },
+    StructLiteral {
+        t_var: TypeVar,
+        fields: Vec<(TypeVar, String, Location)>,
+        loc: Location,
+    },
+}
+
 pub struct TyStore {
     arena: Arena<Ty>,
 }
@@ -76,6 +78,8 @@ impl TyStore {
         self.arena.alloc(ty)
     }
 }
+
+// —————————————————————————————— Type Checker —————————————————————————————— //
 
 /// A substitution is a function that maps a Ty to another Ty, it is implemented upon the
 /// union-find algorithm.
@@ -119,8 +123,18 @@ impl<'ty> Substitution<'ty> {
                         // Isn't that case an error?
                         ty
                     } else {
-                        let next_t_var = *next_t_var;
-                        let new_ty = self.substitute(next_t_var);
+                        let new_ty = self.substitute(*next_t_var);
+                        self.subs.insert(t_var, new_ty);
+                        new_ty
+                    }
+                }
+                Ty::OneOf(next_t_var, _) => {
+                    if t_var == *next_t_var {
+                        // This one is definitely not an error, though
+                        // OneOf Tys explicitely keep a back-reference
+                        ty
+                    } else {
+                        let new_ty = self.substitute(*next_t_var);
                         self.subs.insert(t_var, new_ty);
                         new_ty
                     }
@@ -237,6 +251,18 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         let _ = self.unify_var_ty(&t_var, struct_ty, err, loc);
     }
 
+    /// Validate a struct literal initialization by setting appropriate constraints on all fields.
+    pub fn set_struct_literal(
+        &mut self,
+        t_var: TypeVar,
+        fields: Vec<(TypeVar, String, Location)>,
+        _err: &mut ErrorHandler,
+        loc: Location,
+    ) {
+        self.constraints
+            .push(TypeConstraint::StructLiteral { t_var, fields, loc });
+    }
+
     /// Set a type variable to the type of a function with given parameters and return type.
     pub fn set_fun(
         &mut self,
@@ -331,11 +357,12 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                         field_name,
                         loc,
                     } => self.unify_field(object, field, field_name, structs, err, loc),
-                    TypeConstraint::Call { fun, args, loc } => {
-                        self.unify_call(fun, args, err, loc)
-                    }
+                    TypeConstraint::Call { fun, args, loc } => self.unify_call(fun, args, err, loc),
                     TypeConstraint::Return { fun, ret, loc } => {
                         self.unify_return(fun, ret, err, loc)
+                    }
+                    TypeConstraint::StructLiteral { t_var, fields, loc } => {
+                        self.unify_struct_literal(t_var, fields, structs, err, loc)
                     }
                 };
                 match result {
@@ -503,7 +530,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                         format!(
                             "Expected {} argument{}, got {}",
                             n_args,
-                            n_args > 1,
+                            if n_args > 1 { "s" } else { "" },
                             t_var_args.len()
                         ),
                     );
@@ -561,6 +588,67 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                 Err(())
             }
         }
+    }
+
+    fn unify_struct_literal(
+        &mut self,
+        t_var: TypeVar,
+        fields: Vec<(TypeVar, String, Location)>,
+        structs: &StructStore,
+        err: &mut ErrorHandler,
+        loc: Location,
+    ) -> Result<Progress, ()> {
+        let s_id = match self.subs.substitute(t_var) {
+            Ty::Composite(CompositeKind::Struct(s_id), _) => *s_id,
+            Ty::Var(_) => {
+                self.constraints
+                    .push(TypeConstraint::StructLiteral { t_var, fields, loc });
+                return Ok(Progress::None);
+            }
+            _ => {
+                err.report(loc, format!("Struct literal of non struct type"));
+                return Err(());
+            }
+        };
+        self.set_struct(t_var, s_id, err, loc);
+        let nb_fields = if let Ok(nb_fields) = self.get_nb_fields_in_struct(s_id, structs, err, loc)
+        {
+            nb_fields
+        } else {
+            return Err(());
+        };
+
+        // Check for missing fields
+        if nb_fields != fields.len() {
+            if let Ok(mut field_set) = self.get_struct_fields(s_id, structs, err, loc) {
+                for (_, field_name, _) in &fields {
+                    field_set.remove(field_name);
+                }
+                if field_set.len() > 0 {
+                    let mut missing_fields = field_set
+                        .iter()
+                        .map(|f| format!("'{}'", f))
+                        .collect::<Vec<String>>();
+                    missing_fields.sort();
+                    err.report(
+                        loc,
+                        format!(
+                            "Missing field{}: {}",
+                            if field_set.len() > 1 { "s" } else { "" },
+                            missing_fields.join(", ")
+                        ),
+                    )
+                }
+            } else {
+                return Err(());
+            }
+        }
+
+        // Add type constraints for existing fields
+        for (t_var_field, field_name, field_loc) in fields {
+            self.set_access(t_var, t_var_field, field_name, field_loc);
+        }
+        Ok(Progress::Some)
     }
 
     fn unify_var_ty(
@@ -755,7 +843,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         Ok(())
     }
 
-    /// Return an HIR struct field from a struct ID.
+    /// Return a type variable for a field from a struct ID.
     fn get_field(
         &mut self,
         s_id: StructId,
@@ -784,6 +872,49 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                 );
                 Err(())
             }
+        } else {
+            err.report_internal(loc, format!("Struct with id {} is not in context", s_id));
+            Err(())
+        }
+    }
+
+    /// Return the number of fields in a given struct.
+    fn get_nb_fields_in_struct(
+        &self,
+        s_id: StructId,
+        structs: &StructStore,
+        err: &mut ErrorHandler,
+        loc: Location,
+    ) -> Result<usize, ()> {
+        if let Some(struc) = structs.get(s_id) {
+            Ok(struc.fields.len())
+        } else if let Some(struc) = self.ctx.get_struct(s_id) {
+            Ok(struc.fields.len())
+        } else {
+            err.report_internal(loc, format!("Struct with id {} is not in context", s_id));
+            Err(())
+        }
+    }
+
+    /// return a set of fields present in a struct.
+    fn get_struct_fields(
+        &self,
+        s_id: StructId,
+        structs: &StructStore,
+        err: &mut ErrorHandler,
+        loc: Location,
+    ) -> Result<HashSet<String>, ()> {
+        let mut set = HashSet::new();
+        if let Some(struc) = structs.get(s_id) {
+            for (field, _) in &struc.fields {
+                set.insert(field.clone());
+            }
+            Ok(set)
+        } else if let Some(struc) = self.ctx.get_struct(s_id) {
+            for (field, _) in &struc.fields {
+                set.insert(field.clone());
+            }
+            Ok(set)
         } else {
             err.report_internal(loc, format!("Struct with id {} is not in context", s_id));
             Err(())
@@ -862,5 +993,109 @@ mod tests {
         assert_eq!(checker.get_t(t_var_1).unwrap(), t);
         assert_eq!(checker.get_t(t_var_2).unwrap(), t);
         assert_eq!(checker.get_t(t_var_3).unwrap(), t);
+    }
+}
+
+// ———————————————————————————————— Display ————————————————————————————————— //
+
+impl fmt::Display for TypeVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl fmt::Display for TypeConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeConstraint::Call { fun, args, .. } => write!(
+                f,
+                "call #{} with [{}]",
+                fun,
+                args.iter()
+                    .map(|arg| format!("#{}", arg))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            TypeConstraint::Return { fun, ret, .. } => write!(f, "return #{} into #{}", fun, ret),
+            TypeConstraint::Access {
+                object,
+                field,
+                field_name,
+                ..
+            } => write!(f, "access #{}.{} as #{}", object, field_name, field),
+            TypeConstraint::StructLiteral { t_var, fields, .. } => {
+                write!(
+                    f,
+                    "struct #{} with {{ {} }}",
+                    t_var,
+                    fields
+                        .iter()
+                        .map(|(t_var, name, _)| format!("{}: #{}", name, t_var))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+        }
+    }
+}
+
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ty::Var(t_var) => write!(f, "#{}", t_var),
+            Ty::Base(t) => write!(f, "{}", t),
+            Ty::OneOf(t_var, ts) => write!(
+                f,
+                "{} as #{}",
+                ts.iter()
+                    .map(|t| format!("{}", t))
+                    .collect::<Vec<String>>()
+                    .join(" | "),
+                t_var
+            ),
+            Ty::Composite(kind, ts) => write!(
+                f,
+                "{}<{}>",
+                kind,
+                ts.iter()
+                    .map(|t| format!("{}", t))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl fmt::Display for CompositeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompositeKind::Tuple => write!(f, "Tuple"),
+            CompositeKind::Fun => write!(f, "Fun"),
+            CompositeKind::Struct(s_id) => write!(f, "Struct({})", s_id),
+        }
+    }
+}
+
+impl<'ty> fmt::Display for Substitution<'ty> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buff = String::from("Substitution {\n");
+        let mut sorted_subs = self.subs.iter().collect::<Vec<(&TypeVar, &&Ty)>>();
+        sorted_subs.sort_by(|(t_var_a, _), (t_var_b, _)| t_var_a.0.cmp(&t_var_b.0));
+        for (t_var, ty) in &sorted_subs {
+            buff.push_str(&format!("  {:>4} -> {}\n", &format!("{}", t_var), ty));
+        }
+        buff.push_str("}\n");
+        write!(f, "{}", buff)
+    }
+}
+
+impl<'ctx, 'ty> fmt::Display for TypeChecker<'ctx, 'ty> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buff = String::from("Constraints {\n");
+        for constraint in &self.constraints {
+            buff.push_str(&format!("    {}\n", constraint));
+        }
+        buff.push_str("}\n");
+        write!(f, "{}\n{}", &self.subs, buff)
     }
 }

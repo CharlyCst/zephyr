@@ -570,7 +570,6 @@ impl<'err, 'a, 'ctx, 'ty> NameResolver<'err> {
                         .data
                         .insert(data_id, Data::Str(data_id, val.into_bytes()));
                     let str_s_id = state.known_values.structs.str;
-                    // TODO: set_struct?
                     let t_var = state.checker.fresh();
                     state.checker.set_struct(t_var, str_s_id, self.err, loc);
                     let expr = Expression::Literal(Value::Str {
@@ -594,18 +593,20 @@ impl<'err, 'a, 'ctx, 'ty> NameResolver<'err> {
                     }
                     let n = fields.len();
                     let mut hir_fields = Vec::with_capacity(n);
+                    let mut field_types = Vec::with_capacity(n);
                     for field in fields {
                         let (expr, t_var_field) = self.resolve_expression(field.expr, state)?;
+                        field_types.push((t_var_field, field.ident.clone(), field.loc));
                         hir_fields.push(FieldValue {
                             ident: field.ident.clone(),
                             expr: Box::new(expr),
                             t_var: t_var_field,
                             loc: field.loc,
                         });
-                        state
-                            .checker
-                            .set_access(t_var, t_var_field, field.ident.clone(), loc);
                     }
+                    state
+                        .checker
+                        .set_struct_literal(t_var, field_types, &mut self.err, loc);
                     let expr = Expression::Literal(Value::Struct {
                         ident: ident.clone(),
                         loc,
@@ -1275,10 +1276,7 @@ impl<'err, 'a, 'ctx, 'ty> NameResolver<'err> {
             }
         }
         let mut ident = &path.root;
-        let mut namespace = NamespaceKind::new(
-            &state.value_namespace,
-            &state.type_namespace,
-        );
+        let mut namespace = NamespaceKind::new(&state.value_namespace, &state.type_namespace);
         for access in &path.path {
             match namespace.get_nested_namespace(ident, &state.ctx) {
                 Some(n) => namespace = n,
@@ -1374,7 +1372,7 @@ impl<'ctx> TypeKind<'ctx> {
     pub fn t_var(self, checker: &mut TypeChecker) -> TypeVar {
         match self {
             TypeKind::Resolver(t_var) => t_var,
-            TypeKind::Ctx(ty) => checker.lift_t(&ty)
+            TypeKind::Ctx(ty) => checker.lift_t(&ty),
         }
     }
 }
