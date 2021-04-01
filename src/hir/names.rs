@@ -7,8 +7,8 @@ use crate::mir::Value as MirValue;
 use std::collections::HashMap;
 use std::fmt;
 
+pub use super::store::{DataId, FunId, StructId, TupleId, TypeId};
 pub use super::type_check::TypeVar;
-pub use super::store::{DataId, FunId, StructId, TypeId};
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
 pub type NameId = usize;

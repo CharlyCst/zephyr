@@ -39,6 +39,7 @@ macro_rules! define_id {
 define_id!(FunId);
 define_id!(DataId);
 define_id!(StructId);
+define_id!(TupleId);
 define_id!(TypeId);
 define_id!(TypeVarId);
 
@@ -127,7 +128,7 @@ where
 
     /// Transform a `Store<I, T>` into `Store<I, Q>` by applying a function to all its elements.
     ///
-    /// If the transformation function return None, the item is dropped.
+    /// If the transformation function returns None, the item is dropped.
     pub fn transmute<Q, F>(self, mut fun: F) -> Store<I, Q>
     where
         F: FnMut(T) -> Option<Q>,

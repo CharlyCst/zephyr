@@ -14,18 +14,18 @@ use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
 
-struct State<'ty> {
+struct State<'checker, 'ty> {
     pub names: NameStore,
     pub fun_types: HashMap<FunId, TypeVar>,
-    pub checker: &'ty mut TypeChecker<'ty, 'ty>,
+    pub checker: &'checker mut TypeChecker<'ty, 'ty>,
 }
 
-impl<'ty> State<'ty> {
+impl<'checker, 'ty> State<'checker, 'ty> {
     pub fn new(
         names: NameStore,
         fun_types: HashMap<FunId, TypeVar>,
-        checker: &'ty mut TypeChecker<'ty, 'ty>,
-    ) -> State<'ty> {
+        checker: &'checker mut TypeChecker<'ty, 'ty>,
+    ) -> State<'checker, 'ty> {
         State {
             names,
             fun_types,
@@ -44,8 +44,8 @@ impl<'a> HirProducer<'a> {
     }
 
     /// Lower a typed program to HIR
-    pub fn reduce(&mut self, prog: ResolvedProgram, checker: &'a mut TypeChecker<'a, 'a>) -> Program {
-        let mut state = State::new(prog.names, prog.fun_types, checker);
+    pub fn reduce(&mut self, prog: ResolvedProgram, mut checker: TypeChecker<'a, 'a>) -> Program {
+        let mut state = State::new(prog.names, prog.fun_types, &mut checker);
         let mut funs = Vec::with_capacity(prog.funs.len());
         let mut imports = Vec::with_capacity(prog.imports.len());
 
@@ -79,6 +79,7 @@ impl<'a> HirProducer<'a> {
             imports,
             structs,
             pub_decls,
+            tuples: checker.get_tuples(),
             data: prog.data,
             package: prog.package,
         }
@@ -326,13 +327,16 @@ impl<'a> HirProducer<'a> {
                     .get_t(t_var)
                     .ok_or(format!("Invalid t_id '{}'", t_var))?
                 {
-                    Type::Tuple(tup) => {
-                        assert!(tup.0.len() == values.len());
+                    Type::Tuple(tup_id) => {
                         let mut hir_values = Vec::with_capacity(values.len());
                         for val in values {
                             hir_values.push(self.reduce_expr(val, s)?);
                         }
-                        Value::Tuple(hir_values, loc)
+                        Value::Tuple {
+                            values: hir_values,
+                            tup_id,
+                            loc,
+                        }
                     }
                     _ => return Err(String::from("Tuple literal of non tuple type.")),
                 },
@@ -459,21 +463,29 @@ impl<'a> HirProducer<'a> {
                 let t = s
                     .checker
                     .get_t(t_var)
-                    .ok_or(format!("Invalid t_id '{}'", t_var))?;
-                let struct_t = s
+                    .ok_or(format!("Invalid t_var '{}'", t_var))?;
+                let object_t = s
                     .checker
                     .get_t(struct_t_var)
-                    .ok_or(format!("Invalid t_id '{}'", t_var))?;
-                if let Type::Struct(struct_id) = struct_t {
+                    .ok_or(format!("Invalid t_var '{}'", t_var))?;
+                if let Type::Struct(s_id) = object_t {
                     Ok(Expression::Access {
                         expr,
-                        field,
-                        struct_id,
+                        kind: AccessKind::Struct { field, s_id },
+                        t,
+                        loc,
+                    })
+                } else if let Type::Tuple(tup_id) = object_t {
+                    Ok(Expression::Access {
+                        expr,
+                        kind: AccessKind::Tuple {
+                            index: get_tuple_field(&field).unwrap(),
+                            tup_id,
+                        },
                         t,
                         loc,
                     })
                 } else {
-                    println!("expr: {}", expr);
                     Err(String::from("Access of a non struct type"))
                 }
             }
@@ -486,7 +498,7 @@ impl<'a> HirProducer<'a> {
         let t = s
             .checker
             .get_t(name.t_var)
-            .ok_or(format!("Invalid t_id '{}'", name.t_var))?;
+            .ok_or(format!("Invalid t_var '{}'", name.t_var))?;
         Ok(Variable {
             ident: var.ident,
             loc: var.loc,
@@ -515,7 +527,7 @@ impl<'a> HirProducer<'a> {
         let fun_t_var = *s
             .fun_types
             .get(&proto.fun_id)
-            .ok_or(format!("No t_id for fun_id '{}'", proto.fun_id))?;
+            .ok_or(format!("No t_var for fun_id '{}'", proto.fun_id))?;
         let fun_t = s
             .checker
             .get_t(fun_t_var)
@@ -560,21 +572,14 @@ impl<'a> HirProducer<'a> {
         })
     }
 
-    /// Try to convert an expression into a place, that is something that can hold a value (a
+    /// Try to convert an expression into a place, that is, something that can hold a value (a
     /// memory slot or a variable for instance).
     fn as_place(&mut self, expr: Expression) -> Result<PlaceExpression, String> {
         match expr {
             Expression::Variable(var) => Ok(PlaceExpression::Variable(var)),
-            Expression::Access {
-                expr,
-                field,
-                struct_id,
-                t,
-                loc,
-            } => Ok(PlaceExpression::Access {
-                expr,
-                field,
-                struct_id,
+            Expression::Access { expr, kind, t, loc } => Ok(PlaceExpression::Access {
+                expr: Box::new(self.as_place(*expr)?),
+                kind,
                 t,
                 loc,
             }),

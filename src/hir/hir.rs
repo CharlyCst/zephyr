@@ -7,10 +7,14 @@ use crate::error::Location;
 use std::collections::HashMap;
 use std::fmt;
 
-pub use super::names::{DataId, FunId, NameId, StructId};
+pub use super::names::{DataId, FunId, NameId, StructId, TupleId};
 pub use crate::ast::Package;
+
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
+
+pub type TupleStore = Store<TupleId, Tuple>;
+pub type StructStore = Store<StructId, Struct>;
 
 pub const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
 pub const TYPE_I64: Type = Type::Scalar(ScalarType::I64);
@@ -24,7 +28,7 @@ pub const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
-    Tuple(TupleType),
+    Tuple(TupleId),
     Struct(StructId),
 }
 
@@ -62,9 +66,6 @@ pub enum NonNullScalarType {
     F64,
     Bool,
 }
-
-#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct TupleType(pub Vec<Type>);
 
 #[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FunctionType {
@@ -137,7 +138,8 @@ pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
     pub data: DataStore,
-    pub structs: Store<StructId, Struct>,
+    pub structs: StructStore,
+    pub tuples: TupleStore,
     pub pub_decls: ModuleDeclarations,
     pub package: Package,
 }
@@ -206,6 +208,11 @@ pub struct StructField {
     pub is_pub: bool,
     pub t: Type,
     pub loc: Location,
+}
+
+pub struct Tuple {
+    pub tup_id: TupleId,
+    pub types: Vec<Type>,
 }
 
 pub struct LocalVariable {
@@ -284,8 +291,7 @@ pub enum Expression {
     },
     Access {
         expr: Box<Expression>,
-        field: String,
-        struct_id: StructId,
+        kind: AccessKind,
         t: Type,
         loc: Location,
     },
@@ -294,14 +300,18 @@ pub enum Expression {
     },
 }
 
+pub enum AccessKind {
+    Struct { field: String, s_id: StructId },
+    Tuple { index: u32, tup_id: TupleId },
+}
+
 /// An expression that produces a place, that is a slot in which a value can be stored (memory
 /// address, variable index and so on).
 pub enum PlaceExpression {
     Variable(Variable),
     Access {
-        expr: Box<Expression>,
-        field: String,
-        struct_id: StructId,
+        expr: Box<PlaceExpression>,
+        kind: AccessKind,
         t: Type,
         loc: Location,
     },
@@ -350,7 +360,11 @@ pub enum Value {
         fields: Vec<FieldValue>,
         loc: Location,
     },
-    Tuple(Vec<Expression>, Location),
+    Tuple {
+        tup_id: TupleId,
+        values: Vec<Expression>,
+        loc: Location,
+    },
     DataPointer(DataId, Location), // A pointer to a memory location
 }
 
@@ -418,7 +432,7 @@ impl Expression {
                 Value::I64(_, loc) => *loc,
                 Value::I32(_, loc) => *loc,
                 Value::Bool(_, loc) => *loc,
-                Value::Tuple(_, loc) => *loc,
+                Value::Tuple { loc, .. } => *loc,
                 Value::Struct { loc, .. } => *loc,
                 Value::DataPointer(_, loc) => *loc,
             },
@@ -464,6 +478,23 @@ impl Binop {
     }
 }
 
+// ———————————————————————————————— Helpers ————————————————————————————————— //
+
+/// Takes a field name and return the corresponding index in the tuple.
+///
+/// For instance in `tup._1` the field `._1` refers to the element of indec 1 in `tup`
+pub fn get_tuple_field(field: &str) -> Option<u32> {
+    let mut chars = field.chars();
+    if chars.next() != Some('_') {
+        return None;
+    }
+    if let Ok(idx) = u32::from_str_radix(chars.as_str(), 10) {
+        Some(idx)
+    } else {
+        None
+    }
+}
+
 // ———————————————————————————————— Display ————————————————————————————————— //
 
 impl fmt::Display for Type {
@@ -472,14 +503,7 @@ impl fmt::Display for Type {
             Type::Scalar(t) => write!(f, "{}", t),
             Type::Fun(t) => write!(f, "{}", t),
             Type::Struct(s_id) => write!(f, "struct #{}", s_id),
-            Type::Tuple(t) => write!(
-                f,
-                "({})",
-                t.0.iter()
-                    .map(|t| format!("{}", t))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
+            Type::Tuple(tup_id) => write!(f, "tuple #{}", tup_id,),
         }
     }
 }
@@ -627,8 +651,17 @@ impl fmt::Display for Expression {
                 expr_right,
                 ..
             } => write!(f, "({} {} {})", expr_left, binop, expr_right),
-            Expression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+            Expression::Access { expr, kind, .. } => write!(f, "{}.{}", expr, kind),
             Expression::Nop { .. } => write!(f, "nop"),
+        }
+    }
+}
+
+impl fmt::Display for AccessKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AccessKind::Struct { field, .. } => write!(f, "{}", field),
+            AccessKind::Tuple { index, .. } => write!(f, "_{}", index),
         }
     }
 }
@@ -637,7 +670,7 @@ impl fmt::Display for PlaceExpression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PlaceExpression::Variable(v) => write!(f, "{}", v.ident),
-            PlaceExpression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+            PlaceExpression::Access { expr, kind, .. } => write!(f, "{}.{}", expr, kind),
         }
     }
 }
@@ -692,10 +725,11 @@ impl fmt::Display for Value {
                 }
             }
             Value::DataPointer(data_id, _) => write!(f, "data #{}", data_id),
-            Value::Tuple(tup, _) => write!(
+            Value::Tuple { values, .. } => write!(
                 f,
                 "({})",
-                tup.iter()
+                values
+                    .iter()
                     .map(|val| format!("{}", val))
                     .collect::<Vec<String>>()
                     .join(", ")
@@ -797,5 +831,24 @@ impl fmt::Display for Memory {
             Memory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
             Memory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
         }
+    }
+}
+
+// —————————————————————————————————— Test —————————————————————————————————— //
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tuple_fields() {
+        assert_eq!(get_tuple_field("_0").unwrap(), 0);
+        assert_eq!(get_tuple_field("_1").unwrap(), 1);
+        assert_eq!(get_tuple_field("_42").unwrap(), 42);
+        assert_eq!(get_tuple_field("_122").unwrap(), 122);
+
+        assert_eq!(get_tuple_field(".0"), None);
+        assert_eq!(get_tuple_field(".__0"), None);
+        assert_eq!(get_tuple_field(".zero"), None);
     }
 }

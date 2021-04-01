@@ -11,7 +11,6 @@ pub type Offset = u32;
 
 pub struct Program {
     pub funs: Vec<Function>,
-    pub structs: HashMap<StructId, Struct>,
     pub imports: Vec<Imports>,
     pub data: HashMap<DataId, Data>,
 }
@@ -50,8 +49,27 @@ pub struct Struct {
 }
 
 pub struct StructField {
-    pub offset: Offset,                       // Offset of the field
-    pub t: Vec<(Type, MemoryLayout, Offset)>, // (type, layout, offset)
+    /// Offset of the field
+    pub offset: Offset,
+    /// (type, layout, offset)
+    pub t: Vec<(Type, MemoryLayout, Offset)>,
+}
+
+pub struct Tuple {
+    /// Total size of the tuple in bytes
+    pub size: u32,
+    pub fields: Vec<TupleField>,
+}
+
+pub struct TupleField {
+    /// Offset of the field in memory
+    pub offset: Offset,
+    /// (type, layout, offset)
+    pub t: Vec<(Type, MemoryLayout, Offset)>,
+    /// Offset of the field in the array of locals
+    pub local_offset: usize,
+    /// Number of locals used to store the field
+    pub nb_locals: usize,
 }
 
 pub struct LocalVariable {

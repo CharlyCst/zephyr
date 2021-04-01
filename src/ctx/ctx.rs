@@ -17,6 +17,7 @@ use crate::wasm;
 pub type ModId = u32;
 
 type StructMap = HashMap<hir::StructId, hir::Struct>;
+type TupleMap = HashMap<hir::TupleId, hir::Tuple>;
 type DataMap = HashMap<hir::DataId, hir::Data>;
 type TypeMap = HashMap<hir::TypeId, hir::Type>;
 type FunMap = HashMap<hir::FunId, hir::FunKind>;
@@ -28,6 +29,7 @@ type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
 pub struct Ctx {
     // HIR elements
     structs: StructMap,
+    tuples: TupleMap,
     types: TypeMap,
     data: DataMap,
     funs: FunMap,
@@ -47,6 +49,7 @@ impl Ctx {
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
+            tuples: HashMap::new(),
             types: HashMap::new(),
             data: HashMap::new(),
             funs: HashMap::new(),
@@ -69,6 +72,11 @@ impl Ctx {
     /// Get a structure from its ID.
     pub fn get_struct(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
         self.structs.get(&s_id)
+    }
+
+    /// Get a tuple from its ID.
+    pub fn get_tuple(&self, tup_id: hir::TupleId) -> Option<&hir::Tuple> {
+        self.tuples.get(&tup_id)
     }
 
     /// Get a type from its ID.
@@ -107,6 +115,10 @@ impl Ctx {
 
     pub fn hir_structs(&self) -> &StructMap {
         &self.structs
+    }
+
+    pub fn hir_tuples(&self) -> &TupleMap {
+        &self.tuples
     }
 
     pub fn hir_imports(&self) -> &Vec<hir::Import> {
@@ -443,7 +455,11 @@ impl Ctx {
     fn extend_hir(&mut self, hir: hir::Program, module: ModulePath) {
         for (s_id, struc) in hir.structs {
             let prev = self.structs.insert(s_id, struc);
-            assert!(prev.is_none()); // s_id must be unique
+            debug_assert!(prev.is_none()); // s_id must be unique
+        }
+        for (tup_id, tup) in hir.tuples {
+            let prev = self.tuples.insert(tup_id, tup);
+            debug_assert!(prev.is_none()); // tup_id must be unique
         }
         for fun in hir.funs {
             let prev = self.funs.insert(fun.fun_id, hir::FunKind::Fun(fun));
@@ -451,14 +467,14 @@ impl Ctx {
         }
         for (d_id, data) in hir.data {
             let prev = self.data.insert(d_id, data);
-            assert!(prev.is_none()); // d_id must be unique
+            debug_assert!(prev.is_none()); // d_id must be unique
         }
         for import in hir.imports {
             let mut prototypes = Vec::new();
             for fun in import.prototypes {
                 prototypes.push(fun.fun_id);
                 let prev = self.funs.insert(fun.fun_id, hir::FunKind::Extern(fun));
-                assert!(prev.is_none()); // fun_id must be unique
+                debug_assert!(prev.is_none()); // fun_id must be unique
             }
             self.imports.push(hir::Import {
                 from: import.from,

@@ -30,7 +30,7 @@ pub fn to_hir<'a>(
     verbose: bool,
 ) -> hir::Program {
     let store = type_check::TyStore::new();
-    let mut checker = type_check::TypeChecker::new(ctx, &store);
+    let mut checker = type_check::TypeChecker::new(ctx, &store, ast_program.package.id);
     let mut name_resolver = resolver::NameResolver::new(error_handler);
     let program = name_resolver.resolve(ast_program, namespace, ctx, &mut checker, known_values);
 
@@ -58,7 +58,7 @@ pub fn to_hir<'a>(
     }
 
     let mut hir_producer = ast_to_hir::HirProducer::new(error_handler);
-    let hir = hir_producer.reduce(program, &mut checker);
+    let hir = hir_producer.reduce(program, checker);
 
     if verbose {
         println!("{}", hir);

@@ -1,8 +1,9 @@
 use super::hir;
-use super::hir::ScalarType;
+use super::hir::{ScalarType, TupleId, TupleStore};
 use super::names::{StructId, StructStore};
+use super::store::Store;
 use crate::arena::Arena;
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, ModId};
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::{HashMap, HashSet};
@@ -151,6 +152,10 @@ pub struct TypeChecker<'ctx, 'ty> {
     constraints: Vec<TypeConstraint>,
     subs: Substitution<'ty>,
 
+    // Keep track of tuple types
+    tuple_map: HashMap<Vec<TypeVar>, TupleId>,
+    tuples: TupleStore,
+
     // Scalar types
     t_i32: TypeVar,
     t_i64: TypeVar,
@@ -161,7 +166,7 @@ pub struct TypeChecker<'ctx, 'ty> {
 }
 
 impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
-    pub fn new(ctx: &'ctx Ctx, store: &'ty TyStore) -> Self {
+    pub fn new(ctx: &'ctx Ctx, store: &'ty TyStore, mod_id: ModId) -> Self {
         let mut subs = Substitution::new(store);
         let t_i32 = TypeVar(0);
         let t_i64 = TypeVar(1);
@@ -186,7 +191,16 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
             t_null,
             type_var_counter: 6, // !IMPORTANT: must be (strictly) higher than highest scalar t_var
             constraints: Vec::new(),
+            tuple_map: HashMap::new(),
+            tuples: Store::new(mod_id),
         }
+    }
+
+    /// Consumes the type checker to return the tuple store.
+    ///
+    /// The store contains all tuples type created during type inference.
+    pub fn get_tuples(self) -> TupleStore {
+        self.tuples
     }
 
     /// Return a fresh type variable.
@@ -411,11 +425,21 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                     Some(hir::Type::Fun(hir::FunctionType { params, ret }))
                 }
                 CompositeKind::Tuple => {
-                    let mut types = Vec::with_capacity(ts.len());
-                    for t in ts {
-                        types.push(self.get_t(*t)?);
+                    if let Some(tup_id) = self.tuple_map.get(ts) {
+                        // This tuple type has already been created
+                        Some(hir::Type::Tuple(*tup_id))
+                    } else {
+                        // Define a new tuple type
+                        let mut types = Vec::with_capacity(ts.len());
+                        for t in ts {
+                            types.push(self.get_t(*t)?);
+                        }
+                        let tup_id = self.tuples.fresh_id();
+                        let tup = hir::Tuple { types, tup_id };
+                        self.tuples.insert(tup_id, tup);
+                        self.tuple_map.insert(ts.clone(), tup_id);
+                        Some(hir::Type::Tuple(tup_id))
                     }
-                    Some(hir::Type::Tuple(hir::TupleType(types)))
                 }
             },
         }
@@ -484,7 +508,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                 err.report(loc, format!("No field '{}' on basic types", &field_name));
                 Err(())
             }
-            Ty::Composite(kind, _) => {
+            Ty::Composite(kind, ts) => {
                 match kind {
                     CompositeKind::Struct(s_id) => {
                         let t_var_field = self.get_field(*s_id, &field_name, structs, err, loc)?;
@@ -492,8 +516,24 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                         // Note: once generics are implemented they should be checked here
                     }
                     CompositeKind::Tuple => {
-                        err.report(loc, String::from("Can't access field of a tuple"));
-                        Err(())
+                        let idx = if let Some(idx) = hir::get_tuple_field(&field_name) {
+                            idx as usize
+                        } else {
+                            err.report(loc, format!("Tuple has no field '{}'", &field_name));
+                            return Err(());
+                        };
+                        if idx > ts.len() {
+                            err.report(
+                                loc,
+                                format!(
+                                    "Tuple has less than {} field{}",
+                                    idx,
+                                    if idx > 1 { "s" } else { "" }
+                                ),
+                            );
+                            return Err(());
+                        }
+                        self.unify_var_var(t_var, ts[idx], err, loc)
                     }
                     CompositeKind::Fun => {
                         err.report(loc, String::from("Can't access field of a function"));
@@ -790,8 +830,9 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
                     .insert(t_var, Ty::Composite(CompositeKind::Fun, types));
                 t_var
             }
-            hir::Type::Tuple(tup) => {
-                let types = tup.0.iter().map(|t| self.lift_t(t)).collect();
+            hir::Type::Tuple(tup_id) => {
+                let tup = self.ctx.get_tuple(*tup_id).unwrap();
+                let types = tup.types.iter().map(|t| self.lift_t(t)).collect();
                 let t_var = self.fresh();
                 self.subs
                     .insert(t_var, Ty::Composite(CompositeKind::Tuple, types));
@@ -934,7 +975,7 @@ mod tests {
     fn scalars() {
         let store = TyStore::new();
         let ctx = Ctx::new();
-        let mut checker = TypeChecker::new(&ctx, &store);
+        let mut checker = TypeChecker::new(&ctx, &store, 42);
         let mut scalars = HashSet::new();
 
         // Scalar type variables must all be different
@@ -956,7 +997,7 @@ mod tests {
         let loc = Location::dummy();
         let structs = StructStore::new(1);
         let mut err = ErrorHandler::new_no_file();
-        let mut checker = TypeChecker::new(&ctx, &store);
+        let mut checker = TypeChecker::new(&ctx, &store, 42);
 
         let t_var_1 = checker.fresh();
         let t_var_2 = checker.fresh();
