@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-pub use crate::ast::PackageKind;
+pub use crate::ast::ModuleKind;
 pub use crate::ctx::ModuleDeclarations;
 pub use crate::hir::{DataId, FunId, StructId};
 

@@ -1,5 +1,6 @@
+use crate::ctx::ModId;
 use crate::error::ErrorHandler;
-use crate::resolver::FileKind;
+use crate::resolver::{FileId, FileKind};
 
 mod asm_parse;
 mod asm_scan;
@@ -16,8 +17,8 @@ pub use tokens::*;
 /// Returns the file AST.
 /// The file content corresponding to `f_id` must be owned by the error_handler.
 pub fn get_ast(
-    f_id: u16,
-    mod_id: u32,
+    f_id: FileId,
+    mod_id: ModId,
     kind: FileKind,
     error_handler: &mut impl ErrorHandler,
     verbose: bool,
@@ -29,8 +30,8 @@ pub fn get_ast(
 }
 
 fn get_zephyr_ast(
-    f_id: u16,
-    mod_id: u32,
+    f_id: FileId,
+    mod_id: ModId,
     error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
@@ -61,8 +62,8 @@ fn get_zephyr_ast(
 }
 
 fn get_asm_ast(
-    f_id: u16,
-    mod_id: u32,
+    f_id: FileId,
+    mod_id: ModId,
     error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> ast::Program {

@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use zephyr::resolver::{FileKind, ModuleKind, ModulePath, PreparedFile, Resolver};
 use zephyr::error::ErrorHandler;
+use zephyr::resolver::{FileId, FileKind, ModuleKind, ModulePath, PreparedFile, Resolver};
 
 // File extensions
 pub const ZEPHYR_EXTENSION: &str = "zph";
@@ -20,8 +20,6 @@ pub const STD: &str = "std";
 
 /// Expectend environment variable pointing to Zephyr known packages.
 const ZEPHYR_LIB: &'static str = "ZEPHYR_LIB";
-
-type FileId = u16;
 
 /// The result of a path lookup: either file or a directory
 pub enum ResolvedPath {
@@ -57,7 +55,7 @@ impl StandardResolver {
         package_paths.insert(String::from(STD), std_path);
         Self {
             package_paths,
-            file_id: Cell::new(0),
+            file_id: Cell::new(FileId(1)),
         }
     }
 
@@ -144,8 +142,9 @@ impl StandardResolver {
     /// Return an unique file ID, will panic when running out of identifier.
     fn fresh_f_id(&self) -> FileId {
         let f_id = self.file_id.get();
-        self.file_id
-            .set(f_id.checked_add(1).expect("Error: too much files"));
+        self.file_id.set(FileId(
+            f_id.0.checked_add(1).expect("Error: too much files"),
+        ));
         f_id
     }
 }

@@ -22,7 +22,7 @@ pub enum TokenType {
     Expose,
     Fun,
     Pub,
-    Package,
+    Package, // TODO: change for 'Module'
     Standalone,
 
     // Other

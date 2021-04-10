@@ -1,5 +1,6 @@
 use super::asm_tokens::*;
 use crate::error::{ErrorHandler, Location};
+use crate::resolver::FileId;
 use std::collections::HashMap;
 
 const RADIX: u32 = 10;
@@ -7,7 +8,7 @@ const RADIX: u32 = 10;
 /// Zephyr Assembly Scanner, it produces tokens from source code.
 pub struct Scanner<'err, E: ErrorHandler> {
     err: &'err mut E,
-    f_id: u16,
+    f_id: FileId,
     code: Vec<char>,
     start: usize,
     current: usize,
@@ -17,7 +18,7 @@ pub struct Scanner<'err, E: ErrorHandler> {
 
 impl<'err, E: ErrorHandler> Scanner<'err, E> {
     // f_id MUST exist, no check performed.
-    pub fn new(f_id: u16, error_handler: &'err mut E) -> Self {
+    pub fn new(f_id: FileId, error_handler: &'err mut E) -> Self {
         let keywords = get_keyword_map();
 
         // f_id MUST exist

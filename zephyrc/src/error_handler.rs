@@ -1,6 +1,7 @@
 use super::errors::Error;
 use std::collections::HashMap;
 use zephyr::error::{ErrorHandler, Level, Location};
+use zephyr::resolver::FileId;
 
 const RED: &'static str = "\x1B[31m";
 const YELLOW: &'static str = "\x1B[33m";
@@ -15,11 +16,11 @@ const END: &'static str = "\x1B[0m";
 pub struct StandardErrorHandler {
     has_error: bool,
     errors: Vec<Error>,
-    codes: HashMap<u16, String>,
+    codes: HashMap<FileId, String>,
 }
 
 impl ErrorHandler for StandardErrorHandler {
-    fn new(code: String, f_id: u16) -> Self {
+    fn new(code: String, f_id: FileId) -> Self {
         let mut codes = HashMap::new();
         codes.insert(f_id, code);
         StandardErrorHandler {
@@ -39,7 +40,7 @@ impl ErrorHandler for StandardErrorHandler {
     }
 
     /// Return a file owned by the ErrorHandler.
-    fn get_file(&self, f_id: u16) -> Option<&str> {
+    fn get_file(&self, f_id: FileId) -> Option<&str> {
         if let Some(s) = self.codes.get(&f_id) {
             Some(&*s)
         } else {
@@ -97,7 +98,7 @@ impl StandardErrorHandler {
     fn print_all(&mut self) {
         // Sort errors on file ID.
         let mut errors_no_loc = Vec::new();
-        let mut errors_by_files: HashMap<u16, Vec<&Error>> = HashMap::new();
+        let mut errors_by_files: HashMap<FileId, Vec<&Error>> = HashMap::new();
         for err in self.errors.iter() {
             if let Some(loc) = err.loc {
                 if let Some(errors) = errors_by_files.get_mut(&loc.f_id) {

@@ -1,5 +1,6 @@
 mod errors;
 mod handler;
 
-pub use errors::{Location, Level};
+pub use errors::{Level, Location};
 pub use handler::ErrorHandler;
+pub(crate) use handler::DummyHandler;

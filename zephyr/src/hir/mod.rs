@@ -7,7 +7,7 @@ use crate::error::ErrorHandler;
 pub use self::names::{
     AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, NameId, TypeId, ValueDeclaration,
 };
-pub use crate::ast::Package;
+pub use crate::ast::Module;
 pub use hir::*;
 pub use names::{Data, DataId};
 pub use store::known_ids;
@@ -30,7 +30,7 @@ pub fn to_hir(
     verbose: bool,
 ) -> hir::Program {
     let store = type_check::TyStore::new();
-    let mut checker = type_check::TypeChecker::new(ctx, &store, ast_program.package.id);
+    let mut checker = type_check::TypeChecker::new(ctx, &store, ast_program.module.id);
     let mut name_resolver = resolver::NameResolver::new(error_handler);
     let program = name_resolver.resolve(ast_program, namespace, ctx, &mut checker, known_values);
 

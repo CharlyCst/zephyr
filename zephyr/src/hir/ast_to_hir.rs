@@ -72,7 +72,7 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
                     None
                 }
             });
-        let pub_decls = self.get_pub_decls(prog.package.id, &funs, &imports, &structs);
+        let pub_decls = self.get_pub_decls(prog.module.id, &funs, &imports, &structs);
 
         Program {
             funs,
@@ -81,7 +81,7 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
             pub_decls,
             tuples: checker.get_tuples(),
             data: prog.data,
-            package: prog.package,
+            module: prog.module,
         }
     }
 

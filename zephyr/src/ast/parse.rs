@@ -1,23 +1,24 @@
 use super::ast::*;
 use super::tokens::{Token, TokenType};
 use crate::error::{ErrorHandler, Location};
+use crate::resolver::FileId;
 
 pub struct Parser<'err, E: ErrorHandler> {
     err: &'err mut E,
     tokens: Vec<Token>,
     current: usize,
-    package_id: u32,
+    mod_id: ModId,
 }
 
 /// Works on a list of tokens and converts it into an Abstract Syntax Tree,
 /// following the grammar of the language (defined in 'grammar.md')
 impl<'err, E: ErrorHandler> Parser<'err, E> {
-    pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &'err mut E) -> Self {
+    pub fn new(tokens: Vec<Token>, mod_id: ModId, error_handler: &'err mut E) -> Self {
         Parser {
             err: error_handler,
             tokens,
             current: 0,
-            package_id,
+            mod_id,
         }
     }
 
@@ -30,22 +31,22 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let mut imports = Vec::new();
         let mut used = Vec::new();
 
-        let package = match self.package() {
+        let module = match self.module() {
             Ok(pkg) => pkg,
             Err(()) => {
                 self.err.silent_report();
                 // TODO: In the future we may want to parse the code anyway in order to provide feedback
-                // even though the `package` declaration is missing.
-                Package {
-                    id: self.package_id,
+                // even though the `module` declaration is missing.
+                Module {
+                    id: self.mod_id,
                     name: String::from(""),
                     loc: Location {
                         pos: 0,
                         len: 0,
-                        f_id: 0,
+                        f_id: FileId(0),
                     },
-                    t: PackageType::Standard,
-                    kind: PackageKind::Package,
+                    t: ModuleType::Standard,
+                    kind: ModuleKind::Module,
                 }
             }
         };
@@ -64,7 +65,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         }
 
         Program {
-            package,
+            module: module,
             funs,
             structs,
             exposed,
@@ -224,34 +225,34 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
     recursively parse all sub-elements as defined in the gammar of the
     language */
 
-    /// Parses the 'package' grammar element
-    fn package(&mut self) -> Result<Package, ()> {
+    /// Parses the 'module' grammar element
+    fn module(&mut self) -> Result<Module, ()> {
         let start = self.peek().loc;
-        let package_type = if self.next_match(TokenType::Standalone) {
-            PackageType::Standalone
+        let module_type = if self.next_match(TokenType::Standalone) {
+            ModuleType::Standalone
         } else {
-            PackageType::Standard
+            ModuleType::Standard
         };
-        let package_kind = if self.next_match(TokenType::Runtime) {
-            PackageKind::Runtime
+        let module_kind = if self.next_match(TokenType::Runtime) {
+            ModuleKind::Runtime
         } else {
-            PackageKind::Package
+            ModuleKind::Module
         };
         self.next_match_report(
             TokenType::Package,
-            "Programs must start with a package declaration",
+            "Programs must start with a module declaration",
         )?;
         let token = self.advance();
         if let TokenType::Identifier(ref ident) = token.t {
             let ident = ident.clone();
             let end = self.peek().loc;
             self.consume_semi_colon();
-            Ok(Package {
-                id: self.package_id,
+            Ok(Module {
+                id: self.mod_id,
                 loc: start.merge(end),
                 name: ident,
-                t: package_type,
-                kind: package_kind,
+                t: module_type,
+                kind: module_kind,
             })
         } else {
             let loc = token.loc;

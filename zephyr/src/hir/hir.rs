@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub use super::names::{DataId, FunId, NameId, StructId, TupleId};
-pub use crate::ast::Package;
+pub use crate::ast::Module;
 
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
@@ -141,7 +141,7 @@ pub struct Program {
     pub structs: StructStore,
     pub tuples: TupleStore,
     pub pub_decls: ModuleDeclarations,
-    pub package: Package,
+    pub module: Module,
 }
 
 impl Program {

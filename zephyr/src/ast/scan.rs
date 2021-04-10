@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use super::tokens::*;
 use crate::error::{ErrorHandler, Location};
-use std::collections::HashMap;
+use crate::resolver::FileId;
 
 const RADIX: u32 = 10;
 
@@ -8,7 +10,7 @@ const RADIX: u32 = 10;
 /// the source code to a list of tokens.
 pub struct Scanner<'a, E: ErrorHandler> {
     err: &'a mut E,
-    f_id: u16,
+    f_id: FileId,
     code: Vec<char>,
     start: usize,
     current: usize,
@@ -19,7 +21,7 @@ pub struct Scanner<'a, E: ErrorHandler> {
 
 impl<'a, E: ErrorHandler> Scanner<'a, E> {
     // f_id MUST exist, no check performed.
-    pub fn new(f_id: u16, error_handler: &'a mut E) -> Self {
+    pub fn new(f_id: FileId, error_handler: &'a mut E) -> Self {
         let keywords: HashMap<String, TokenType> = [
             (String::from("as"), TokenType::As),
             (String::from("else"), TokenType::Else),
