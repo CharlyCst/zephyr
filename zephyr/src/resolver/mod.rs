@@ -7,8 +7,16 @@ use std::fmt;
 use crate::ctx::KnownPackage;
 use crate::error::ErrorHandler;
 
-#[derive(Debug)]
+/// A unique ID for a file.
+///
+/// Internally the compiler uses a file ID of 0 when a FileId is needed and one can't be obtained.
+/// In theory, this should never leak, sometimes bug happens so it is recommended to avoid using a
+/// FileId of 0 when implementing a resolver.
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Copy, Clone)]
+pub struct FileId(pub u16);
+
 /// A file can contain either Zephyr code or Zephyr assembly.
+#[derive(Debug)]
 pub enum FileKind {
     Zephyr,
     Asm,
@@ -25,7 +33,7 @@ pub enum ModuleKind {
 /// A file prepared to be passed to the AST parser.
 pub struct PreparedFile {
     pub code: String,
-    pub f_id: u16,
+    pub f_id: FileId,
     pub file_name: String,
     pub kind: FileKind,
 }
@@ -79,5 +87,11 @@ impl fmt::Display for ModulePath {
         path.push(self.root.clone());
         path.extend(self.path.clone());
         write!(f, "{}", path.join("."))
+    }
+}
+
+impl fmt::Display for FileId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

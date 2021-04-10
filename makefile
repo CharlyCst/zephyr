@@ -1,5 +1,9 @@
 export ZEPHYR_LIB=$(shell pwd)/lib
 
+.PHONY: help
+help:
+	@echo "Commands: setup, build, clean, test"
+
 .PHONY: setup
 setup:
 	printf "\x1b[35m%s\x1b[0m" "Installing runtimes"

@@ -970,12 +970,14 @@ mod tests {
     use super::*;
     use crate::hir::Type;
     use std::collections::HashSet;
+    use crate::error::DummyHandler;
+    use crate::ctx::ModId;
 
     #[test]
     fn scalars() {
         let store = TyStore::new();
         let ctx = Ctx::new();
-        let mut checker = TypeChecker::new(&ctx, &store, 42);
+        let mut checker = TypeChecker::new(&ctx, &store, ModId(42));
         let mut scalars = HashSet::new();
 
         // Scalar type variables must all be different
@@ -995,9 +997,9 @@ mod tests {
         let store = TyStore::new();
         let ctx = Ctx::new();
         let loc = Location::dummy();
-        let structs = StructStore::new(1);
-        let mut err = ErrorHandler::new_no_file();
-        let mut checker = TypeChecker::new(&ctx, &store, 42);
+        let structs = StructStore::new(ModId(1));
+        let mut err = DummyHandler::new_no_file();
+        let mut checker = TypeChecker::new(&ctx, &store, ModId(42));
 
         let t_var_1 = checker.fresh();
         let t_var_2 = checker.fresh();

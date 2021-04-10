@@ -14,7 +14,8 @@ use crate::mir;
 use crate::resolver::{ModuleKind, ModulePath, PreparedFile, Resolver};
 use crate::wasm;
 
-pub type ModId = u32;
+#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
+pub struct ModId(pub u32);
 
 type StructMap = HashMap<hir::StructId, hir::Struct>;
 type TupleMap = HashMap<hir::TupleId, hir::Tuple>;
@@ -37,7 +38,7 @@ pub struct Ctx {
     mods_ids: ReverseModMap,
     public_decls: DeclMap,
     imports: Vec<hir::Import>,
-    packages: Vec<hir::Package>,
+    packages: Vec<hir::Module>,
 
     // Configuration
     knwon_values: KnownValues,
@@ -59,7 +60,7 @@ impl Ctx {
             packages: Vec::new(),
             public_decls: HashMap::new(),
             knwon_values: KnownValues::uninitialized(),
-            mod_id: Cell::new(1), // ModId 0 is reserverd
+            mod_id: Cell::new(ModId(1)), // ModId 0 is reserverd
             verbose: false,
         }
     }
@@ -140,19 +141,19 @@ impl Ctx {
         let mut module: Option<String> = None;
         let mut other_modules = HashSet::new();
         for (ast_program, _, _) in ast_programs {
-            match ast_program.package.t {
-                ast::PackageType::Standalone => {
+            match ast_program.module.t {
+                ast::ModuleType::Standalone => {
                     if is_single_file {
-                        return Ok(ast_program.package.name);
+                        return Ok(ast_program.module.name);
                     }
                 }
-                ast::PackageType::Standard => {
-                    let new_mod_name = ast_program.package.name;
+                ast::ModuleType::Standard => {
+                    let new_mod_name = ast_program.module.name;
                     if let Some(ref mod_name) = module {
                         if &new_mod_name != mod_name {
                             if !other_modules.contains(&new_mod_name) {
                                 err.report(
-                                    ast_program.package.loc,
+                                    ast_program.module.loc,
                                     format!(
                                         "Expected module '{}', found '{}'",
                                         &mod_name, &new_mod_name
@@ -210,19 +211,19 @@ impl Ctx {
         let (files, module_kind) = resolver.resolve_module(module, err)?;
         let ast_programs = self.parse_files(files, err)?;
         let mut package: Option<ast::Program> = None;
-        let mut package_definition: Option<ast::Package> = None;
+        let mut package_definition: Option<ast::Module> = None;
 
         // Iterate over ast_program of all zephyr files in the folder
         for (ast, mut err_handler, file_name) in ast_programs {
-            match ast.package.t {
-                ast::PackageType::Standard => {
+            match ast.module.t {
+                ast::ModuleType::Standard => {
                     if module_kind == ModuleKind::Standalone {
                         err.report_no_loc(format!("Module path '{}' points to a single file, but contains a standard module: expected standalone module.", module));
                         return Err(());
                     }
                     self.check_ast_coherence(
                         &mut package_definition,
-                        &ast.package,
+                        &ast.module,
                         &mut err_handler,
                     )?;
                     // Extend AST package
@@ -233,10 +234,10 @@ impl Ctx {
                         package = Some(ast);
                     }
                 }
-                ast::PackageType::Standalone => {
+                ast::ModuleType::Standalone => {
                     // Discard any standalone package if compiling the standard package of the directory
                     if module_kind == ModuleKind::Standalone {
-                        let package_name = &ast.package.name;
+                        let package_name = &ast.module.name;
                         if package_name != &file_name {
                             err.warn_no_loc(format!(
                                 "Standalone module '{}' file should be named '{}.zph'",
@@ -298,7 +299,7 @@ impl Ctx {
                 imported.insert(used.path.clone());
                 let module_hir = self.get_hir(&used.path, imported, err, resolver)?;
                 // Merge package content
-                let mod_id = module_hir.package.id;
+                let mod_id = module_hir.module.id;
                 self.extend_hir(module_hir, used.path.clone());
                 mod_id
             };
@@ -482,9 +483,9 @@ impl Ctx {
                 prototypes,
             })
         }
-        self.mods.insert(hir.package.id, module.clone());
-        self.mods_ids.insert(module.clone(), hir.package.id);
-        self.packages.push(hir.package);
+        self.mods.insert(hir.module.id, module.clone());
+        self.mods_ids.insert(module.clone(), hir.module.id);
+        self.packages.push(hir.module);
         self.public_decls.insert(module, hir.pub_decls);
     }
 
@@ -519,8 +520,8 @@ impl Ctx {
     /// If `package_definition` is none, it will be set to `package_shard`.
     fn check_ast_coherence(
         &self,
-        package_definition: &mut Option<ast::Package>,
-        package_shard: &ast::Package,
+        package_definition: &mut Option<ast::Module>,
+        package_shard: &ast::Module,
         err: &mut impl ErrorHandler,
     ) -> Result<(), ()> {
         if let Some(package_def) = package_definition {
@@ -591,7 +592,7 @@ impl Ctx {
     /// Generates a fresh (unique) module ID.
     fn fresh_mod_id(&self) -> ModId {
         let mod_id = self.mod_id.get();
-        self.mod_id.set(mod_id + 1);
+        self.mod_id.set(ModId(mod_id.0 + 1));
         mod_id
     }
 }

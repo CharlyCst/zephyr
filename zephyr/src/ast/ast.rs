@@ -7,17 +7,17 @@ pub use crate::resolver::ModulePath;
 
 // ——————————————————————————————— Zephyr AST —————————————————————————————— //
 
-/// A package type describes how the package is organised in the filesystem.
+/// A module type describes how the module is organised in the filesystem.
 #[derive(Clone)]
-pub enum PackageType {
+pub enum ModuleType {
     Standard,
     Standalone,
 }
 
-/// A package kind describes the role of the package.
+/// A module kind describes the role of the module.
 #[derive(Eq, PartialEq, Copy, Clone)]
-pub enum PackageKind {
-    Package,
+pub enum ModuleKind {
+    Module,
     Runtime,
 }
 
@@ -153,7 +153,7 @@ pub enum Declaration {
 }
 
 pub struct Program {
-    pub package: Package,
+    pub module: Module,
     pub funs: Vec<Function>,
     pub structs: Vec<Struct>,
     /// Functions exposed to the host runtime.
@@ -165,10 +165,10 @@ pub struct Program {
 
 impl Program {
     /// Merges the properties of another AST into this one, this is used for instance when a
-    /// package spans multiples files to get back a single AST.
+    /// module spans multiples files to get back a single AST.
     ///
-    /// The `Package` property is kept, it is the responsibility of the caller to ensure that
-    /// packages are merged in a coherent fashion.
+    /// The `Module` property is kept, it is the responsibility of the caller to ensure that
+    /// module are merged in a coherent fashion.
     pub fn merge(&mut self, other: Self) {
         self.funs.extend(other.funs);
         self.structs.extend(other.structs);
@@ -179,12 +179,12 @@ impl Program {
 }
 
 #[derive(Clone)]
-pub struct Package {
-    pub id: u32,
+pub struct Module {
+    pub id: ModId,
     pub name: String,
     pub loc: Location,
-    pub t: PackageType,
-    pub kind: PackageKind,
+    pub t: ModuleType,
+    pub kind: ModuleKind,
 }
 
 pub struct Imports {
@@ -312,7 +312,7 @@ impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut program = String::from("");
         // Package
-        program.push_str(&format!("packge \"{}\";\n\n", self.package.name));
+        program.push_str(&format!("packge \"{}\";\n\n", self.module.name));
         // Use
         for is_used in &self.used {
             program.push_str(&format!("use \"{}\"", is_used.path));

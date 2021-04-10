@@ -1,6 +1,6 @@
 use super::store::Store;
 use crate::ast;
-use crate::ast::{BinaryOperator, Package, UnaryOperator};
+use crate::ast::{BinaryOperator, Module, UnaryOperator};
 use crate::ctx::ModId;
 use crate::error::Location;
 use crate::mir::Value as MirValue;
@@ -24,7 +24,7 @@ pub struct ResolvedProgram {
     pub fun_types: HashMap<FunId, TypeVar>,
     pub imports: Vec<Imports>,
     pub names: NameStore,
-    pub package: Package,
+    pub module: Module,
 }
 
 /// All the kind of values that can be found in the Value Namespace.

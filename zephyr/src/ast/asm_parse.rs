@@ -2,6 +2,7 @@ use super::asm_tokens::{Token, TokenType};
 use super::ast;
 use super::ast::AsmStatement;
 use super::opcode_to_asm::{opcode_to_asm, Argument};
+use crate::ctx::ModId;
 use crate::error::{ErrorHandler, Location};
 
 enum Declaration {
@@ -14,16 +15,16 @@ pub struct Parser<'err, E: ErrorHandler> {
     err: &'err mut E,
     tokens: Vec<Token>,
     current: usize, // current token index
-    package_id: u32,
+    mod_id: ModId,
 }
 
 impl<'err, E: ErrorHandler> Parser<'err, E> {
-    pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &'err mut E) -> Self {
+    pub fn new(tokens: Vec<Token>, mod_id: ModId, error_handler: &'err mut E) -> Self {
         Parser {
             err: error_handler,
             tokens,
             current: 0,
-            package_id,
+            mod_id,
         }
     }
 
@@ -32,16 +33,16 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let mut funs = Vec::new();
         let mut exposed = Vec::new();
 
-        let package = match self.package() {
+        let module = match self.module() {
             Ok(pkg) => pkg,
             Err(_) => {
-                self.err.silent_report(); // Error message is already emited by self.package.
-                ast::Package {
-                    id: self.package_id,
+                self.err.silent_report(); // Error message is already emited by self.module.
+                ast::Module {
+                    id: self.mod_id,
                     name: String::from(""),
                     loc: Location::dummy(),
-                    t: ast::PackageType::Standard,
-                    kind: ast::PackageKind::Package,
+                    t: ast::ModuleType::Standard,
+                    kind: ast::ModuleKind::Module,
                 }
             }
         };
@@ -57,7 +58,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         }
 
         ast::Program {
-            package,
+            module,
             exposed,
             funs,
             structs: vec![],
@@ -140,16 +141,16 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         }
     }
 
-    /// Parses the 'package' grammar element
-    fn package(&mut self) -> Result<ast::Package, ()> {
-        let package_type = if self.next_match(TokenType::Standalone) {
-            ast::PackageType::Standalone
+    /// Parses the 'module' grammar element
+    fn module(&mut self) -> Result<ast::Module, ()> {
+        let module_type = if self.next_match(TokenType::Standalone) {
+            ast::ModuleType::Standalone
         } else {
-            ast::PackageType::Standard
+            ast::ModuleType::Standard
         };
         if !self.next_match_report(
             TokenType::Package,
-            "File must start with a 'package' declaration.",
+            "File must start with a 'module' declaration.",
         ) {
             return Err(());
         }
@@ -160,18 +161,18 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             _ => {
                 self.err.report(
                     loc,
-                    String::from("Expected a name after 'package' declaration."),
+                    String::from("Expected a name after 'module' declaration."),
                 );
                 return Err(());
             }
         };
         self.consume_semi_colon();
-        Ok(ast::Package {
-            id: self.package_id,
+        Ok(ast::Module {
+            id: self.mod_id,
             name,
             loc,
-            t: package_type,
-            kind: ast::PackageKind::Package,
+            t: module_type,
+            kind: ast::ModuleKind::Module,
         })
     }
 

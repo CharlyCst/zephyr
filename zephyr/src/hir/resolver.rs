@@ -23,13 +23,13 @@ struct State<'a, 'ctx, 'ty> {
     imported_modules: HashMap<String, ModId>,
     checker: &'a mut TypeChecker<'ctx, 'ty>,
     known_values: &'a KnownValues,
-    mod_id: u32,
+    mod_id: ModId,
     ctx: &'ctx Ctx,
 }
 
 impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
     pub fn new(
-        mod_id: u32,
+        mod_id: ModId,
         imported_modules: HashMap<String, ModId>,
         checker: &'a mut TypeChecker<'ctx, 'ty>,
         ctx: &'ctx Ctx,
@@ -124,7 +124,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
         let mut state = State::new(
-            ast_program.package.id,
+            ast_program.module.id,
             imported_modules,
             checker,
             ctx,
@@ -135,7 +135,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         // Register functions names and signatures
         let imports = self.register_and_resolve_imports(
             ast_program.imports,
-            ast_program.package.kind,
+            ast_program.module.kind,
             &mut state,
         );
         let structs = self.register_and_resolve_structs(ast_program.structs, &mut state);
@@ -159,7 +159,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             data: state.data,
             names: state.names,
             fun_types: state.fun_types,
-            package: ast_program.package,
+            module: ast_program.module,
         }
     }
 
@@ -733,7 +733,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                         Ok((expr, field_t_var))
                     }
                     Expression::Namespace { mod_id, loc } => {
-                        // Namespace imported from another package
+                        // Namespace imported from another module
                         self.resolve_namespace_expr(mod_id, loc, *field, state)
                     }
                     _ => {
@@ -916,19 +916,19 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
 
     /// Register top level imports into the global state (`state`) and return resolved
     /// functions.
-    /// Will rise an error if imports are declared in an unappropriate package.
+    /// Will rise an error if imports are declared in an unappropriate module.
     fn register_and_resolve_imports(
         &mut self,
         imports: Vec<ast::Imports>,
-        package_kind: ast::PackageKind,
+        module_kind: ast::ModuleKind,
         state: &mut State,
     ) -> Vec<Imports> {
         let mut resolved_imports = Vec::with_capacity(imports.len());
-        if package_kind != ast::PackageKind::Runtime && !imports.is_empty() {
+        if module_kind != ast::ModuleKind::Runtime && !imports.is_empty() {
             let loc = imports.first().unwrap().loc;
             self.err.report(
                 loc,
-                String::from("Function imports are only permitted in 'runtime' packages."),
+                String::from("Function imports are only permitted in 'runtime' modules."),
             );
         }
         for import in imports {
@@ -1164,13 +1164,13 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 } else {
                     self.err.report(
                         loc,
-                        format!("Value '{}' does not exists in '{}'", val, namespace),
+                        format!("Value '{}' does not exists", val),
                     );
                     Err(())
                 }
             } else {
                 self.err
-                    .report(loc, format!("Namespace '{}' does not exist", namespace));
+                    .report(loc, format!("Namespace does not exist"));
                 Err(())
             }
         } else {
@@ -1220,14 +1220,14 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     } else {
                         self.err.report_internal(
                             loc,
-                            format!("Module ID '{}' has no associated path in context", mod_id),
+                            format!("Module ID '{:?}' has no associated path in context", mod_id),
                         );
                     }
                     Err(())
                 }
             } else {
                 self.err
-                    .report_internal(loc, format!("Module with ID '{}' does not exist", mod_id));
+                    .report_internal(loc, format!("Module with ID '{:?}' does not exist", mod_id));
                 Err(())
             }
         } else {

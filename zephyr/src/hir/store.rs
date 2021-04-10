@@ -107,7 +107,7 @@ where
 
     /// Generates a globally unique ID for this kind of store.
     pub fn fresh_id(&mut self) -> I {
-        let id = (self.counter as u64) + ((self.mod_id as u64) << 32);
+        let id = (self.counter as u64) + ((self.mod_id.0 as u64) << 32);
         self.counter = self
             .counter
             .checked_add(1)
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn store() {
-        let mut store = Store::new(1);
+        let mut store = Store::new(ModId(1));
         let id: TestId = store.add('a');
         let other_id = store.add('b');
         assert_ne!(id, other_id);

@@ -1,10 +1,12 @@
 use std::cmp::Ordering;
 
+use crate::resolver::FileId;
+
 #[derive(Debug, Copy, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub struct Location {
     pub pos: u32,
     pub len: u32,
-    pub f_id: u16,
+    pub f_id: FileId,
 }
 
 pub struct Error {
@@ -54,7 +56,7 @@ impl Location {
         Location {
             pos: 0,
             len: 0,
-            f_id: 0,
+            f_id: FileId(0),
         }
     }
 
@@ -67,8 +69,8 @@ impl Location {
         let pos = std::cmp::min(self.pos, other.pos);
         let len = std::cmp::max(self.pos + self.len, other.pos + other.len) - pos;
         Location {
-            pos: pos,
-            len: len,
+            pos,
+            len,
             f_id: self.f_id,
         }
     }
@@ -83,17 +85,17 @@ mod tests {
         let loc_1 = Location {
             pos: 10,
             len: 5,
-            f_id: 0,
+            f_id: FileId(0),
         };
         let loc_2 = Location {
             pos: 12,
             len: 8,
-            f_id: 0,
+            f_id: FileId(0),
         };
         let loc_3 = Location {
             pos: 11,
             len: 3,
-            f_id: 0,
+            f_id: FileId(0),
         };
 
         assert_eq!(
@@ -101,7 +103,7 @@ mod tests {
             Location {
                 pos: 10,
                 len: 10,
-                f_id: 0
+                f_id: FileId(0)
             }
         );
         assert_eq!(
@@ -109,7 +111,7 @@ mod tests {
             Location {
                 pos: 11,
                 len: 9,
-                f_id: 0
+                f_id: FileId(0)
             }
         );
         assert_eq!(loc_1.merge(loc_3), loc_1);
