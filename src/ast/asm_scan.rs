@@ -5,8 +5,8 @@ use std::collections::HashMap;
 const RADIX: u32 = 10;
 
 /// Zephyr Assembly Scanner, it produces tokens from source code.
-pub struct Scanner<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Scanner<'err, E: ErrorHandler> {
+    err: &'err mut E,
     f_id: u16,
     code: Vec<char>,
     start: usize,
@@ -15,9 +15,9 @@ pub struct Scanner<'a> {
     stmt_ender: bool,
 }
 
-impl<'a> Scanner<'a> {
+impl<'err, E: ErrorHandler> Scanner<'err, E> {
     // f_id MUST exist, no check performed.
-    pub fn new(f_id: u16, error_handler: &'a mut ErrorHandler) -> Scanner<'a> {
+    pub fn new(f_id: u16, error_handler: &'err mut E) -> Self {
         let keywords = get_keyword_map();
 
         // f_id MUST exist

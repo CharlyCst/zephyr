@@ -50,13 +50,13 @@ struct HIR<'a> {
     data: &'a HashMap<DataId, HirData>,
 }
 
-pub struct MirProducer<'a, 'arena> {
+pub struct MirProducer<'a, 'arena, E: ErrorHandler> {
     // Counters for local IDs
     bb_id: BasicBlockId,
     local_id: LocalId,
 
     // Error handler
-    err: &'a mut ErrorHandler,
+    err: &'a mut E,
 
     // A mapping from HIR local variable ID to MIR local variable ID
     locals: HashMap<HirLocalId, Vec<LocalId>>,
@@ -113,13 +113,13 @@ impl<'a> HIR<'a> {
     }
 }
 
-impl<'a, 'arena> MirProducer<'a, 'arena> {
+impl<'a, 'arena, E: ErrorHandler> MirProducer<'a, 'arena, E> {
     fn new(
         ctx: &'a Ctx,
         known_funs: &'a KnownFunctions,
         struct_arena: &'arena Arena<Struct>,
         tuple_arena: &'arena Arena<Tuple>,
-        err: &'a mut ErrorHandler,
+        err: &'a mut E,
     ) -> Self {
         Self {
             bb_id: 0,
@@ -140,11 +140,7 @@ impl<'a, 'arena> MirProducer<'a, 'arena> {
         }
     }
 
-    pub fn lower(
-        ctx: &'a Ctx,
-        known_funs: &'a KnownFunctions,
-        err: &'a mut ErrorHandler,
-    ) -> Program {
+    pub fn lower(ctx: &'a Ctx, known_funs: &'a KnownFunctions, err: &'a mut E) -> Program {
         let struct_arena = Arena::new();
         let tuple_arena = Arena::new();
         let reducer = MirProducer::new(ctx, known_funs, &struct_arena, &tuple_arena, err);
@@ -202,7 +198,9 @@ impl<'a, 'arena> MirProducer<'a, 'arena> {
                 }
             };
             // Lower data
-            self.mir.data.insert(data_id, MirProducer::lower_data(data));
+            self.mir
+                .data
+                .insert(data_id, MirProducer::<E>::lower_data(data));
         }
 
         for import in self.hir.imports {

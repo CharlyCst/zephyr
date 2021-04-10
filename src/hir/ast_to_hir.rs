@@ -34,13 +34,13 @@ impl<'checker, 'ty> State<'checker, 'ty> {
     }
 }
 
-pub struct HirProducer<'a> {
-    err: &'a mut ErrorHandler,
+pub struct HirProducer<'a, E: ErrorHandler> {
+    err: &'a mut E,
 }
 
-impl<'a> HirProducer<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> HirProducer {
-        HirProducer { err: error_handler }
+impl<'a, E: ErrorHandler> HirProducer<'a, E> {
+    pub fn new(error_handler: &'a mut E) -> Self {
+        Self { err: error_handler }
     }
 
     /// Lower a typed program to HIR

@@ -105,12 +105,12 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
     }
 }
 
-pub struct NameResolver<'err> {
-    err: &'err mut ErrorHandler,
+pub struct NameResolver<'err, E: ErrorHandler> {
+    err: &'err mut E,
 }
 
-impl<'err, 'a, 'ctx, 'ty> NameResolver<'err> {
-    pub fn new(error_handler: &mut ErrorHandler) -> NameResolver {
+impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
+    pub fn new(error_handler: &'err mut E) -> Self {
         NameResolver { err: error_handler }
     }
 
@@ -606,7 +606,7 @@ impl<'err, 'a, 'ctx, 'ty> NameResolver<'err> {
                     }
                     state
                         .checker
-                        .set_struct_literal(t_var, field_types, &mut self.err, loc);
+                        .set_struct_literal(t_var, field_types, self.err, loc);
                     let expr = Expression::Literal(Value::Struct {
                         ident: ident.clone(),
                         loc,

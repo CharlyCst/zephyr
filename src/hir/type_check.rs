@@ -228,7 +228,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var: TypeVar,
         t: ScalarType,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         let t_var_t = self.scalar(t);
@@ -241,7 +241,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var: TypeVar,
         mut types: Vec<ScalarType>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         let t_var_ts = self.fresh();
@@ -255,7 +255,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var: TypeVar,
         s_id: StructId,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         let struct_ty = self
@@ -270,7 +270,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var: TypeVar,
         fields: Vec<(TypeVar, String, Location)>,
-        _err: &mut ErrorHandler,
+        _err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         self.constraints
@@ -283,7 +283,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         t_var: TypeVar,
         mut params: Vec<TypeVar>,
         ret: TypeVar,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         params.push(ret);
@@ -299,7 +299,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var: TypeVar,
         types: Vec<TypeVar>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         let tuple_ty = self
@@ -314,7 +314,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var_1: TypeVar,
         t_var_2: TypeVar,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) {
         let _ = self.unify_var_var(t_var_1, t_var_2, err, loc);
@@ -356,7 +356,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
 
     /// Recursively apply all remaining constraints, will return an error if an unification failed
     /// or if some remaining constraint can't make further progress.
-    pub fn type_check(&mut self, structs: &StructStore, err: &mut ErrorHandler) -> Result<(), ()> {
+    pub fn type_check(&mut self, structs: &StructStore, err: &mut impl ErrorHandler) -> Result<(), ()> {
         let mut progress;
         let mut error = false;
         loop {
@@ -451,7 +451,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var_1: TypeVar,
         t_var_2: TypeVar,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         let ty_1 = self.subs.substitute(t_var_1);
@@ -489,7 +489,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         t_var: TypeVar,
         field_name: String,
         structs: &StructStore,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         let ty_obj = self.subs.substitute(object);
@@ -548,7 +548,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var_fun: TypeVar,
         t_var_args: Vec<TypeVar>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         let ty_fun = self.subs.substitute(t_var_fun);
@@ -598,7 +598,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var_fun: TypeVar,
         t_var_ret: TypeVar,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         let ty_fun = self.subs.substitute(t_var_fun);
@@ -635,7 +635,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         t_var: TypeVar,
         fields: Vec<(TypeVar, String, Location)>,
         structs: &StructStore,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         let s_id = match self.subs.substitute(t_var) {
@@ -695,7 +695,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var: &TypeVar,
         ty: &'ty Ty,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         match ty {
@@ -713,7 +713,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_1: &ScalarType,
         t_2: &ScalarType,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         if t_1 != t_2 {
@@ -730,7 +730,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         t: &ScalarType,
         t_var: &TypeVar,
         ts: &Vec<ScalarType>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         if ts.contains(t) {
@@ -758,7 +758,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         ts_1: &Vec<ScalarType>,
         t_var_2: TypeVar,
         ts_2: &Vec<ScalarType>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         // TODO: improve algorithm complexity (n_max=7, we can deal with that for now)
@@ -788,7 +788,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         tys_1: &Vec<TypeVar>,
         kind_2: &CompositeKind,
         tys_2: &Vec<TypeVar>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<Progress, ()> {
         if kind_1 == kind_2 && tys_1.len() == tys_2.len() {
@@ -866,7 +866,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &mut self,
         t_var_base: TypeVar,
         t_vars: &Vec<TypeVar>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<(), ()> {
         for t_var_aux in t_vars {
@@ -890,7 +890,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         s_id: StructId,
         field: &str,
         structs: &StructStore,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<TypeVar, ()> {
         if let Some(struc) = structs.get(s_id) {
@@ -924,7 +924,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &self,
         s_id: StructId,
         structs: &StructStore,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<usize, ()> {
         if let Some(struc) = structs.get(s_id) {
@@ -942,7 +942,7 @@ impl<'ctx, 'ty> TypeChecker<'ctx, 'ty> {
         &self,
         s_id: StructId,
         structs: &StructStore,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         loc: Location,
     ) -> Result<HashSet<String>, ()> {
         let mut set = HashSet::new();

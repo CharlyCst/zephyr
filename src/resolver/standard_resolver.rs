@@ -69,7 +69,7 @@ impl StandardResolver {
     pub fn prepare_files<P: AsRef<Path>>(
         &self,
         path: P,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<(Vec<PreparedFile>, ModuleKind), ()> {
         let path = match resolve_path(path) {
             Ok(path) => path,
@@ -90,7 +90,7 @@ impl StandardResolver {
     fn prepare_files_from_resolved_path(
         &self,
         resolved_path: ResolvedPath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<(Vec<PreparedFile>, ModuleKind), ()> {
         let mut files = Vec::new();
         let (paths, kind) = match resolved_path {
@@ -118,7 +118,7 @@ impl StandardResolver {
     }
 
     /// Look at a file extension to decide of its kind.
-    fn get_file_kind(&self, path: &Path, err: &mut ErrorHandler) -> Result<FileKind, ()> {
+    fn get_file_kind(&self, path: &Path, err: &mut impl ErrorHandler) -> Result<FileKind, ()> {
         if let Some(ext) = path.extension() {
             if ext.eq(ZEPHYR_EXTENSION) {
                 Ok(FileKind::Zephyr)
@@ -153,7 +153,7 @@ impl Resolver for StandardResolver {
     fn resolve_module(
         &self,
         module: &ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<(Vec<PreparedFile>, ModuleKind), ()> {
         let mut path = match self.package_paths.get(&module.root) {
             Some(path) => path.to_owned(),

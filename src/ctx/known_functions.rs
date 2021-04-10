@@ -11,8 +11,8 @@
 //! ```
 use super::utils::ModulePath;
 use crate::error::ErrorHandler;
-use crate::hir::{FunId, FunKind, ScalarType, Struct, StructId, Type};
 use crate::hir::known_ids::*;
+use crate::hir::{FunId, FunKind, ScalarType, Struct, StructId, Type};
 
 const CORE: &str = "core";
 
@@ -84,7 +84,7 @@ impl KnownStructPaths {
 
 // —————————————————————————————— Validation ——————————————————————————————— //
 
-pub fn validate_malloc(fun: &FunKind, err: &mut ErrorHandler) -> Result<FunId, ()> {
+pub fn validate_malloc(fun: &FunKind, err: &mut impl ErrorHandler) -> Result<FunId, ()> {
     let (fun_id, loc, params, ret) = match fun {
         FunKind::Fun(fun) => (fun.fun_id, fun.loc, &fun.t.params, &fun.t.ret),
         FunKind::Extern(fun) => (fun.fun_id, fun.loc, &fun.t.params, &fun.t.ret),
@@ -100,7 +100,7 @@ pub fn validate_malloc(fun: &FunKind, err: &mut ErrorHandler) -> Result<FunId, (
     Ok(fun_id)
 }
 
-pub fn validate_str(struc: &Struct, err: &mut ErrorHandler) -> Result<StructId, ()> {
+pub fn validate_str(struc: &Struct, err: &mut impl ErrorHandler) -> Result<StructId, ()> {
     let loc = struc.loc;
     if struc.fields.len() != 2 {
         err.report_internal(

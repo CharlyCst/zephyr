@@ -21,12 +21,12 @@ mod resolver;
 mod store;
 mod type_check;
 
-pub fn to_hir<'a>(
+pub fn to_hir(
     ast_program: ast::Program,
     namespace: HashMap<String, ModId>,
     ctx: &Ctx,
     known_values: &KnownValues,
-    error_handler: &mut ErrorHandler,
+    error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> hir::Program {
     let store = type_check::TyStore::new();

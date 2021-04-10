@@ -6,9 +6,9 @@ mod opcode;
 mod sections;
 mod wasm;
 
-pub fn to_wasm<'a>(
+pub fn to_wasm<'err>(
     mir_program: mir::Program,
-    error_handler: &'a mut ErrorHandler,
+    error_handler: &'err mut impl ErrorHandler,
     verbose: bool,
 ) -> Vec<u8> {
     if verbose {

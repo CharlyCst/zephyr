@@ -11,7 +11,7 @@ pub use mir::Program;
 pub fn to_mir(
     ctx: &Ctx,
     known_funs: &KnownFunctions,
-    error_handler: &mut ErrorHandler,
+    error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> mir::Program {
     if verbose {

@@ -133,7 +133,7 @@ impl Ctx {
     pub fn get_module_name(
         &mut self,
         files: Vec<PreparedFile>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<String, ()> {
         let is_single_file = files.len() == 1;
         let ast_programs = self.parse_files(files, err)?;
@@ -179,7 +179,7 @@ impl Ctx {
     pub fn add_module(
         &mut self,
         module: ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<(), ()> {
         self.initialize_known_values(err, resolver)?;
@@ -191,7 +191,7 @@ impl Ctx {
     /// Generate WebAssembly from the HIR in the current compilation context.
     pub fn get_wasm(
         &mut self,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<Vec<u8>, ()> {
         self.initialize_known_values(err, resolver)?;
@@ -204,7 +204,7 @@ impl Ctx {
     fn get_ast(
         &self,
         module: &ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<ast::Program, ()> {
         let (files, module_kind) = resolver.resolve_module(module, err)?;
@@ -275,7 +275,7 @@ impl Ctx {
         &mut self,
         module: &ModulePath,
         imported: HashSet<ModulePath>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<hir::Program, ()> {
         // Get AST
@@ -323,7 +323,7 @@ impl Ctx {
     /// otherwise return imediately.
     fn initialize_known_values(
         &mut self,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<(), ()> {
         if self.knwon_values.is_initialized() {
@@ -339,7 +339,7 @@ impl Ctx {
     /// needed for the latter phases of the compilation.
     fn get_known_functions(
         &mut self,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<KnownFunctions, ()> {
         let modules = KnownFunctionPaths::get();
@@ -354,7 +354,7 @@ impl Ctx {
     /// Return the IDs of known structs.
     fn get_known_structs(
         &mut self,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<KnownStructs, ()> {
         let modules = KnownStructPaths::get();
@@ -373,7 +373,7 @@ impl Ctx {
     fn get_public_decls(
         &mut self,
         module: &ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
         resolver: &impl Resolver,
     ) -> Result<&ModuleDeclarations, ()> {
         if self.public_decls.get(module).is_none() {
@@ -396,7 +396,7 @@ impl Ctx {
         public_decls: &ModuleDeclarations,
         fun: &str,
         module: &ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<&hir::FunKind, ()> {
         if let Some(fun) = public_decls.val_decls.get(fun) {
             let fun_id = match fun {
@@ -427,7 +427,7 @@ impl Ctx {
         public_decls: &ModuleDeclarations,
         struc: &str,
         module: &ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<&hir::Struct, ()> {
         if let Some(struc) = public_decls.type_decls.get(struc) {
             let struct_id = if let hir::Type::Struct(s_id) = struc {
@@ -489,15 +489,15 @@ impl Ctx {
     }
 
     /// Parses files and return the a tuple (AST, error_handler, file_name) per file.
-    fn parse_files(
+    fn parse_files<E: ErrorHandler>(
         &self,
         files: Vec<PreparedFile>,
-        _err: &mut ErrorHandler,
-    ) -> Result<Vec<(ast::Program, ErrorHandler, String)>, ()> {
+        _err: &mut E,
+    ) -> Result<Vec<(ast::Program, E, String)>, ()> {
         let mut ast_programs = Vec::with_capacity(files.len());
         let mod_id = self.fresh_mod_id();
         for file in files.into_iter() {
-            let mut error_handler = ErrorHandler::new(file.code, file.f_id);
+            let mut error_handler = E::new(file.code, file.f_id);
             let ast_program = ast::get_ast(
                 file.f_id,
                 mod_id,
@@ -521,7 +521,7 @@ impl Ctx {
         &self,
         package_definition: &mut Option<ast::Package>,
         package_shard: &ast::Package,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<(), ()> {
         if let Some(package_def) = package_definition {
             if &package_shard.name != &package_def.name {
@@ -555,7 +555,7 @@ impl Ctx {
         &self,
         path: &ModulePath,
         imported: &HashSet<ModulePath>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<(), ()> {
         if imported.contains(path) {
             err.report_no_loc(format!(
@@ -578,7 +578,7 @@ impl Ctx {
         &self,
         path: &ModulePath,
         module_imports: &HashSet<ModulePath>,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) {
         if module_imports.contains(path) {
             err.warn_no_loc(format!(
