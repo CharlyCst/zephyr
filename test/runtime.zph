@@ -1,4 +1,4 @@
-standalone runtime package _runtime
+standalone runtime module _runtime
 
 expose main as _start
 

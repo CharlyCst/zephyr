@@ -1,4 +1,4 @@
-standalone package access_2
+standalone module access_2
 
 expose main as _start
 

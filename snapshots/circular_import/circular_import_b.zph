@@ -1,4 +1,4 @@
-standalone package circular_import_b
+standalone module circular_import_b
 
 use circular_import.circular_import_a
 

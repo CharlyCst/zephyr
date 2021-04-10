@@ -1,4 +1,4 @@
-standalone package hello
+standalone module hello
 
 use std.r.wasi
 

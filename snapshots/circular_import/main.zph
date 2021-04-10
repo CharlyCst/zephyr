@@ -1,6 +1,6 @@
-package circular_import
+module circular_import
 
-// This package will create a circular import
+// This module will create a circular import
 use circular_import.circular_import_a
 
 fun main(): i32 {

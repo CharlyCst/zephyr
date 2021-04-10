@@ -1,4 +1,4 @@
-standalone package _use
+standalone module _use
 
 use core
 

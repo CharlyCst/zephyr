@@ -1,5 +1,5 @@
-/// Runtime packages
+/// Runtime modules
 ///
-/// This module hosts a collection of runtime packages for well known platforms, such as Wasi.
-package r
+/// This module hosts a collection of runtime modules for well known platforms, such as Wasi.
+module r
 

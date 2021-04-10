@@ -1,6 +1,6 @@
 // Grow memory, lookup its size, store and load a number.
 
-standalone package memory
+standalone module memory
 
 expose f as _start
 

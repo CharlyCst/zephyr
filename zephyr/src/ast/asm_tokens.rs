@@ -22,7 +22,7 @@ pub enum TokenType {
     Expose,
     Fun,
     Pub,
-    Package, // TODO: change for 'Module'
+    Module,
     Standalone,
 
     // Other
@@ -71,7 +71,7 @@ pub fn get_keyword_map() -> HashMap<String, TokenType> {
         (String::from("expose"), TokenType::Expose),
         (String::from("fun"), TokenType::Fun),
         (String::from("pub"), TokenType::Pub),
-        (String::from("package"), TokenType::Package),
+        (String::from("module"), TokenType::Module),
         (String::from("standalone"), TokenType::Standalone),
         // Opcodes
         (String::from("drop"), to_token(Opcode::Drop)),
@@ -121,7 +121,7 @@ impl fmt::Display for Token {
             TokenType::Expose => write!(f, "expose"),
             TokenType::Fun => write!(f, "fun"),
             TokenType::Pub => write!(f, "pub"),
-            TokenType::Package => write!(f, "package"),
+            TokenType::Module => write!(f, "module"),
             TokenType::Standalone => write!(f, "standalone"),
             // Literals
             TokenType::Identifier(ref ident) => write!(f, "'{}'", ident),

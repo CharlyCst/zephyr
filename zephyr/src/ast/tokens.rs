@@ -49,7 +49,7 @@ pub enum TokenType {
     If,
     Import,
     Let,
-    Package,
+    Module,
     Pub,
     Return,
     Runtime,

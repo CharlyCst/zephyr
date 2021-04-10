@@ -1,4 +1,4 @@
-standalone package struct_assign
+standalone module struct_assign
 
 expose main as _start
 

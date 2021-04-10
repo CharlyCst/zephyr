@@ -1,4 +1,4 @@
-standalone package non_tuple
+standalone module non_tuple
 
 fun main(): (i32,) {
     return 42

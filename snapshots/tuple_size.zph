@@ -1,4 +1,4 @@
-standalone package tuple_size
+standalone module tuple_size
 
 fun main(): (i32, i32, i32) {
     return (4, 2)

@@ -1,4 +1,4 @@
-standalone package xor
+standalone module xor
 
 expose main as _start
 

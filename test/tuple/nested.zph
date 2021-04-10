@@ -1,4 +1,4 @@
-standalone package nested
+standalone module nested
 
 expose main as _start
 

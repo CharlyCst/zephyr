@@ -1,4 +1,4 @@
-standalone package literal
+standalone module literal
 
 expose main as _start
 

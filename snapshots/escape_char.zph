@@ -1,4 +1,4 @@
-standalone package escape_char
+standalone module escape_char
 
 expose main as _start
 

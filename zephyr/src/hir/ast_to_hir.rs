@@ -85,7 +85,7 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
         }
     }
 
-    /// Returns the public declarations of the package, this include public functions and
+    /// Returns the public declarations of the module, this include public functions and
     /// imported runtime module.
     fn get_pub_decls(
         &mut self,

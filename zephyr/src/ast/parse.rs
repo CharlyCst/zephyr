@@ -239,7 +239,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             ModuleKind::Module
         };
         self.next_match_report(
-            TokenType::Package,
+            TokenType::Module,
             "Programs must start with a module declaration",
         )?;
         let token = self.advance();
@@ -259,7 +259,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             self.synchronize();
             self.err.report(
                 loc,
-                String::from("'package' keyword should be followed by the name of the package"),
+                String::from("'module' keyword should be followed by the name of the module"),
             );
             Err(())
         }

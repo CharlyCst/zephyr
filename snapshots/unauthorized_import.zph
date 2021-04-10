@@ -1,6 +1,6 @@
-standalone package unauthorized_import
+standalone module unauthorized_import
 
-// Imports are not authorized in standard packages
+// Imports are not authorized in standard modules
 from test import {
     fun add(a: i32, b: i32): i32 as extern_add
 }

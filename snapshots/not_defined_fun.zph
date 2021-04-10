@@ -1,4 +1,4 @@
-standalone package not_defined_fun
+standalone module not_defined_fun
 
 fun main(): i32 {
     return x()

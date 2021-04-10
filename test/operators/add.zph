@@ -1,4 +1,4 @@
-standalone package add
+standalone module add
 
 expose main as _start
 

@@ -1,5 +1,5 @@
 /// Wasi runtime
-standalone runtime package wasi
+standalone runtime module wasi
 
 use core.str
 use core.mem

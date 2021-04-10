@@ -1,6 +1,6 @@
-/// The malloc package handles memory management, it exposes a malloc and free
+/// The malloc module handles memory management, it exposes a malloc and free
 /// implementation.
-package mem
+module mem
 
 use core.utils
 

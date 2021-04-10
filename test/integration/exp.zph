@@ -1,4 +1,4 @@
-standalone package exp
+standalone module exp
 
 expose main as _start
 

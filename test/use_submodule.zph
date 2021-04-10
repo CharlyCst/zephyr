@@ -1,4 +1,4 @@
-standalone package use_subpackage
+standalone module use_submodule
 
 use core.utils
 

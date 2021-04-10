@@ -1,4 +1,4 @@
-standalone package use_multiple
+standalone module use_multiple
 
 use core
 use core.mem

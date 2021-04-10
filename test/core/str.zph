@@ -1,4 +1,4 @@
-standalone package str
+standalone module str
 
 expose main as _start
 

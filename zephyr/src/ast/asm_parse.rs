@@ -149,7 +149,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             ast::ModuleType::Standard
         };
         if !self.next_match_report(
-            TokenType::Package,
+            TokenType::Module,
             "File must start with a 'module' declaration.",
         ) {
             return Err(());

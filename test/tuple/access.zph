@@ -1,4 +1,4 @@
-standalone package access
+standalone module access
 
 expose main as _start
 

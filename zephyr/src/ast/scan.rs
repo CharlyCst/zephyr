@@ -32,7 +32,7 @@ impl<'a, E: ErrorHandler> Scanner<'a, E> {
             (String::from("if"), TokenType::If),
             (String::from("import"), TokenType::Import),
             (String::from("let"), TokenType::Let),
-            (String::from("package"), TokenType::Package),
+            (String::from("module"), TokenType::Module),
             (String::from("pub"), TokenType::Pub),
             (String::from("return"), TokenType::Return),
             (String::from("runtime"), TokenType::Runtime),

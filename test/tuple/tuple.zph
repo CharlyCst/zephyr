@@ -1,4 +1,4 @@
-standalone package tuple
+standalone module tuple
 
 expose main as _start
 

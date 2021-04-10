@@ -1,4 +1,4 @@
-standalone package trailing_comma
+standalone module trailing_comma
 
 expose main as _start
 
