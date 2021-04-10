@@ -1,4 +1,4 @@
-standalone package struct_shorthand
+standalone module struct_shorthand
 
 expose main as _start
 

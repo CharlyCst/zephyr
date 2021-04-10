@@ -1,5 +1,5 @@
 // Struct should be usable even behind a namespace.
-standalone package namespaced_struct
+standalone module namespaced_struct
 
 use core.str
 

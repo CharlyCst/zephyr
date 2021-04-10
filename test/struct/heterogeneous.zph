@@ -1,4 +1,4 @@
-standalone package heterogeneous
+standalone module heterogeneous
 
 expose main as _start
 

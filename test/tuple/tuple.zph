@@ -1,0 +1,12 @@
+standalone module tuple
+
+expose main as _start
+
+fun main(): i32 {
+	return 42
+}
+
+fun tuple_test(tup: (i32, i32)): (i32, i32) {
+    return tup
+}
+

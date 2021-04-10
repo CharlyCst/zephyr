@@ -1,19 +1,7 @@
-[package]
-name = "zephyr-lang"
-version = "0.1.0"
-authors = ["CharlyCst <charly.castes@epfl.ch>"]
-edition = "2018"
+[workspace]
 
-[lib]
-name = "zephyr"
-
-[[bin]]
-name = "zephyr"
-path = "src/bin/main.rs"
-
-[dependencies]
-
-[dependencies.clap]
-version = "3.0.0-beta.1"
-default-features = false
-features = [ "suggestions", "derive", "std" ]
+members = [
+    "zephyr",
+    "zephyrc",
+    "derive",
+]

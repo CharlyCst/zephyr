@@ -1,4 +1,4 @@
-standalone package _while
+standalone module _while
 
 expose main as _start
 

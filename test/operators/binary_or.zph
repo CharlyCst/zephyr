@@ -1,4 +1,4 @@
-standalone package binary_test
+standalone module binary_test
 
 expose main as _start
 

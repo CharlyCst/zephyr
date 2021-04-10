@@ -1,4 +1,4 @@
-standalone package str_escape
+standalone module str_escape
 
 expose main as _start
 

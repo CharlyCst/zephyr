@@ -1,4 +1,4 @@
-standalone package colon_syntax
+standalone module colon_syntax
 
 // There is no colon between the function and type here
 fun main() i32 {

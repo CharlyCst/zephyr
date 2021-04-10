@@ -1,5 +1,5 @@
 /// Implementation of strings for Zephyr.
-package str
+module str
 
 use core.mem
 

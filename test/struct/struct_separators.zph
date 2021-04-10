@@ -1,4 +1,4 @@
-standalone package struct_separators
+standalone module struct_separators
 
 expose main as _start
 

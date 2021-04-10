@@ -1,4 +1,4 @@
-standalone package logical_or
+standalone module logical_or
 
 expose main as _start
 

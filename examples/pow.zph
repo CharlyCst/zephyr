@@ -1,4 +1,4 @@
-standalone package pow
+standalone module pow
 
 expose pow as _start 
 

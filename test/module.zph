@@ -1,0 +1,10 @@
+standalone module _module
+
+expose main as _start
+
+// Test let statement
+fun main(): i32 {
+
+    let x = 42
+    return x
+}

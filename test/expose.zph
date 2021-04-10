@@ -1,4 +1,4 @@
-standalone package _expose
+standalone module _expose
 
 // Test the expose keyword
 expose main as _start

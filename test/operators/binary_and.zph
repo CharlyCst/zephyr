@@ -1,4 +1,4 @@
-standalone package binary_and
+standalone module binary_and
 
 expose main as _start
 

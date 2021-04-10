@@ -1,6 +1,6 @@
 // This code is written in Zephyr asm
 
-standalone package asm
+standalone module asm
 
 expose main as _start
 

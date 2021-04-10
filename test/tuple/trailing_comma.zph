@@ -1,0 +1,12 @@
+standalone module trailing_comma
+
+expose main as _start
+
+fun main(): i32 {
+    let tup = (14,)
+    return test(tup)
+}
+
+fun test(tup: (i32,)): i32 {
+    return 42
+}

@@ -1,4 +1,4 @@
-standalone package let_equal
+standalone module let_equal
 
 fun main(): i32 {
     let x

@@ -1,0 +1,18 @@
+[package]
+name = "zephyrc"
+version = "0.1.0"
+authors = ["CharlyCst <castes.ch@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "zephyr"
+path = "src/main.rs"
+
+[dependencies]
+zephyr-lang = { path = "../zephyr" }
+
+[dependencies.clap]
+version = "3.0.0-beta.1"
+default-features = false
+features = [ "suggestions", "derive", "std" ]
+

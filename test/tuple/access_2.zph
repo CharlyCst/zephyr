@@ -1,0 +1,17 @@
+standalone module access_2
+
+expose main as _start
+
+fun main(): i32 {
+    let tup = (0, 1, 2)
+    if tup._0 != 0 {
+        return 1
+    }
+    if tup._1 != 1 {
+        return 1
+    }
+    if tup._2 != 2 {
+        return 1
+    }
+    return 42
+}

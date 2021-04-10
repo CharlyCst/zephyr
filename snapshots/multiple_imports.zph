@@ -1,4 +1,4 @@
-standalone package multiple_imports
+standalone module multiple_imports
 
 use core
 use core

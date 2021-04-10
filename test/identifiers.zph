@@ -1,4 +1,4 @@
-standalone package identifiers
+standalone module identifiers
 
 expose main as _start
 

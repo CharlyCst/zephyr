@@ -1,4 +1,4 @@
-standalone package _return
+standalone module _return
 
 expose main as _start
 

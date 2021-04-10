@@ -1,4 +1,4 @@
-standalone package _struct
+standalone module _struct
 
 expose main as _start
 

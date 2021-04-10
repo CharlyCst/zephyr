@@ -1,4 +1,4 @@
-standalone package struct_in_if
+standalone module struct_in_if
 
 struct S { x: i32 }
 

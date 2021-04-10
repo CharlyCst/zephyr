@@ -20,10 +20,10 @@ import_block   -> "{" import* "}"
 import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
 
 struct_block   -> "{" ( struct_field ( ("," | ";") struct_field )* ("," | ";")? )? "}"
-struct_field   -> "pub"? IDENTIFIER ":" IDENTIFIER
+struct_field   -> "pub"? IDENTIFIER ":" type
 
-parameters     -> IDENTIFIER ":" path ( "," IDENTIFIER ":" IDENTIFIER)* ","?
-result         -> (":" IDENTIFIER)?
+parameters     -> IDENTIFIER ":" type ( "," IDENTIFIER ":" type )* ","?
+result         -> (":" type)?
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt
@@ -51,12 +51,14 @@ call           -> access ( "(" arguments? ")" )*
 access         -> primary ( "." primary )*
 primary        -> INTEGER | FLOAT | BOOLEAN | STRING | IDENTIFIER
                 | struct_literal | "false" | "true" | "(" expression ")"
+                | "(" ( expression "," )+ expression? ")"
 
 arguments      -> ( expression ( "," expression )* ","? )?
 struct_literal -> IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"
 field          -> IDENTIFIER ( ":" expression )?
 
 path           -> IDENTIFIER ( "." IDENTIFIER )*
+type           -> path | "(" type ( "," type )* ","? ")"
 
 // expression¹: except `struct_literal`, but `struct_literal` are allowed inside parentheses.
 ```
@@ -75,11 +77,12 @@ declaration -> expose | function
 expose      -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 function    -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
 parameters  -> IDENTIFIER ":" IDENTIFIER ( "," IDENTIFIER ":" IDENTIFIER)* ","?
-result      -> (":" IDENTIFIER)?
+result      -> (":" type)?
 
 block       -> "{" statement* "}"
 statement   -> opcode primary? ";"
 primary     -> NUMBER | IDENTIFIER
 
+type        -> IDENTIFIER | "(" IDENTIFIER ( "," IDENTIFIER )* ","? ")"
 opcode      -> WASM_OPCODE
 ```

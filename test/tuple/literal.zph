@@ -1,0 +1,16 @@
+standalone module literal
+
+expose main as _start
+
+fun main(): i32 {
+    // Literal tuple with arbitrary witespace
+    let tup = (14
+    , true,
+
+    42)
+    return test(tup)
+}
+
+fun test(tup: (i64, bool, i32)): i32 {
+    return 42
+}

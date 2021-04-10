@@ -1,4 +1,4 @@
-standalone package incomplete_struct_field
+standalone module incomplete_struct_field
 
 struct Point {
     x: i32
