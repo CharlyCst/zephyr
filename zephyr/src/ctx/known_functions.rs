@@ -9,7 +9,7 @@
 //! ```ignore
 //! malloc: i32 -> i32
 //! ```
-use super::utils::ModulePath;
+use crate::resolver::ModulePath;
 use crate::error::ErrorHandler;
 use crate::hir::known_ids::*;
 use crate::hir::{FunId, FunKind, ScalarType, Struct, StructId, Type};

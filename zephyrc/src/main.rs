@@ -1,15 +1,23 @@
-//! The compiler binary
+//! The Zephyr compiler executable
 //!
-//! This file define de CLI of the zephyr compiler, it is build on top of the compiler library.
+//! This file define de CLI of the Zephyr compiler, it is build on top of the compiler library.
 
 use clap;
+use clap::Clap;
 use std::fs;
 use std::path;
-
-use zephyr::{Ctx, ErrorHandler, ModulePath, StandardErrorHandler, StandardResolver};
-
-use clap::Clap;
 use std::path::PathBuf;
+
+use zephyr::error::ErrorHandler;
+use zephyr::resolver::ModulePath;
+use zephyr::Ctx;
+
+mod error_handler;
+mod errors;
+mod resolver;
+
+use error_handler::StandardErrorHandler;
+use resolver::StandardResolver;
 
 /// The Zephyr compiler.
 #[derive(Clap, Debug)]

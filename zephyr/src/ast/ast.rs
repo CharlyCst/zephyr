@@ -1,8 +1,9 @@
 use std::fmt;
 
-pub use crate::ctx::{ModId, ModulePath};
+pub use crate::ctx::ModId;
 use crate::error::Location;
 use crate::mir::Value as MirValue;
+pub use crate::resolver::ModulePath;
 
 // ——————————————————————————————— Zephyr AST —————————————————————————————— //
 

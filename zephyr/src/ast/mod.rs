@@ -1,4 +1,5 @@
 use crate::error::ErrorHandler;
+use crate::resolver::FileKind;
 
 mod asm_parse;
 mod asm_scan;
@@ -12,25 +13,18 @@ mod tokens;
 pub use ast::*;
 pub use tokens::*;
 
-#[derive(Debug)]
-/// A file can contain either Zephyr code or Zephyr assembly.
-pub enum Kind {
-    Zephyr,
-    Asm,
-}
-
 /// Returns the file AST.
 /// The file content corresponding to `f_id` must be owned by the error_handler.
 pub fn get_ast(
     f_id: u16,
     mod_id: u32,
-    kind: Kind,
+    kind: FileKind,
     error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
     match kind {
-        Kind::Zephyr => get_zephyr_ast(f_id, mod_id, error_handler, verbose),
-        Kind::Asm => get_asm_ast(f_id, mod_id, error_handler, verbose),
+        FileKind::Zephyr => get_zephyr_ast(f_id, mod_id, error_handler, verbose),
+        FileKind::Asm => get_asm_ast(f_id, mod_id, error_handler, verbose),
     }
 }
 

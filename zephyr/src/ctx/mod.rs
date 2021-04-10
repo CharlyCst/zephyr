@@ -9,5 +9,5 @@ mod utils;
 pub use ctx::{Ctx, ModId};
 pub use known_functions::{KnownFunctions, KnownStructs, KnownValues};
 pub use utils::{
-    ModuleDeclarations, ModuleKind, ModulePath, PreparedFile, ValueDeclaration,
+    ModuleDeclarations, ValueDeclaration, KnownPackage,
 };

@@ -9,22 +9,17 @@ pub struct Location {
 
 pub struct Error {
     pub loc: Option<Location>,
-    pub t: ErrorType,
     pub level: Level,
     pub message: String,
 }
 
-#[derive(Copy, Clone)]
-pub enum ErrorType {
-    Internal,
-    Any,
-}
-
-/// Error: the compilation failed.
-/// Warning: non critical but should be fixed.
 pub enum Level {
+    /// The compilation failed.
     Error,
+    /// Not critical but should be fixed.
     Warning,
+    /// An error due to internal failling of the compiler.
+    Internal,
 }
 
 // Error without location are the smallest
