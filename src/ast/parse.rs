@@ -520,17 +520,7 @@ impl<'a> Parser<'a> {
         )
         .ok()?;
         let t_loc = self.peek().loc;
-        let t = if let Token {
-            t: TokenType::Identifier(ref t),
-            ..
-        } = self.advance()
-        {
-            t.clone()
-        } else {
-            self.err.report(t_loc, String::from("Expect a type"));
-            self.synchronize();
-            return None;
-        };
+        let t = self.type_().ok()?;
         let loc = loc.merge(t_loc);
         Some(StructField {
             is_pub,
@@ -593,8 +583,8 @@ impl<'a> Parser<'a> {
             )
             .ok();
 
-            let t = match self.path() {
-                Ok(path) => path,
+            let t = match self.type_() {
+                Ok(t) => t,
                 Err(()) => {
                     self.err.silent_report();
                     return params;
@@ -615,18 +605,9 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the 'result' grammar element
-    fn result(&mut self) -> Option<(String, Location)> {
+    fn result(&mut self) -> Option<Type> {
         if self.next_match(TokenType::Colon) {
-            let token = self.peek();
-            if let TokenType::Identifier(ref t) = token.t {
-                let result = Some((t.clone(), self.peek().loc));
-                self.advance();
-                result
-            } else {
-                let loc = token.loc;
-                self.err.report(loc, String::from("Expected a type"));
-                return None;
-            }
+            self.type_().ok()
         } else {
             None
         }
@@ -1051,8 +1032,28 @@ impl<'a> Parser<'a> {
             }
             TokenType::LeftPar => {
                 let expr = self.expression(true)?;
-                self.next_match_report(TokenType::RightPar, "Expected closing parenthesis")?;
-                Ok(expr)
+                // If is parenthised expression
+                if self.next_match(TokenType::RightPar) {
+                    return Ok(expr);
+                }
+                // Else this is a tuple
+                self.next_match_report(TokenType::Comma, "Expected closing parenthesis or comma")?;
+                let mut values = vec![expr];
+                loop {
+                    if self.next_match(TokenType::RightPar) {
+                        break;
+                    }
+                    values.push(self.expression(true)?);
+                    if !self.next_match(TokenType::Comma) {
+                        self.next_match_report(
+                            TokenType::RightPar,
+                            "Expected a comma or closing parenthesis",
+                        )?;
+                        break;
+                    }
+                }
+                let loc = loc.merge(self.previous().loc);
+                Ok(Expression::Literal(Value::Tuple { values, loc }))
             }
             _ => Err(()),
         }
@@ -1162,7 +1163,33 @@ impl<'a> Parser<'a> {
         Ok(path)
     }
 
-    // Helper functions
+    fn type_(&mut self) -> Result<Type, ()> {
+        let loc = self.peek().loc;
+        if self.next_match(TokenType::LeftPar) {
+            // Tuple type
+            let mut paths = vec![];
+            loop {
+                paths.push(self.type_()?);
+                // Stop if there is no comma or a closing parenthesis is found
+                if !self.next_match(TokenType::Comma) {
+                    break;
+                } else if let TokenType::RightPar = self.peek().t {
+                    break;
+                }
+            }
+            let tuple_loc = loc.merge(self.peek().loc);
+            self.next_match_report_synchronize(
+                TokenType::RightPar,
+                "Expected a right parenthesis ')'",
+            )?;
+            Ok(Type::Tuple(paths, tuple_loc))
+        } else {
+            // Simple type
+            Ok(Type::Simple(self.path()?))
+        }
+    }
+
+    // ——————————————————————————— Helper Functions ———————————————————————————— //
 
     fn warn_if_struct_not_capitalized(&mut self, ident: &str, loc: Location) {
         if let Some(c) = ident.chars().next() {

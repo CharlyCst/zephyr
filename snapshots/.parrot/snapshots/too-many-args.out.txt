@@ -1,4 +1,4 @@
     4 |     return plus_one(1, 2)
                    [31m^^^^^^^^^^^^^[0m
-[31m[1mError:[0m[31m Expected 1 arguments, got 2[0m
+[31m[1mError:[0m[31m Expected 1 argument, got 2[0m
 

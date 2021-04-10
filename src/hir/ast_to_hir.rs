@@ -1,24 +1,36 @@
 use super::hir::*;
 use super::names::{
-    Block as NameBlock, Body as NameBody, Expression as Expr, Function as NameFun,
-    FunctionPrototype as NameFunProto, Imports as NameImports, NameStore, Statement as S,
-    Struct as NameStruct, Value as V, Variable as NameVariable,
+    Block as NameBlock, Body as NameBody, Expression as Expr, FunId, Function as NameFun,
+    FunctionPrototype as NameFunProto, Imports as NameImports, NameStore, ResolvedProgram,
+    Statement as S, Struct as NameStruct, TypeVar, Value as V, ValueDeclaration,
+    Variable as NameVariable,
 };
-use super::types::{Type as ASTTypes, TypeStore, TypedProgram};
+use super::store::Store;
+use super::type_check::TypeChecker;
 
 use crate::ast::{BinaryOperator as ASTBinop, UnaryOperator as ASTUnop};
+use crate::ctx::{ModId, ModuleDeclarations};
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
 
-struct State {
+struct State<'checker, 'ty> {
     pub names: NameStore,
-    pub types: TypeStore,
+    pub fun_types: HashMap<FunId, TypeVar>,
+    pub checker: &'checker mut TypeChecker<'ty, 'ty>,
 }
 
-impl State {
-    pub fn new(names: NameStore, types: TypeStore) -> State {
-        State { names, types }
+impl<'checker, 'ty> State<'checker, 'ty> {
+    pub fn new(
+        names: NameStore,
+        fun_types: HashMap<FunId, TypeVar>,
+        checker: &'checker mut TypeChecker<'ty, 'ty>,
+    ) -> State<'checker, 'ty> {
+        State {
+            names,
+            fun_types,
+            checker,
+        }
     }
 }
 
@@ -32,11 +44,10 @@ impl<'a> HirProducer<'a> {
     }
 
     /// Lower a typed program to HIR
-    pub fn reduce(&mut self, prog: TypedProgram) -> Program {
-        let mut state = State::new(prog.names, prog.types);
+    pub fn reduce(&mut self, prog: ResolvedProgram, mut checker: TypeChecker<'a, 'a>) -> Program {
+        let mut state = State::new(prog.names, prog.fun_types, &mut checker);
         let mut funs = Vec::with_capacity(prog.funs.len());
         let mut imports = Vec::with_capacity(prog.imports.len());
-        let mut structs = HashMap::with_capacity(prog.structs.len());
 
         for fun in prog.funs {
             match self.reduce_fun(fun, &mut state) {
@@ -52,40 +63,77 @@ impl<'a> HirProducer<'a> {
             }
         }
 
-        for (s_id, s) in prog.structs {
-            match self.reduce_struct(s) {
-                Ok(s) => {
-                    structs.insert(s_id, s);
+        let structs = prog
+            .structs
+            .transmute(|struc| match self.reduce_struct(struc, &mut state) {
+                Ok(s) => Some(s),
+                Err(err) => {
+                    self.err.report_internal_no_loc(err);
+                    None
                 }
-                Err(err) => self.err.report_internal_no_loc(err),
-            }
-        }
+            });
+        let pub_decls = self.get_pub_decls(prog.package.id, &funs, &imports, &structs);
 
         Program {
             funs,
             imports,
             structs,
+            pub_decls,
+            tuples: checker.get_tuples(),
             data: prog.data,
-            pub_decls: prog.pub_decls,
             package: prog.package,
         }
     }
 
+    /// Returns the public declarations of the package, this include public functions and
+    /// imported runtime module.
+    fn get_pub_decls(
+        &mut self,
+        mod_id: ModId,
+        funs: &Vec<Function>,
+        imports: &Vec<Imports>,
+        structs: &Store<StructId, Struct>,
+    ) -> ModuleDeclarations {
+        let mut pub_decls = ModuleDeclarations::new(mod_id);
+        for fun in funs {
+            if fun.is_pub {
+                pub_decls
+                    .val_decls
+                    .insert(fun.ident.clone(), ValueDeclaration::Function(fun.fun_id));
+            }
+        }
+        for import in imports {
+            pub_decls.runtime_modules.insert(import.from.clone());
+            for fun in &import.prototypes {
+                pub_decls
+                    .val_decls
+                    .insert(fun.ident.clone(), ValueDeclaration::Function(fun.fun_id));
+            }
+        }
+        for (s_id, s) in structs.iter() {
+            if s.is_pub {
+                pub_decls
+                    .type_decls
+                    .insert(s.ident.clone(), Type::Struct(*s_id));
+            }
+        }
+
+        pub_decls
+    }
+
     fn reduce_fun(&mut self, fun: NameFun, s: &mut State) -> Result<Function, String> {
-        let fun_name = s.names.get(fun.n_id);
-        let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
-            let param_t: Result<Vec<Type>, String> =
-                param_t.into_iter().map(|t| to_hir_t(t)).collect();
-            let ret_t: Result<Vec<Type>, String> = ret_t.into_iter().map(|t| to_hir_t(t)).collect();
-            (param_t?, ret_t?)
-        } else {
-            self.err.report_internal(
-                fun.loc,
-                String::from("Function does not have function type"),
-            );
-            (vec![], vec![])
+        let fun_t_var = *s
+            .fun_types
+            .get(&fun.fun_id)
+            .ok_or(format!("No t_id for fun_id '{}'", fun.fun_id))?;
+        let fun_t = s
+            .checker
+            .get_t(fun_t_var)
+            .ok_or(format!("No type ofr t_id '{}'", fun_t_var))?;
+        let t = match fun_t.to_fun() {
+            Some(t) => t,
+            _ => return Err(String::from("Function does not have function type")),
         };
-        let t = FunctionType::new(param_t, ret_t);
         let params = fun.params.iter().map(|p| p.n_id).collect();
         let locals = self.get_locals(&fun, s)?;
         let body = match fun.body {
@@ -107,20 +155,15 @@ impl<'a> HirProducer<'a> {
     }
 
     /// Return a vector of local variables given a function name.
-    fn get_locals(&mut self, fun: &NameFun, s: &State) -> Result<Vec<LocalVariable>, String> {
+    fn get_locals(&mut self, fun: &NameFun, s: &mut State) -> Result<Vec<LocalVariable>, String> {
         let mut locals = Vec::new();
         for local_name in &fun.locals {
             let local = s.names.get(*local_name);
-            let t_id = local.t_id;
+            let t_var = local.t_var;
             let loc = local.loc;
-            let t = match s.types.get(t_id) {
-                ASTTypes::I32 => Type::Scalar(ScalarType::I32),
-                ASTTypes::I64 => Type::Scalar(ScalarType::I64),
-                ASTTypes::F32 => Type::Scalar(ScalarType::F32),
-                ASTTypes::F64 => Type::Scalar(ScalarType::F64),
-                ASTTypes::Bool => Type::Scalar(ScalarType::I32),
-                ASTTypes::Struct(s_id) => Type::Struct(*s_id),
-                _ => return Err(format!("Invalid parameter type for t_id {}", t_id)),
+            let t = match s.checker.get_t(t_var) {
+                Some(t) => t,
+                None => return Err(format!("Type id '{}' is invalid", t_var)),
             };
             locals.push(LocalVariable {
                 id: *local_name,
@@ -132,7 +175,7 @@ impl<'a> HirProducer<'a> {
         Ok(locals)
     }
 
-    fn reduce_block(&mut self, block: NameBlock, s: &State) -> Result<Block, String> {
+    fn reduce_block(&mut self, block: NameBlock, s: &mut State) -> Result<Block, String> {
         let mut stmts = Vec::new();
         for stmt in block.stmts {
             stmts.push(self.reduce_stmt(stmt, s)?);
@@ -141,7 +184,7 @@ impl<'a> HirProducer<'a> {
         Ok(reduced_block)
     }
 
-    fn reduce_stmt(&mut self, stmt: S, s: &State) -> Result<Statement, String> {
+    fn reduce_stmt(&mut self, stmt: S, s: &mut State) -> Result<Statement, String> {
         match stmt {
             S::AssignStmt { target, expr } => {
                 let expr = self.reduce_expr(expr, s)?;
@@ -192,30 +235,48 @@ impl<'a> HirProducer<'a> {
         }
     }
 
-    fn reduce_expr(&mut self, expression: Expr, s: &State) -> Result<Expression, String> {
+    fn reduce_expr(&mut self, expression: Expr, s: &mut State) -> Result<Expression, String> {
         match expression {
             Expr::Literal(value) => Ok(Expression::Literal(match value {
-                V::Integer { val, t_id, loc } => match s.types.get(t_id) {
-                    ASTTypes::I32 => Value::I32(val as i32, loc),
-                    ASTTypes::I64 => Value::I64(val as i64, loc),
-                    _ => return Err(String::from("Integer constant of non integer type.")),
-                },
-                V::Float { val, t_id, loc } => match s.types.get(t_id) {
-                    ASTTypes::F32 => Value::F32(val as f32, loc),
-                    ASTTypes::F64 => Value::F64(val, loc),
+                V::Integer { val, t_var, loc } => {
+                    match s
+                        .checker
+                        .get_t(t_var)
+                        .ok_or(format!("Invalid t_id '{}'", t_var))?
+                    {
+                        Type::Scalar(ScalarType::I32) => Value::I32(val as i32, loc),
+                        Type::Scalar(ScalarType::I64) => Value::I64(val as i64, loc),
+                        _ => return Err(String::from("Integer constant of non integer type.")),
+                    }
+                }
+                V::Float { val, t_var, loc } => match s
+                    .checker
+                    .get_t(t_var)
+                    .ok_or(format!("Invalid t_id '{}'", t_var))?
+                {
+                    Type::Scalar(ScalarType::F32) => Value::F32(val as f32, loc),
+                    Type::Scalar(ScalarType::F64) => Value::F64(val, loc),
                     _ => return Err(String::from("Float constant of non float type.")),
                 },
-                V::Boolean { val, t_id, loc } => match s.types.get(t_id) {
-                    ASTTypes::Bool => Value::Bool(val, loc),
+                V::Boolean { val, t_var, loc } => match s
+                    .checker
+                    .get_t(t_var)
+                    .ok_or(format!("Invalid t_id '{}'", t_var))?
+                {
+                    Type::Scalar(ScalarType::Bool) => Value::Bool(val, loc),
                     _ => return Err(String::from("Boolean constant of non boolean type.")),
                 },
                 V::Str {
                     data_id,
                     len,
                     loc,
-                    t_id,
-                } => match s.types.get(t_id) {
-                    ASTTypes::Struct(struct_id) => {
+                    t_var,
+                } => match s
+                    .checker
+                    .get_t(t_var)
+                    .ok_or(format!("Invalid t_id '{}'", t_var))?
+                {
+                    Type::Struct(struct_id) => {
                         let len = FieldValue {
                             ident: String::from("len"),
                             expr: Box::new(Expression::Literal(Value::I32(len as i32, loc))),
@@ -228,7 +289,7 @@ impl<'a> HirProducer<'a> {
                         };
                         let fields = vec![len, start];
                         Value::Struct {
-                            struct_id: *struct_id,
+                            struct_id,
                             fields,
                             loc,
                         }
@@ -236,9 +297,13 @@ impl<'a> HirProducer<'a> {
                     _ => return Err(String::from("Str literal of non struct type.")),
                 },
                 V::Struct {
-                    fields, t_id, loc, ..
-                } => match s.types.get(t_id) {
-                    ASTTypes::Struct(struct_id) => {
+                    fields, t_var, loc, ..
+                } => match s
+                    .checker
+                    .get_t(t_var)
+                    .ok_or(format!("Invalid t_id '{}'", t_var))?
+                {
+                    Type::Struct(struct_id) => {
                         let mut hir_fields = Vec::with_capacity(fields.len());
                         for field in fields {
                             hir_fields.push(FieldValue {
@@ -248,22 +313,45 @@ impl<'a> HirProducer<'a> {
                             });
                         }
                         Value::Struct {
-                            struct_id: *struct_id,
+                            struct_id,
                             fields: hir_fields,
                             loc,
                         }
                     }
                     _ => return Err(String::from("Struct literal of non struct type.")),
                 },
+                V::Tuple {
+                    values, t_var, loc, ..
+                } => match s
+                    .checker
+                    .get_t(t_var)
+                    .ok_or(format!("Invalid t_id '{}'", t_var))?
+                {
+                    Type::Tuple(tup_id) => {
+                        let mut hir_values = Vec::with_capacity(values.len());
+                        for val in values {
+                            hir_values.push(self.reduce_expr(val, s)?);
+                        }
+                        Value::Tuple {
+                            values: hir_values,
+                            tup_id,
+                            loc,
+                        }
+                    }
+                    _ => return Err(String::from("Tuple literal of non tuple type.")),
+                },
             })),
             Expr::Variable(var) => {
                 let name = s.names.get(var.n_id);
-                let t = s.types.get(name.t_id);
+                let t = s
+                    .checker
+                    .get_t(name.t_var)
+                    .ok_or(format!("Invalid t_id '{}'", name.t_var))?;
                 Ok(Expression::Variable(Variable {
                     ident: var.ident,
                     loc: var.loc,
                     n_id: var.n_id,
-                    t: to_hir_t(t)?,
+                    t,
                 }))
             }
             Expr::Function { .. } => Err(String::from(
@@ -273,12 +361,15 @@ impl<'a> HirProducer<'a> {
                 expr_left,
                 binop,
                 expr_right,
-                op_t_id,
+                op_t_var,
                 loc,
                 ..
             } => {
-                let t = s.types.get(op_t_id);
-                let t = to_hir_scalar(t)?;
+                let t = s
+                    .checker
+                    .get_t(op_t_var)
+                    .ok_or(format!("Invalid t_id '{}'", op_t_var))?;
+                let t = t.to_scalar().ok_or("Expected a scalar")?;
                 let expr_left = Box::new(self.reduce_expr(*expr_left, s)?);
                 let expr_right = Box::new(self.reduce_expr(*expr_right, s)?);
                 Ok(Expression::Binary {
@@ -290,8 +381,8 @@ impl<'a> HirProducer<'a> {
                         ASTBinop::Minus => Binop::Sub(self.t_as_numeric(&t, loc)),
                         ASTBinop::Multiply => Binop::Mul(self.t_as_numeric(&t, loc)),
                         ASTBinop::Divide => Binop::Div(self.t_as_numeric(&t, loc)),
-                        ASTBinop::Equal => Binop::Eq(t),
-                        ASTBinop::NotEqual => Binop::Ne(t),
+                        ASTBinop::Equal => Binop::Eq(self.t_as_non_null_scalar(&t, loc)),
+                        ASTBinop::NotEqual => Binop::Ne(self.t_as_non_null_scalar(&t, loc)),
                         ASTBinop::Greater => Binop::Gt(self.t_as_numeric(&t, loc)),
                         ASTBinop::GreaterEqual => Binop::Ge(self.t_as_numeric(&t, loc)),
                         ASTBinop::Less => Binop::Lt(self.t_as_numeric(&t, loc)),
@@ -314,11 +405,14 @@ impl<'a> HirProducer<'a> {
             Expr::Unary {
                 unop,
                 expr,
-                op_t_id,
+                op_t_var,
                 loc,
             } => {
-                let t = s.types.get(op_t_id);
-                let t = to_hir_scalar(t)?;
+                let t = s
+                    .checker
+                    .get_t(op_t_var)
+                    .ok_or(format!("Invalid t_id '{}'", op_t_var))?;
+                let t = t.to_scalar().ok_or("Exected a scalar")?;
                 let expr = Box::new(self.reduce_expr(*expr, s)?);
                 Ok(Expression::Unary {
                     expr,
@@ -336,11 +430,14 @@ impl<'a> HirProducer<'a> {
                 fun_id,
                 args,
                 loc,
-                fun_t_id,
+                fun_t_var,
                 ..
             } => {
-                let t = s.types.get(fun_t_id);
-                let t = to_hir_fun(t)?;
+                let t = s
+                    .checker
+                    .get_t(fun_t_var)
+                    .ok_or(format!("Invalid t_id '{}'", fun_t_var))?;
+                let t = t.to_fun().ok_or("Expected a function")?;
                 let mut hir_args = Vec::new();
                 for arg in args {
                     hir_args.push(self.reduce_expr(arg, s)?);
@@ -358,23 +455,37 @@ impl<'a> HirProducer<'a> {
             Expr::Access {
                 expr,
                 field,
-                t_id,
-                struct_t_id,
+                t_var,
+                struct_t_var,
                 loc,
             } => {
                 let expr = Box::new(self.reduce_expr(*expr, s)?);
-                let t = to_hir_t(s.types.get(t_id))?;
-                let struct_t = to_hir_t(s.types.get(struct_t_id))?;
-                if let Type::Struct(struct_id) = struct_t {
+                let t = s
+                    .checker
+                    .get_t(t_var)
+                    .ok_or(format!("Invalid t_var '{}'", t_var))?;
+                let object_t = s
+                    .checker
+                    .get_t(struct_t_var)
+                    .ok_or(format!("Invalid t_var '{}'", t_var))?;
+                if let Type::Struct(s_id) = object_t {
                     Ok(Expression::Access {
                         expr,
-                        field,
-                        struct_id,
+                        kind: AccessKind::Struct { field, s_id },
+                        t,
+                        loc,
+                    })
+                } else if let Type::Tuple(tup_id) = object_t {
+                    Ok(Expression::Access {
+                        expr,
+                        kind: AccessKind::Tuple {
+                            index: get_tuple_field(&field).unwrap(),
+                            tup_id,
+                        },
                         t,
                         loc,
                     })
                 } else {
-                    println!("expr: {}", expr);
                     Err(String::from("Access of a non struct type"))
                 }
             }
@@ -382,10 +493,12 @@ impl<'a> HirProducer<'a> {
         }
     }
 
-    fn reduce_var(&self, var: NameVariable, s: &State) -> Result<Variable, String> {
+    fn reduce_var(&self, var: NameVariable, s: &mut State) -> Result<Variable, String> {
         let name = s.names.get(var.n_id);
-        let t = s.types.get(name.t_id);
-        let t = to_hir_t(t)?;
+        let t = s
+            .checker
+            .get_t(name.t_var)
+            .ok_or(format!("Invalid t_var '{}'", name.t_var))?;
         Ok(Variable {
             ident: var.ident,
             loc: var.loc,
@@ -411,20 +524,19 @@ impl<'a> HirProducer<'a> {
         proto: NameFunProto,
         s: &mut State,
     ) -> Result<FunctionPrototype, String> {
-        let fun_name = s.names.get(proto.n_id);
-        let (param_t, ret_t) = if let ASTTypes::Fun(param_t, ret_t) = s.types.get(fun_name.t_id) {
-            let param_t: Result<Vec<Type>, String> =
-                param_t.into_iter().map(|t| to_hir_t(t)).collect();
-            let ret_t: Result<Vec<Type>, String> = ret_t.into_iter().map(|t| to_hir_t(t)).collect();
-            (param_t?, ret_t?)
-        } else {
-            self.err.report_internal(
-                proto.loc,
-                String::from("Imported function does not have function type"),
-            );
-            (vec![], vec![])
+        let fun_t_var = *s
+            .fun_types
+            .get(&proto.fun_id)
+            .ok_or(format!("No t_var for fun_id '{}'", proto.fun_id))?;
+        let fun_t = s
+            .checker
+            .get_t(fun_t_var)
+            .ok_or(format!("No type ofr t_id '{}'", fun_t_var))?;
+        let t = match fun_t.to_fun() {
+            Some(t) => t,
+            _ => return Err(String::from("Function does not have function type")),
         };
-        let t = FunctionType::new(param_t, ret_t);
+
         Ok(FunctionPrototype {
             ident: proto.ident,
             alias: proto.alias,
@@ -435,10 +547,13 @@ impl<'a> HirProducer<'a> {
         })
     }
 
-    fn reduce_struct(&mut self, struc: NameStruct) -> Result<Struct, String> {
+    fn reduce_struct(&mut self, struc: NameStruct, s: &mut State) -> Result<Struct, String> {
         let mut fields = HashMap::with_capacity(struc.fields.len());
         for (f_name, field) in struc.fields {
-            let t = to_hir_t(&field.t)?;
+            let t = s
+                .checker
+                .get_t(field.t_var)
+                .ok_or("Could not resolve field")?;
             fields.insert(
                 f_name,
                 StructField {
@@ -457,21 +572,14 @@ impl<'a> HirProducer<'a> {
         })
     }
 
-    /// Try to convert an expression into a place, that is something that can hold a value (a
+    /// Try to convert an expression into a place, that is, something that can hold a value (a
     /// memory slot or a variable for instance).
     fn as_place(&mut self, expr: Expression) -> Result<PlaceExpression, String> {
         match expr {
             Expression::Variable(var) => Ok(PlaceExpression::Variable(var)),
-            Expression::Access {
-                expr,
-                field,
-                struct_id,
-                t,
-                loc,
-            } => Ok(PlaceExpression::Access {
-                expr,
-                field,
-                struct_id,
+            Expression::Access { expr, kind, t, loc } => Ok(PlaceExpression::Access {
+                expr: Box::new(self.as_place(*expr)?),
+                kind,
                 t,
                 loc,
             }),
@@ -518,57 +626,19 @@ impl<'a> HirProducer<'a> {
             }
         }
     }
-}
 
-/// Convert an AST Type into its HIR equivalent.
-fn to_hir_t(t: &ASTTypes) -> Result<Type, String> {
-    match t {
-        ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
-            Err(format!("Invalid type in HIR generation: {}", t))
-        }
-        ASTTypes::I32 => Ok(Type::Scalar(ScalarType::I32)),
-        ASTTypes::I64 => Ok(Type::Scalar(ScalarType::I64)),
-        ASTTypes::F32 => Ok(Type::Scalar(ScalarType::F32)),
-        ASTTypes::F64 => Ok(Type::Scalar(ScalarType::F64)),
-        ASTTypes::Bool => Ok(Type::Scalar(ScalarType::Bool)),
-        ASTTypes::Struct(s_id) => Ok(Type::Struct(*s_id)),
-        ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
-    }
-}
-
-/// Convert an AST Type into its scalar HIR equivalent.
-fn to_hir_scalar(t: &ASTTypes) -> Result<ScalarType, String> {
-    match t {
-        ASTTypes::Any | ASTTypes::Bug | ASTTypes::Unit => {
-            Err(format!("Invalid type in MIR generation: {}", t))
-        }
-        ASTTypes::I32 => Ok(ScalarType::I32),
-        ASTTypes::I64 => Ok(ScalarType::I64),
-        ASTTypes::F32 => Ok(ScalarType::F32),
-        ASTTypes::F64 => Ok(ScalarType::F64),
-        ASTTypes::Bool => Ok(ScalarType::Bool),
-        ASTTypes::Fun(_, _) => Err(String::from("Function as a value are not yet implemented")),
-        ASTTypes::Struct(_) => Err(String::from("Expected a scalar type, got struct")),
-    }
-}
-
-/// Convert an AST Type into its equivalent HIR type, if possible.
-fn to_hir_fun(t: &ASTTypes) -> Result<FunctionType, String> {
-    match t {
-        ASTTypes::Fun(args, ret) => {
-            let mut hir_args = Vec::new();
-            let mut hir_ret = Vec::new();
-            for t in args {
-                hir_args.push(to_hir_t(t)?);
+    fn t_as_non_null_scalar(&mut self, t: &ScalarType, loc: Location) -> NonNullScalarType {
+        match t {
+            ScalarType::I32 => NonNullScalarType::I32,
+            ScalarType::I64 => NonNullScalarType::I64,
+            ScalarType::F32 => NonNullScalarType::F32,
+            ScalarType::F64 => NonNullScalarType::F64,
+            ScalarType::Bool => NonNullScalarType::Bool,
+            _ => {
+                self.err
+                    .report_internal(loc, format!("Expected a non null scalar, got {}.", t));
+                NonNullScalarType::I32
             }
-            for t in ret {
-                hir_ret.push(to_hir_t(t)?);
-            }
-            Ok(FunctionType {
-                params: hir_args,
-                ret: hir_ret,
-            })
         }
-        t => Err(format!("Expected function type, got {}", t)),
     }
 }

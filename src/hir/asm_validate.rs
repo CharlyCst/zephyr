@@ -1,11 +1,13 @@
+use super::hir::{ScalarType as HirScalar, Type as HirType};
 use super::names::{
-    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, Function, NameId, NameStore,
+    AsmControl, AsmLocal, AsmMemory, AsmParametric, AsmStatement, Body, FunId, Function, NameId,
+    NameStore, ResolvedProgram, TypeVar,
 };
-use super::types::TypedProgram;
-use super::types::{Type as MirType, TypeStore};
+use super::type_check::TypeChecker;
 use crate::error::{ErrorHandler, Location};
 use crate::mir::Value as MirValue;
 
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(PartialEq, Eq)]
@@ -16,21 +18,24 @@ enum Type {
     F64,
 }
 
-pub struct AsmValidator<'a, 'b> {
-    err: &'a mut ErrorHandler,
-    types: &'b TypeStore,
-    names: &'b NameStore,
-    funs: &'b Vec<Function>,
+pub struct AsmValidator<'err, 'a, 'ctx, 'ty> {
+    err: &'err mut ErrorHandler,
+    checker: &'a mut TypeChecker<'ctx, 'ty>,
+    fun_types: &'a HashMap<FunId, TypeVar>,
+    names: &'a NameStore,
+    funs: &'a Vec<Function>,
 }
 
-impl<'a, 'b> AsmValidator<'a, 'b> {
+impl<'err, 'a, 'ctx, 'ty> AsmValidator<'err, 'a, 'ctx, 'ty> {
     pub fn new(
-        prog: &'b TypedProgram,
-        error_handler: &'a mut ErrorHandler,
-    ) -> AsmValidator<'a, 'b> {
+        prog: &'a ResolvedProgram,
+        checker: &'a mut TypeChecker<'ctx, 'ty>,
+        error_handler: &'err mut ErrorHandler,
+    ) -> AsmValidator<'err, 'a, 'ctx, 'ty> {
         AsmValidator {
             err: error_handler,
-            types: &prog.types,
+            checker,
+            fun_types: &prog.fun_types,
             names: &prog.names,
             funs: &prog.funs,
         }
@@ -194,18 +199,18 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
     /// Return the type associated to a given name ID.
     fn get_name_type(&mut self, n_id: NameId, loc: &Location) -> Result<Type, ()> {
         let name = self.names.get(n_id);
-        let t = self.types.get(name.t_id);
-        self.get_type(t, loc)
+        let t = self.checker.get_t(name.t_var).ok_or(())?;
+        self.get_type(&t, loc)
     }
 
     /// Convert a MIR type into a Wasm type, may rise an error.
-    fn get_type(&mut self, t: &MirType, loc: &Location) -> Result<Type, ()> {
+    fn get_type(&mut self, t: &HirType, loc: &Location) -> Result<Type, ()> {
         match t {
-            MirType::I32 => Ok(Type::I32),
-            MirType::I64 => Ok(Type::I64),
-            MirType::F32 => Ok(Type::F32),
-            MirType::F64 => Ok(Type::F64),
-            MirType::Bool => Ok(Type::I32),
+            HirType::Scalar(HirScalar::I32) => Ok(Type::I32),
+            HirType::Scalar(HirScalar::I64) => Ok(Type::I64),
+            HirType::Scalar(HirScalar::F32) => Ok(Type::F32),
+            HirType::Scalar(HirScalar::F64) => Ok(Type::F64),
+            HirType::Scalar(HirScalar::Bool) => Ok(Type::I32),
             _ => {
                 self.err
                     .report(*loc, String::from("Invalid type in assembly function."));
@@ -216,13 +221,21 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
 
     /// Returns the return type of the function.
     fn get_fun_type(&mut self, fun: &Function) -> Result<Option<Type>, ()> {
-        let fun_name = self.names.get(fun.n_id);
-        let fun_t = self.types.get(fun_name.t_id);
+        let fun_t_id = self.fun_types.get(&fun.fun_id).ok_or(())?;
+        // TODO: this is quire expensive, we may want to add a function to get the return type
+        // directly
+        let fun_t = self.checker.get_t(*fun_t_id).ok_or(())?;
         let fun_t = match fun_t {
             // Only handle single return value
-            MirType::Fun(_, return_t) => match return_t.last() {
-                Some(t) => t.clone(),
-                None => MirType::Unit,
+            HirType::Fun(f) => match *f.ret {
+                HirType::Scalar(s) => s,
+                _ => {
+                    self.err.report(
+                        fun.loc,
+                        String::from("Assembly function must return a scalar type."),
+                    );
+                    return Err(());
+                }
             },
             _ => {
                 self.err.report_internal_no_loc(String::from(
@@ -232,22 +245,12 @@ impl<'a, 'b> AsmValidator<'a, 'b> {
             }
         };
         match fun_t {
-            MirType::I32 => Ok(Some(Type::I32)),
-            MirType::I64 => Ok(Some(Type::I64)),
-            MirType::F32 => Ok(Some(Type::F32)),
-            MirType::F64 => Ok(Some(Type::F64)),
-            MirType::Bool => Ok(Some(Type::I32)),
-            MirType::Unit => Ok(None),
-            _ => {
-                self.err.report(
-                    fun_name.loc,
-                    format!(
-                        "The return type of '{}' is not allowed in assembly function.",
-                        &fun_name.name
-                    ),
-                );
-                Err(())
-            }
+            HirScalar::I32 => Ok(Some(Type::I32)),
+            HirScalar::I64 => Ok(Some(Type::I64)),
+            HirScalar::F32 => Ok(Some(Type::F32)),
+            HirScalar::F64 => Ok(Some(Type::F64)),
+            HirScalar::Bool => Ok(Some(Type::I32)),
+            HirScalar::Null => Ok(None),
         }
     }
 }

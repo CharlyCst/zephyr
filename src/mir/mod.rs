@@ -18,8 +18,7 @@ pub fn to_mir(
         println!("\n/// MIR Production ///\n");
     }
 
-    let mut mir_producer = hir_to_mir::MIRProducer::new(error_handler);
-    let mir = mir_producer.reduce(ctx, known_funs);
+    let mir = hir_to_mir::MirProducer::lower(ctx, known_funs, error_handler);
 
     if verbose {
         println!("{}", mir);

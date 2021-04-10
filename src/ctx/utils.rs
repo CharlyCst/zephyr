@@ -5,7 +5,6 @@ use super::ctx::ModId;
 use crate::ast;
 use crate::hir;
 
-pub use hir::TypeDeclaration;
 pub use hir::ValueDeclaration;
 
 /// A list of packages known from the compiler and expected to be available.
@@ -28,7 +27,7 @@ impl KnownPackage {
 pub struct ModuleDeclarations {
     pub mod_id: ModId,
     pub val_decls: HashMap<String, hir::ValueDeclaration>,
-    pub type_decls: HashMap<String, hir::TypeDeclaration>,
+    pub type_decls: HashMap<String, hir::Type>,
     pub runtime_modules: HashSet<String>,
 }
 

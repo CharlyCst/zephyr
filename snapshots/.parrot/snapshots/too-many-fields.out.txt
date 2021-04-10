@@ -1,8 +1,8 @@
    10 |     let s = S { a: 0, b: 42, c: 14 }
                               [31m^[0m
-[31m[1mError:[0m[31m No such field 'b' in S[0m
+[31m[1mError:[0m[31m No field 'b' on struct 'S'[0m
 
    10 |     let s = S { a: 0, b: 42, c: 14 }
                                      [31m^[0m
-[31m[1mError:[0m[31m No such field 'c' in S[0m
+[31m[1mError:[0m[31m No field 'c' on struct 'S'[0m
 

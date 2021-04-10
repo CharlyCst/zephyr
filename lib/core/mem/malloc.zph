@@ -4,13 +4,6 @@ package mem
 
 use core.utils
 
-//////// Test ////////
-// To be removed    //
-expose malloc
-expose free
-//                  //
-//////////////////////
-
 // The global memory allocator.
 //
 // Malloc is implemented using a doubly linked free list with a first fit

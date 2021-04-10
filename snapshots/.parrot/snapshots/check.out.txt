@@ -1,4 +1,4 @@
     4 |     if 1 == true {
-               [31m^[0m
-[31m[1mError:[0m[31m Could not infer a type satisfying constraints[0m
+               [31m^^^^^^^^^[0m
+[31m[1mError:[0m[31m Incompatible types: can be one of i32, i64 but got bool[0m
 

@@ -1,51 +1,53 @@
+use super::hir;
+use super::hir::{FunKind, ScalarType};
 use super::names::*;
-use super::types::id::*;
-use super::types::{ConstraintStore, Type, TypeConstraint, TypeId, TypeVarStore};
+use super::store::Store;
+use super::type_check::{TypeChecker, TypeVar};
 use crate::ast;
-use crate::ctx::{Ctx, KnownValues, ModId, ModuleDeclarations, TypeDeclaration, ValueDeclaration};
+use crate::ctx::{Ctx, KnownValues, ModId, ModuleDeclarations, ValueDeclaration};
 use crate::error::{ErrorHandler, Location};
 
 use std::collections::HashMap;
 
-struct State<'ctx> {
+type ValueNamespace = HashMap<String, ValueKind>;
+type TypeNamespace = HashMap<String, TypeVar>;
+
+struct State<'a, 'ctx, 'ty> {
     names: NameStore,
-    types: TypeVarStore,
-    data: HashMap<DataId, Data>,
+    data: DataStore,
+    funs: FunStore,
+    fun_types: HashMap<FunId, TypeVar>,
     contexts: Vec<HashMap<String, usize>>,
-    value_namespace: HashMap<String, ValueKind>,
-    type_namespace: HashMap<String, TypeKind>,
+    value_namespace: ValueNamespace,
+    type_namespace: TypeNamespace,
     imported_modules: HashMap<String, ModId>,
-    constraints: ConstraintStore,
-    known_values: &'ctx KnownValues,
-    fun_counter: u32,
-    struct_counter: u32,
-    data_counter: u32,
-    package_id: u32,
+    checker: &'a mut TypeChecker<'ctx, 'ty>,
+    known_values: &'a KnownValues,
+    mod_id: u32,
     ctx: &'ctx Ctx,
 }
 
-impl<'ctx> State<'ctx> {
+impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
     pub fn new(
-        package_id: u32,
+        mod_id: u32,
         imported_modules: HashMap<String, ModId>,
+        checker: &'a mut TypeChecker<'ctx, 'ty>,
         ctx: &'ctx Ctx,
-        known_values: &'ctx KnownValues,
+        known_values: &'a KnownValues,
     ) -> Self {
         let contexts = vec![HashMap::new()];
         Self {
-            data: HashMap::new(),
+            data: Store::new(mod_id),
+            funs: Store::new(mod_id),
             names: NameStore::new(),
-            types: TypeVarStore::new(),
+            fun_types: HashMap::new(),
             value_namespace: HashMap::new(),
             type_namespace: HashMap::new(),
-            constraints: ConstraintStore::new(),
+            checker,
             contexts,
             imported_modules,
             known_values,
-            fun_counter: 0,
-            data_counter: 0,
-            struct_counter: 0,
-            package_id,
+            mod_id,
             ctx,
         }
     }
@@ -60,36 +62,9 @@ impl<'ctx> State<'ctx> {
         self.contexts.pop();
     }
 
-    /// Return a fresh function ID.
-    pub fn fresh_f_id(&mut self) -> FunId {
-        let f_id = (self.fun_counter as u64) + ((self.package_id as u64) << 32);
-        self.fun_counter += 1;
-        f_id
-    }
-
-    /// Return a fresh Struct ID.
-    pub fn fresh_s_id(&mut self) -> StructId {
-        let s_id = (self.struct_counter as u64) + ((self.package_id as u64) << 32);
-        self.struct_counter += 1;
-        s_id
-    }
-
-    /// Add a string to the program's data and return the corresponding data ID.
-    pub fn add_str_data(&mut self, string: String) -> DataId {
-        let d_id = (self.data_counter as u64) + ((self.package_id as u64) << 32);
-        self.data_counter += 1;
-        self.data.insert(d_id, Data::Str(d_id, string.into_bytes()));
-        d_id
-    }
-
     /// Declare a name, will fail if the name already exists in the current context or corresponds
     /// to an import alias.
-    pub fn declare(
-        &mut self,
-        ident: String,
-        type_candidates: Vec<Type>,
-        loc: Location,
-    ) -> Result<(NameId, TypeId), Location> {
+    pub fn declare(&mut self, ident: String, loc: Location) -> Result<(NameId, TypeVar), Location> {
         if let Some(n) = self.find_in_context(&ident) {
             return Err(n.loc);
         } else if let Some(_) = self.imported_modules.get(&ident) {
@@ -97,15 +72,10 @@ impl<'ctx> State<'ctx> {
         }
 
         let ident_key = ident.clone();
-        let t_id = self.types.fresh(loc, type_candidates);
-        let n_id = self.names.fresh(ident, loc, t_id);
+        let t_var = self.checker.fresh();
+        let n_id = self.names.fresh(ident, loc, t_var);
         self.add_in_context(ident_key, n_id);
-        Ok((n_id, t_id))
-    }
-
-    /// Adds a new contraints, will be used in the type checking stage.
-    pub fn new_constraint(&mut self, constraint: TypeConstraint) {
-        self.constraints.add(constraint)
+        Ok((n_id, t_var))
     }
 
     /// Return the corresponding Name if it is in context. This does not include used alias.
@@ -126,13 +96,20 @@ impl<'ctx> State<'ctx> {
             None => panic!("Empty context in name resolution"),
         };
     }
+
+    /// Maintain references to the function in all apropriate places.
+    pub fn declare_fun(&mut self, ident: String, fun_id: FunId, t_var: TypeVar) {
+        self.value_namespace
+            .insert(ident, ValueKind::Function(fun_id, t_var));
+        self.fun_types.insert(fun_id, t_var);
+    }
 }
 
-pub struct NameResolver<'a> {
-    err: &'a mut ErrorHandler,
+pub struct NameResolver<'err> {
+    err: &'err mut ErrorHandler,
 }
 
-impl<'a> NameResolver<'a> {
+impl<'err, 'a, 'ctx, 'ty> NameResolver<'err> {
     pub fn new(error_handler: &mut ErrorHandler) -> NameResolver {
         NameResolver { err: error_handler }
     }
@@ -141,11 +118,18 @@ impl<'a> NameResolver<'a> {
         &mut self,
         ast_program: ast::Program,
         imported_modules: HashMap<String, ModId>,
-        ctx: &Ctx,
-        known_values: &KnownValues,
+        ctx: &'ctx Ctx,
+        checker: &'a mut TypeChecker<'ctx, 'ty>,
+        known_values: &'a KnownValues,
     ) -> ResolvedProgram {
         let funs = ast_program.funs;
-        let mut state = State::new(ast_program.package.id, imported_modules, ctx, known_values);
+        let mut state = State::new(
+            ast_program.package.id,
+            imported_modules,
+            checker,
+            ctx,
+            known_values,
+        );
         let mut named_funs = Vec::with_capacity(funs.len());
 
         // Register functions names and signatures
@@ -156,13 +140,13 @@ impl<'a> NameResolver<'a> {
         );
         let structs = self.register_and_resolve_structs(ast_program.structs, &mut state);
         self.register_used_mods(ast_program.used, &mut state);
-        self.register_functions(&funs, &mut state);
+        let declared_funs = self.register_functions(funs, &mut state);
 
         // Resolve exposed funs
-        let exposed_funs = self.resolve_exports(ast_program.exposed, &state);
+        let exposed_funs = self.resolve_exports(ast_program.exposed, &mut state);
 
         // Resolve function bodies
-        for fun in funs.into_iter() {
+        for fun in declared_funs.into_iter() {
             if let Some(named_fun) = self.resolve_function(fun, &exposed_funs, &mut state) {
                 named_funs.push(named_fun);
             }
@@ -174,8 +158,7 @@ impl<'a> NameResolver<'a> {
             imports,
             data: state.data,
             names: state.names,
-            types: state.types,
-            constraints: state.constraints,
+            fun_types: state.fun_types,
             package: ast_program.package,
         }
     }
@@ -184,7 +167,7 @@ impl<'a> NameResolver<'a> {
     /// Also responsible for checking if the function is exposed.
     fn resolve_function(
         &mut self,
-        fun: ast::Function,
+        fun: DeclaredFunction,
         exposed_funs: &HashMap<FunId, String>,
         state: &mut State,
     ) -> Option<Function> {
@@ -192,51 +175,24 @@ impl<'a> NameResolver<'a> {
         let mut locals = Vec::new();
         let mut fun_params = Vec::new();
 
-        // Get the function name from global context. All functions must have been registered at that point.
-        let fun_name = if let Some(name) = state.find_in_context(&fun.ident) {
-            name
-        } else {
-            self.err
-                .report_internal(fun.loc, String::from("Function name is not yet in context"));
-            state.exit_scope();
-            return None;
-        };
-        let fun_t_id = fun_name.t_id;
-        let fun_n_id = fun_name.n_id;
-        let f_id = if let Some(ValueKind::Function(f_id, _)) = state.value_namespace.get(&fun.ident)
-        {
-            *f_id
-        } else {
-            self.err.report_internal(
-                fun.loc,
-                format!(
-                    "Function name '{}' is not registered in resolver state.",
-                    &fun.ident
-                ),
-            );
-            state.exit_scope();
-            return None;
-        };
-
-        for param in fun.params.into_iter() {
-            let t = vec![self.get_type_from_path(&param.t, state)];
-
-            match state.declare(param.ident.clone(), t, param.loc) {
-                Ok((n_id, _)) => fun_params.push(Variable {
-                    ident: param.ident,
-                    loc: param.loc,
-                    n_id,
-                }),
-                Err(decl_loc) => {
+        for (param, t) in fun.params.into_iter() {
+            match state.declare(param.ident.clone(), param.loc) {
+                Ok((n_id, t_var)) => {
+                    state.checker.set_equal(t, t_var, self.err, param.loc);
+                    fun_params.push(Variable {
+                        ident: param.ident,
+                        loc: param.loc,
+                        n_id,
+                    })
+                }
+                Err(_decl_loc) => {
                     let error = format!("Name {} already defined in current context", param.ident);
                     self.err.report(fun.loc, error);
-                    let error = format!("Name {} already defined in current context", param.ident);
-                    self.err.report(decl_loc, error);
                 }
             }
         }
 
-        let exposed = if let Some(exposed_name) = exposed_funs.get(&f_id) {
+        let exposed = if let Some(exposed_name) = exposed_funs.get(&fun.fun_id) {
             Some(exposed_name.clone())
         } else {
             None
@@ -244,7 +200,7 @@ impl<'a> NameResolver<'a> {
 
         match fun.body {
             ast::Body::Zephyr(block) => {
-                let block = self.resolve_block(block, state, &mut locals, fun_t_id);
+                let block = self.resolve_block(block, state, &mut locals, fun.fun_id);
                 state.exit_scope();
 
                 Some(Function {
@@ -255,8 +211,7 @@ impl<'a> NameResolver<'a> {
                     is_pub: fun.is_pub,
                     exposed,
                     loc: fun.loc,
-                    n_id: fun_n_id,
-                    fun_id: f_id,
+                    fun_id: fun.fun_id,
                 })
             }
             ast::Body::Asm(stmts) => {
@@ -271,8 +226,7 @@ impl<'a> NameResolver<'a> {
                     is_pub: fun.is_pub,
                     exposed,
                     loc: fun.loc,
-                    n_id: fun_n_id,
-                    fun_id: f_id,
+                    fun_id: fun.fun_id,
                 })
             }
         }
@@ -283,12 +237,12 @@ impl<'a> NameResolver<'a> {
         block: ast::Block,
         state: &mut State,
         locals: &mut Vec<NameId>,
-        fun_t_id: TypeId,
+        fun_id: FunId,
     ) -> Block {
         state.new_scope();
         let mut stmts = Vec::new();
         for stmt in block.stmts.into_iter() {
-            let named_stmt = match self.resolve_stmt(stmt, state, locals, fun_t_id) {
+            let named_stmt = match self.resolve_stmt(stmt, state, locals, fun_id) {
                 Ok(stmt) => stmt,
                 Err(()) => {
                     self.err.silent_report();
@@ -307,23 +261,27 @@ impl<'a> NameResolver<'a> {
         stmt: ast::Statement,
         state: &mut State,
         locals: &mut Vec<NameId>,
-        fun_t_id: TypeId,
+        fun_id: FunId,
     ) -> Result<Statement, ()> {
         let stmt = match stmt {
             ast::Statement::AssignStmt { target, expr } => {
-                let (target, target_t_id) = self.resolve_expression(target, state)?;
-                let (expr, expr_id) = self.resolve_expression(expr, state)?;
+                let (target, target_t_var) = self.resolve_expression(target, state)?;
+                let (expr, expr_t_var) = self.resolve_expression(expr, state)?;
                 let loc = target.get_loc().merge(expr.get_loc());
-                state.new_constraint(TypeConstraint::Equality(target_t_id, expr_id, loc));
+                state
+                    .checker
+                    .set_equal(target_t_var, expr_t_var, self.err, loc);
                 Statement::AssignStmt { target, expr }
             }
             ast::Statement::LetStmt { var, expr } => {
-                match state.declare(var.ident.clone(), vec![Type::Any], var.loc) {
-                    Ok((n_id, var_t_id)) => {
+                match state.declare(var.ident.clone(), var.loc) {
+                    Ok((n_id, var_t_var)) => {
                         locals.push(n_id);
-                        let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
+                        let (expr, expr_t_var) = self.resolve_expression(expr, state)?;
                         let loc = var.loc.merge(expr.get_loc());
-                        state.new_constraint(TypeConstraint::Equality(var_t_id, expr_t_id, loc));
+                        state
+                            .checker
+                            .set_equal(var_t_var, expr_t_var, self.err, loc);
                         Statement::LetStmt {
                             var: Variable {
                                 ident: var.ident,
@@ -347,15 +305,13 @@ impl<'a> NameResolver<'a> {
                 block,
                 else_block,
             } => {
-                let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
-                state.new_constraint(TypeConstraint::Equality(
-                    expr_t_id,
-                    T_ID_BOOL,
-                    expr.get_loc(),
-                ));
-                let block = self.resolve_block(block, state, locals, fun_t_id);
+                let (expr, expr_t_var) = self.resolve_expression(expr, state)?;
+                state
+                    .checker
+                    .set_type(expr_t_var, ScalarType::Bool, self.err, expr.get_loc());
+                let block = self.resolve_block(block, state, locals, fun_id);
                 let else_block = if let Some(else_block) = else_block {
-                    let else_block = self.resolve_block(else_block, state, locals, fun_t_id);
+                    let else_block = self.resolve_block(else_block, state, locals, fun_id);
                     Some(else_block)
                 } else {
                     None
@@ -368,33 +324,26 @@ impl<'a> NameResolver<'a> {
             }
             ast::Statement::WhileStmt { expr, block } => {
                 let (expr, expr_t_id) = self.resolve_expression(expr, state)?;
-                state.new_constraint(TypeConstraint::Equality(
-                    expr_t_id,
-                    T_ID_BOOL,
-                    expr.get_loc(),
-                ));
-                let block = self.resolve_block(block, state, locals, fun_t_id);
+                state
+                    .checker
+                    .set_type(expr_t_id, ScalarType::Bool, self.err, expr.get_loc());
+                let block = self.resolve_block(block, state, locals, fun_id);
                 Statement::WhileStmt { expr, block }
             }
             ast::Statement::ReturnStmt { expr, loc } => {
+                // Fun return type
+                let fun_t_var = self.get_fun_t_var(fun_id, state)?;
+                // Add constraint
                 if let Some(ret_expr) = expr {
-                    let (expr, ret_t_id) = self.resolve_expression(ret_expr, state)?;
-                    state.new_constraint(TypeConstraint::Return(
-                        fun_t_id,
-                        ret_t_id,
-                        expr.get_loc(),
-                    ));
+                    let (expr, ret_t_var) = self.resolve_expression(ret_expr, state)?;
+                    state.checker.set_return(fun_t_var, ret_t_var, loc);
                     Statement::ReturnStmt {
                         expr: Some(expr),
                         loc,
                     }
                 } else {
-                    let ret_t_id = state.types.fresh(loc, vec![Type::Unit]);
-                    state.new_constraint(TypeConstraint::Return(
-                        fun_t_id,
-                        ret_t_id,
-                        Location::dummy(), // TODO: how to deal with empty expressions?
-                    ));
+                    let null_t_var = state.checker.scalar(ScalarType::Null);
+                    state.checker.set_return(fun_t_var, null_t_var, loc);
                     Statement::ReturnStmt { expr: None, loc }
                 }
             }
@@ -410,32 +359,44 @@ impl<'a> NameResolver<'a> {
         &mut self,
         expr: ast::Expression,
         state: &mut State,
-    ) -> Result<(Expression, TypeId), ()> {
+    ) -> Result<(Expression, TypeVar), ()> {
         match expr {
             ast::Expression::Unary { unop, expr } => {
-                let (expr, op_t_id) = self.resolve_expression(*expr, state)?;
+                let (expr, op_t_var) = self.resolve_expression(*expr, state)?;
                 match unop {
                     ast::UnaryOperator::Minus => {
                         let loc = expr.get_loc();
-                        state.new_constraint(TypeConstraint::Included(op_t_id, T_ID_NUMERIC, loc));
+                        state.checker.set_one_of(
+                            op_t_var,
+                            vec![
+                                ScalarType::I32,
+                                ScalarType::I64,
+                                ScalarType::F32,
+                                ScalarType::F64,
+                            ],
+                            self.err,
+                            loc,
+                        );
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop,
                             loc,
-                            op_t_id,
+                            op_t_var,
                         };
-                        Ok((expr, op_t_id))
+                        Ok((expr, op_t_var))
                     }
                     ast::UnaryOperator::Not => {
                         let loc = expr.get_loc();
-                        state.new_constraint(TypeConstraint::Included(op_t_id, T_ID_BOOL, loc));
+                        state
+                            .checker
+                            .set_type(op_t_var, ScalarType::Bool, self.err, loc);
                         let expr = Expression::Unary {
                             expr: Box::new(expr),
                             unop,
                             loc,
-                            op_t_id,
+                            op_t_var,
                         };
-                        Ok((expr, op_t_id))
+                        Ok((expr, op_t_var))
                     }
                 }
             }
@@ -444,145 +405,180 @@ impl<'a> NameResolver<'a> {
                 binop,
                 expr_right,
             } => {
-                let (left_expr, left_t_id) = self.resolve_expression(*expr_left, state)?;
-                let (right_expr, right_t_id) = self.resolve_expression(*expr_right, state)?;
+                let (left_expr, left_t_var) = self.resolve_expression(*expr_left, state)?;
+                let (right_expr, right_t_var) = self.resolve_expression(*expr_right, state)?;
                 let loc = left_expr.get_loc().merge(right_expr.get_loc());
                 match binop {
                     ast::BinaryOperator::Remainder
                     | ast::BinaryOperator::BitwiseOr
                     | ast::BinaryOperator::BitwiseAnd
                     | ast::BinaryOperator::BitwiseXor => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Included(
-                            left_t_id,
-                            T_ID_INTEGER,
-                            left_expr.get_loc(),
-                        ));
+                        state
+                            .checker
+                            .set_equal(left_t_var, right_t_var, self.err, loc);
+                        state.checker.set_one_of(
+                            left_t_var,
+                            vec![ScalarType::I32, ScalarType::I64],
+                            self.err,
+                            loc,
+                        );
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop,
                             expr_right: Box::new(right_expr),
                             loc,
-                            t_id: left_t_id,
-                            op_t_id: left_t_id,
+                            t_var: left_t_var,
+                            op_t_var: left_t_var,
                         };
-                        Ok((expr, left_t_id))
+                        Ok((expr, left_t_var))
                     }
                     ast::BinaryOperator::Plus
                     | ast::BinaryOperator::Multiply
                     | ast::BinaryOperator::Minus
                     | ast::BinaryOperator::Divide => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Included(
-                            left_t_id,
-                            T_ID_NUMERIC,
-                            left_expr.get_loc(),
-                        ));
+                        state
+                            .checker
+                            .set_equal(left_t_var, right_t_var, self.err, loc);
+                        state.checker.set_one_of(
+                            left_t_var,
+                            vec![
+                                ScalarType::I32,
+                                ScalarType::I64,
+                                ScalarType::F32,
+                                ScalarType::F64,
+                            ],
+                            self.err,
+                            loc,
+                        );
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop,
                             expr_right: Box::new(right_expr),
                             loc,
-                            t_id: left_t_id,
-                            op_t_id: left_t_id,
+                            t_var: left_t_var,
+                            op_t_var: left_t_var,
                         };
-                        Ok((expr, left_t_id))
+                        Ok((expr, left_t_var))
                     }
                     ast::BinaryOperator::Greater
                     | ast::BinaryOperator::GreaterEqual
                     | ast::BinaryOperator::Less
                     | ast::BinaryOperator::LessEqual => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Included(
-                            left_t_id,
-                            T_ID_NUMERIC,
-                            left_expr.get_loc(),
-                        ));
+                        state
+                            .checker
+                            .set_equal(left_t_var, right_t_var, self.err, loc);
+                        state.checker.set_one_of(
+                            left_t_var,
+                            vec![
+                                ScalarType::I32,
+                                ScalarType::I64,
+                                ScalarType::F32,
+                                ScalarType::F64,
+                            ],
+                            self.err,
+                            loc,
+                        );
+                        let bool_t_var = state.checker.scalar(ScalarType::Bool);
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop,
                             expr_right: Box::new(right_expr),
                             loc,
-                            t_id: T_ID_BOOL,
-                            op_t_id: left_t_id,
+                            t_var: bool_t_var,
+                            op_t_var: left_t_var,
                         };
-                        Ok((expr, T_ID_BOOL))
+                        Ok((expr, bool_t_var))
                     }
                     ast::BinaryOperator::Equal | ast::BinaryOperator::NotEqual => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Included(
-                            left_t_id,
-                            T_ID_BASIC,
-                            left_expr.get_loc(),
-                        ));
+                        state
+                            .checker
+                            .set_equal(left_t_var, right_t_var, self.err, loc);
+                        state.checker.set_one_of(
+                            left_t_var,
+                            vec![
+                                ScalarType::I32,
+                                ScalarType::I64,
+                                ScalarType::F32,
+                                ScalarType::F64,
+                                ScalarType::Bool,
+                            ],
+                            self.err,
+                            loc,
+                        );
+                        let bool_t_var = state.checker.scalar(ScalarType::Bool);
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop,
                             expr_right: Box::new(right_expr),
                             loc,
-                            t_id: T_ID_BOOL,
-                            op_t_id: left_t_id,
+                            t_var: bool_t_var,
+                            op_t_var: left_t_var,
                         };
-                        Ok((expr, T_ID_BOOL))
+                        Ok((expr, bool_t_var))
                     }
                     ast::BinaryOperator::And | ast::BinaryOperator::Or => {
-                        state.new_constraint(TypeConstraint::Equality(left_t_id, right_t_id, loc));
-                        state.new_constraint(TypeConstraint::Equality(
-                            left_t_id,
-                            T_ID_BOOL,
-                            left_expr.get_loc(),
-                        ));
+                        state
+                            .checker
+                            .set_equal(left_t_var, right_t_var, self.err, loc);
+                        state
+                            .checker
+                            .set_type(left_t_var, ScalarType::Bool, self.err, loc);
                         let expr = Expression::Binary {
                             expr_left: Box::new(left_expr),
                             binop,
                             expr_right: Box::new(right_expr),
                             loc,
-                            t_id: T_ID_BOOL,
-                            op_t_id: left_t_id,
+                            t_var: left_t_var,
+                            op_t_var: left_t_var,
                         };
-                        Ok((expr, T_ID_BOOL))
+                        Ok((expr, left_t_var))
                     }
                 }
             }
             ast::Expression::Literal(value) => match value {
                 ast::Value::Integer { val, loc } => {
-                    let fresh_t_id = state.types.fresh(loc, vec![Type::I32, Type::I64]);
-                    let expr = Expression::Literal(Value::Integer {
-                        val,
+                    let t_var = state.checker.fresh();
+                    state.checker.set_one_of(
+                        t_var,
+                        vec![ScalarType::I32, ScalarType::I64],
+                        self.err,
                         loc,
-                        t_id: fresh_t_id,
-                    });
-                    Ok((expr, fresh_t_id))
+                    );
+                    let expr = Expression::Literal(Value::Integer { val, loc, t_var });
+                    Ok((expr, t_var))
                 }
                 ast::Value::Float { val, loc } => {
-                    let fresh_t_id = state.types.fresh(loc, vec![Type::F32, Type::F64]);
-                    let expr = Expression::Literal(Value::Float {
-                        val,
+                    let t_var = state.checker.fresh();
+                    state.checker.set_one_of(
+                        t_var,
+                        vec![ScalarType::F32, ScalarType::F64],
+                        self.err,
                         loc,
-                        t_id: fresh_t_id,
-                    });
-                    Ok((expr, fresh_t_id))
+                    );
+                    let expr = Expression::Literal(Value::Float { val, loc, t_var });
+                    Ok((expr, t_var))
                 }
                 ast::Value::Boolean { val, loc } => {
-                    let expr = Expression::Literal(Value::Boolean {
-                        val,
-                        loc,
-                        t_id: T_ID_BOOL,
-                    });
-                    Ok((expr, T_ID_BOOL))
+                    let t_var = state.checker.scalar(ScalarType::Bool);
+                    let expr = Expression::Literal(Value::Boolean { val, loc, t_var });
+                    Ok((expr, t_var))
                 }
                 ast::Value::Str { val, loc } => {
                     let len = val.len() as u64;
-                    let data_id = state.add_str_data(val);
+                    let data_id = state.data.fresh_id();
+                    state
+                        .data
+                        .insert(data_id, Data::Str(data_id, val.into_bytes()));
                     let str_s_id = state.known_values.structs.str;
-                    let t_id = state.types.fresh(loc, vec![Type::Struct(str_s_id)]);
+                    let t_var = state.checker.fresh();
+                    state.checker.set_struct(t_var, str_s_id, self.err, loc);
                     let expr = Expression::Literal(Value::Str {
                         data_id,
                         len,
                         loc,
-                        t_id,
+                        t_var,
                     });
-                    Ok((expr, t_id))
+                    Ok((expr, t_var))
                 }
                 ast::Value::Struct {
                     namespace,
@@ -590,52 +586,71 @@ impl<'a> NameResolver<'a> {
                     fields,
                     loc,
                 } => {
-                    let t = self.get_type(&ident, namespace, loc, state);
-                    let t_id = state.types.fresh(loc, vec![t]);
+                    let t_var_struct = self.get_type_from_str(&ident, namespace, loc, state);
+                    let t_var = state.checker.fresh();
+                    if let Ok(t_var_struct) = t_var_struct {
+                        state.checker.set_equal(t_var, t_var_struct, self.err, loc);
+                    }
                     let n = fields.len();
                     let mut hir_fields = Vec::with_capacity(n);
-                    let mut field_constraints = Vec::with_capacity(n);
+                    let mut field_types = Vec::with_capacity(n);
                     for field in fields {
-                        let (expr, field_t_id) = self.resolve_expression(field.expr, state)?;
+                        let (expr, t_var_field) = self.resolve_expression(field.expr, state)?;
+                        field_types.push((t_var_field, field.ident.clone(), field.loc));
                         hir_fields.push(FieldValue {
                             ident: field.ident.clone(),
                             expr: Box::new(expr),
-                            t_id: field_t_id,
+                            t_var: t_var_field,
                             loc: field.loc,
                         });
-                        field_constraints.push((field.ident.clone(), field_t_id, field.loc));
                     }
-                    state.new_constraint(TypeConstraint::StructLiteral {
-                        struct_t_id: t_id,
-                        fields: field_constraints,
-                        loc,
-                    });
+                    state
+                        .checker
+                        .set_struct_literal(t_var, field_types, &mut self.err, loc);
                     let expr = Expression::Literal(Value::Struct {
                         ident: ident.clone(),
                         loc,
                         fields: hir_fields,
-                        t_id,
+                        t_var,
                     });
-                    Ok((expr, t_id))
+                    Ok((expr, t_var))
+                }
+                ast::Value::Tuple { values, loc } => {
+                    let t_var = state.checker.fresh();
+                    let mut values_t_vars = Vec::with_capacity(values.len());
+                    let mut resolved_values = Vec::with_capacity(values.len());
+                    for val in values {
+                        let (expr, val_t_var) = self.resolve_expression(val, state)?;
+                        resolved_values.push(expr);
+                        values_t_vars.push(val_t_var);
+                    }
+                    state.checker.set_tuple(t_var, values_t_vars, self.err, loc);
+                    let expr = Expression::Literal(Value::Tuple {
+                        values: resolved_values,
+                        loc,
+                        t_var,
+                    });
+                    Ok((expr, t_var))
                 }
             },
             ast::Expression::Variable(var) => {
                 let value = self.get_value(&var.ident, var.namespace, var.loc, state)?;
-                if let Some((expr, t_id)) = value {
-                    Ok((expr, t_id))
+                if let Some((expr, t_var)) = value {
+                    Ok((expr, t_var))
                 } else if let Some(name) = state.find_in_context(&var.ident) {
                     let expr = Expression::Variable(Variable {
                         ident: var.ident.clone(),
                         loc: var.loc,
                         n_id: name.n_id,
                     });
-                    Ok((expr, name.t_id))
+                    Ok((expr, name.t_var))
                 } else if let Some(mod_id) = state.imported_modules.get(&var.ident) {
                     let expr = Expression::Namespace {
                         mod_id: *mod_id,
                         loc: var.loc,
                     };
-                    Ok((expr, T_ID_UNIT))
+                    let t_var = state.checker.scalar(ScalarType::Null);
+                    Ok((expr, t_var))
                 } else {
                     self.err.report(
                         var.loc,
@@ -647,15 +662,13 @@ impl<'a> NameResolver<'a> {
             ast::Expression::Call { fun, args } => {
                 let n = args.len();
                 let mut resolved_args = Vec::with_capacity(n);
-                let mut args_t = Vec::with_capacity(n);
-                let mut args_loc = Vec::with_capacity(n);
+                let mut args_t_vars = Vec::with_capacity(n);
                 for arg in args {
                     let (arg, arg_t) = self.resolve_expression(arg, state)?;
-                    args_loc.push(arg.get_loc());
                     resolved_args.push(arg);
-                    args_t.push(arg_t);
+                    args_t_vars.push(arg_t);
                 }
-                let (fun, fun_t_id) = self.resolve_expression(*fun, state)?;
+                let (fun, fun_t_var) = self.resolve_expression(*fun, state)?;
                 let loc = if n > 0 {
                     fun.get_loc().merge(resolved_args[n - 1].get_loc())
                 } else {
@@ -664,40 +677,26 @@ impl<'a> NameResolver<'a> {
                 match fun {
                     Expression::Function { fun_id, .. } => {
                         // Direct call
-                        let ret_t_id = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                        state.new_constraint(TypeConstraint::Arguments(
-                            args_t, fun_t_id, args_loc, loc,
-                        ));
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id, loc));
+                        let ret_t_var = state.checker.fresh();
+                        state.checker.set_call(fun_t_var, args_t_vars, loc);
+                        state.checker.set_return(fun_t_var, ret_t_var, loc);
                         let expr = Expression::CallDirect {
                             fun_id,
                             loc,
                             args: resolved_args,
-                            fun_t_id,
-                            ret_t_id,
+                            fun_t_var,
+                            ret_t_var,
                         };
-                        Ok((expr, ret_t_id))
+                        Ok((expr, ret_t_var))
                     }
                     _ => {
                         // Indirect call
-                        let ret_t_id = state.types.fresh(fun.get_loc(), vec![Type::Any]);
-                        state.new_constraint(TypeConstraint::Arguments(
-                            args_t, fun_t_id, args_loc, loc,
-                        ));
-                        state.new_constraint(TypeConstraint::Return(fun_t_id, ret_t_id, loc));
-                        let expr = Expression::CallIndirect {
-                            loc,
-                            fun: Box::new(fun),
-                            args: resolved_args,
-                            fun_t_id,
-                            ret_t_id,
-                        };
-                        Ok((expr, ret_t_id))
+                        todo!("Indirect calls are not yet supported");
                     }
                 }
             }
             ast::Expression::Access { namespace, field } => {
-                let (expr, access_obj_t_id) = self.resolve_expression(*namespace, state)?;
+                let (expr, access_obj_t_var) = self.resolve_expression(*namespace, state)?;
                 match expr {
                     Expression::Variable { .. }
                     | Expression::Access { .. }
@@ -717,21 +716,21 @@ impl<'a> NameResolver<'a> {
                             }
                         };
                         // Handle the access
-                        let field_t_id = state.types.fresh(loc_field, vec![Type::Any]);
-                        state.new_constraint(TypeConstraint::Field(
-                            access_obj_t_id,
-                            field_t_id,
+                        let field_t_var = state.checker.fresh();
+                        state.checker.set_access(
+                            access_obj_t_var,
+                            field_t_var,
                             field.clone(),
                             loc_field,
-                        ));
+                        );
                         let expr = Expression::Access {
                             expr: Box::new(expr),
                             loc: loc_field,
-                            t_id: field_t_id,
-                            struct_t_id: access_obj_t_id,
+                            t_var: field_t_var,
+                            struct_t_var: access_obj_t_var,
                             field,
                         };
-                        Ok((expr, field_t_id))
+                        Ok((expr, field_t_var))
                     }
                     Expression::Namespace { mod_id, loc } => {
                         // Namespace imported from another package
@@ -757,7 +756,7 @@ impl<'a> NameResolver<'a> {
         namespace_loc: Location,
         field: ast::Expression,
         state: &mut State,
-    ) -> Result<(Expression, TypeId), ()> {
+    ) -> Result<(Expression, TypeVar), ()> {
         match field {
             ast::Expression::Variable(var) => {
                 let var = ast::Variable {
@@ -868,31 +867,51 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Register top level functions into the global state (`state`).
-    fn register_functions(&mut self, funs: &Vec<ast::Function>, state: &mut State) {
+    fn register_functions(
+        &mut self,
+        funs: Vec<ast::Function>,
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) -> Vec<DeclaredFunction> {
+        let mut declared_funs = Vec::with_capacity(funs.len());
         for fun in funs {
+            // Check parameters types
             let mut params = Vec::new();
-            for param in fun.params.iter() {
-                params.push(self.get_type_from_path(&param.t, state));
+            let mut declared_params = Vec::new();
+            for param in fun.params {
+                let t = if let Ok(t) = self.get_type(&param.t, state) {
+                    t
+                } else {
+                    state.checker.scalar(ScalarType::Null)
+                };
+                params.push(t.clone());
+                declared_params.push((param, t));
             }
 
-            let mut results = Vec::new();
-            if let Some((t, loc)) = &fun.result {
-                let t = self.get_type(t, None, *loc, state);
-                results.push(t);
+            // Check result type
+            let mut ret = state.checker.scalar(ScalarType::Null);
+            if let Some(t) = &fun.result {
+                if let Ok(t) = self.get_type(t, state) {
+                    ret = t;
+                }
             }
 
-            let declaration =
-                state.declare(fun.ident.clone(), vec![Type::Fun(params, results)], fun.loc);
-            if let Err(_decl_loc) = declaration {
-                let error = format!("Function {} declared multiple times", fun.ident);
-                self.err.report(fun.loc, error);
-            } else if let Ok((n_id, _)) = declaration {
-                let fun_id = state.fresh_f_id();
-                state
-                    .value_namespace
-                    .insert(fun.ident.clone(), ValueKind::Function(fun_id, n_id));
-            }
+            let fun_t_var = state.checker.fresh();
+            state
+                .checker
+                .set_fun(fun_t_var, params, ret, self.err, fun.loc);
+            let fun_id = state.funs.fresh_id();
+            state.declare_fun(fun.ident.clone(), fun_id, fun_t_var);
+            declared_funs.push(DeclaredFunction {
+                ident: fun.ident,
+                params: declared_params,
+                body: fun.body,
+                is_pub: fun.is_pub,
+                loc: fun.loc,
+                fun_id,
+            })
         }
+
+        declared_funs
     }
 
     /// Register top level imports into the global state (`state`) and return resolved
@@ -932,22 +951,26 @@ impl<'a> NameResolver<'a> {
         let mut resolved_protos = Vec::with_capacity(prototypes.len());
         for proto in prototypes {
             let mut params = Vec::new();
+            // Check parameter types
             for param in proto.params.iter() {
-                if let Some(known_t) = check_base_type_from_path(&param.t) {
-                    params.push(known_t);
+                if let Some(t) = check_base_type_from_type(&param.t) {
+                    params.push(state.checker.scalar(t));
                 } else {
                     self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
                 }
             }
 
-            let mut results = Vec::new();
-            if let Some((t, loc)) = &proto.result {
-                if let Some(known_t) = check_base_type(&t) {
-                    results.push(known_t);
+            // Check result type
+            let ret = if let Some(t) = &proto.result {
+                if let Some(t) = check_base_type_from_type(t) {
+                    state.checker.scalar(t)
                 } else {
-                    self.err.report(*loc, format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
+                    self.err.report(t.get_loc(), format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
+                    state.checker.scalar(ScalarType::Null)
                 }
-            }
+            } else {
+                state.checker.scalar(ScalarType::Null)
+            };
 
             let ident = if let Some(ref alias) = proto.alias {
                 alias.clone()
@@ -955,12 +978,13 @@ impl<'a> NameResolver<'a> {
                 proto.ident.clone()
             };
 
-            match state.declare(ident.clone(), vec![Type::Fun(params, results)], proto.loc) {
-                Ok((n_id, _)) => {
-                    let fun_id = state.fresh_f_id();
+            match state.declare(ident.clone(), proto.loc) {
+                Ok((n_id, t_var)) => {
+                    let fun_id = state.funs.fresh_id();
                     state
-                        .value_namespace
-                        .insert(ident, ValueKind::Function(fun_id, n_id));
+                        .checker
+                        .set_fun(t_var, params, ret, self.err, proto.loc);
+                    state.declare_fun(proto.ident.clone(), fun_id, t_var);
                     resolved_protos.push(FunctionPrototype {
                         ident: proto.ident,
                         is_pub: proto.is_pub,
@@ -983,26 +1007,25 @@ impl<'a> NameResolver<'a> {
     fn register_and_resolve_structs(
         &mut self,
         structs: Vec<ast::Struct>,
-        state: &mut State,
-    ) -> HashMap<StructId, Struct> {
-        let mut resolved_structs = HashMap::with_capacity(structs.len());
-        for struc in &structs {
-            self.register_struct(struc, state);
-        }
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) -> StructStore {
+        let mut resolved_structs = Store::with_capacity(state.mod_id, structs.len());
         for struc in structs {
-            if let Some(s) = self.resolve_struct(struc, state) {
-                resolved_structs.insert(s.s_id, s);
-            }
+            let s_id = resolved_structs.fresh_id();
+            self.register_struct(&struc, s_id, state);
+            let s = self.resolve_struct(struc, s_id, state);
+            resolved_structs.insert(s_id, s);
         }
         resolved_structs
     }
 
     /// Register a struct in the Type namespace.
-    fn register_struct(&mut self, struc: &ast::Struct, state: &mut State) {
-        let s_id = state.fresh_s_id();
+    fn register_struct(&mut self, struc: &ast::Struct, s_id: StructId, state: &mut State) {
+        let t_var = state.checker.fresh();
+        state.checker.set_struct(t_var, s_id, self.err, struc.loc);
         let exists = state
             .type_namespace
-            .insert(struc.ident.clone(), TypeKind::Struct(s_id))
+            .insert(struc.ident.clone(), t_var)
             .is_some();
         if exists {
             self.err.report(
@@ -1013,42 +1036,38 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Resolve the struct fields.
-    fn resolve_struct(&mut self, struc: ast::Struct, state: &State) -> Option<Struct> {
+    fn resolve_struct(
+        &mut self,
+        struc: ast::Struct,
+        s_id: StructId,
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) -> Struct {
         let mut fields = HashMap::with_capacity(struc.fields.len());
-        let s_id = if let Some(TypeKind::Struct(s_id)) = state.type_namespace.get(&struc.ident) {
-            *s_id
-        } else {
-            self.err.report_internal(
-                struc.loc,
-                format!(
-                    "Struct {} has not been registered or has been overriden",
-                    &struc.ident
-                ),
-            );
-            return None;
-        };
 
         for field in struc.fields {
             let loc = field.loc;
             let is_pub = field.is_pub;
-            let t = self.get_type(&field.t, None, loc, state);
-            fields.insert(field.ident, StructField { t, loc, is_pub });
+            let t_var = state.checker.fresh();
+            if let Ok(t) = self.get_type(&field.t, state) {
+                state.checker.set_equal(t_var, t, self.err, loc);
+            };
+            fields.insert(field.ident, StructField { t_var, loc, is_pub });
         }
 
-        Some(Struct {
+        Struct {
             fields,
             s_id,
             ident: struc.ident,
             is_pub: struc.is_pub,
             loc: struc.loc,
-        })
+        }
     }
 
     /// Resolve the exposed functions and return a map of function ID to their name.
     fn resolve_exports(
         &mut self,
         exposed: Vec<ast::Expose>,
-        state: &State,
+        state: &mut State,
     ) -> HashMap<FunId, String> {
         let mut exposed_funs = HashMap::with_capacity(exposed.len());
         for fun in exposed {
@@ -1070,7 +1089,7 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Add the imported modules to the global namespace.
-    fn register_used_mods(&mut self, used: Vec<ast::Use>, state: &mut State) {
+    fn register_used_mods(&mut self, used: Vec<ast::Use>, state: &mut State<'a, 'ctx, 'ty>) {
         for import in used {
             // Choose an identifier for the module
             let ident = if let Some(alias) = import.alias {
@@ -1108,28 +1127,38 @@ impl<'a> NameResolver<'a> {
         namespace: Option<ModId>,
         loc: Location,
         state: &mut State,
-    ) -> Result<Option<(Expression, TypeId)>, ()> {
+    ) -> Result<Option<(Expression, TypeVar)>, ()> {
         if let Some(namespace) = namespace {
             // Look for a value in used namespace
             if let Some(declarations) = state.ctx.get_mod_from_id(namespace) {
                 if let Some(value) = declarations.val_decls.get(val) {
                     match value {
-                        ValueDeclaration::Function { fun_id, t } => {
+                        ValueDeclaration::Function(fun_id) => {
                             let expr = Expression::Function {
                                 fun_id: *fun_id,
                                 loc,
                             };
-                            let t = t.clone();
-                            let t_id = state.types.fresh(loc, vec![t]);
-                            Ok(Some((expr, t_id)))
+                            let fun_t = match state.ctx.get_fun(*fun_id) {
+                                Some(FunKind::Fun(fun)) => &fun.t,
+                                Some(FunKind::Extern(fun)) => &fun.t,
+                                None => {
+                                    self.err.report_internal(
+                                        loc,
+                                        format!("No function with id {} in context", fun_id),
+                                    );
+                                    return Err(());
+                                }
+                            };
+                            let t_var = state.checker.lift_t_fun(fun_t);
+                            Ok(Some((expr, t_var)))
                         }
                         ValueDeclaration::Module(mod_id) => {
                             let expr = Expression::Namespace {
                                 mod_id: *mod_id,
                                 loc,
                             };
-                            let t_id = T_ID_UNIT;
-                            Ok(Some((expr, t_id)))
+                            let t_var = state.checker.scalar(ScalarType::Null);
+                            Ok(Some((expr, t_var)))
                         }
                     }
                 } else {
@@ -1147,21 +1176,17 @@ impl<'a> NameResolver<'a> {
         } else {
             if let Some(value) = state.value_namespace.get(val) {
                 match value {
-                    ValueKind::Function(fun_id, n_id) => {
-                        let expr = Expression::Function {
-                            fun_id: *fun_id,
-                            loc,
-                        };
-                        let t_id = state.names.get(*n_id).t_id;
-                        Ok(Some((expr, t_id)))
+                    ValueKind::Function(fun_id, _) => {
+                        let fun_id = *fun_id;
+                        let expr = Expression::Function { fun_id, loc };
+                        let t_var = self.get_fun_t_var(fun_id, state)?;
+                        Ok(Some((expr, t_var)))
                     }
                     ValueKind::Module(mod_id) => {
-                        let expr = Expression::Namespace {
-                            mod_id: *mod_id,
-                            loc,
-                        };
-                        let t_id = T_ID_UNIT;
-                        Ok(Some((expr, t_id)))
+                        let mod_id = *mod_id;
+                        let expr = Expression::Namespace { mod_id, loc };
+                        let t_var = state.checker.scalar(ScalarType::Null);
+                        Ok(Some((expr, t_var)))
                     }
                 }
             } else {
@@ -1171,23 +1196,23 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Get a type from a (possibly namespaced) string.
-    fn get_type(
+    ///
+    /// Will raise an error if the type does not exists.
+    fn get_type_from_str(
         &mut self,
         t: &str,
         namespace: Option<ModId>,
         loc: Location,
-        state: &State,
-    ) -> Type {
-        if let Some(t) = check_built_in_type(t) {
-            return t;
+        state: &mut State,
+    ) -> Result<TypeVar, ()> {
+        if let Some(t) = check_built_in_scalar(t) {
+            return Ok(state.checker.scalar(t));
         }
         if let Some(mod_id) = namespace {
             // Look for type in used namespace
             if let Some(declarations) = state.ctx.get_mod_from_id(mod_id) {
                 if let Some(t) = declarations.type_decls.get(t) {
-                    match t {
-                        TypeDeclaration::Struct(struct_id) => Type::Struct(*struct_id),
-                    }
+                    Ok(state.checker.lift_t(t))
                 } else {
                     if let Some(path) = state.ctx.get_mod_path_from_id(mod_id) {
                         self.err
@@ -1195,83 +1220,123 @@ impl<'a> NameResolver<'a> {
                     } else {
                         self.err.report_internal(
                             loc,
-                            format!("Module ID '{}' has no associated path in context.", mod_id),
+                            format!("Module ID '{}' has no associated path in context", mod_id),
                         );
                     }
-                    Type::Bug
+                    Err(())
                 }
             } else {
-                // Look for type in local namespace
-                if let Some(t) = state.type_namespace.get(t) {
-                    match t {
-                        TypeKind::Struct(s_id) => Type::Struct(*s_id),
-                    }
-                } else {
-                    self.err.report(loc, format!("Unknown type: '{}'", t));
-                    Type::Bug
-                }
+                self.err
+                    .report_internal(loc, format!("Module with ID '{}' does not exist", mod_id));
+                Err(())
             }
         } else {
-            if let Some(t) = state.type_namespace.get(t) {
-                match t {
-                    TypeKind::Struct(s_id) => Type::Struct(*s_id),
-                }
+            // Look for type in local namespace
+            if let Some(t_var) = state.type_namespace.get(t) {
+                Ok(*t_var)
             } else {
                 self.err.report(loc, format!("Unknown type: '{}'", t));
-                Type::Bug
+                Err(())
             }
         }
     }
 
-    /// Get a type from a path.
-    fn get_type_from_path(&mut self, path: &ast::Path, state: &State) -> Type {
+    /// Get a type from an AST Type.
+    ///
+    /// An error will be raised if a type can't be resolved, and a `Bug` type will be used as
+    /// placeholder.
+    fn get_type(
+        &mut self,
+        ast_t: &ast::Type,
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) -> Result<TypeVar, ()> {
+        match ast_t {
+            ast::Type::Simple(path) => self.get_type_from_path(path, state),
+            ast::Type::Tuple(tup, loc) => {
+                let mut types = Vec::new();
+                for t in tup {
+                    types.push(self.get_type(t, state)?);
+                }
+                let t_var = state.checker.fresh();
+                state.checker.set_tuple(t_var, types, self.err, *loc);
+                Ok(t_var)
+            }
+        }
+    }
+
+    /// Get a type from an AST path.
+    ///
+    /// An error will be raised if a type can't be resolved, and a 'Bug' type will be used as
+    /// placeholder.
+    fn get_type_from_path(&mut self, path: &ast::Path, state: &mut State) -> Result<TypeVar, ()> {
         // Check for built-in type
         if path.path.is_empty() {
-            if let Some(t) = check_built_in_type(&path.root) {
-                return t;
+            if let Some(t) = check_built_in_scalar(&path.root) {
+                return Ok(state.checker.scalar(t));
             }
         }
         let mut ident = &path.root;
-        let mut namespace = NamespaceKind::from_resolver_state(&state);
+        let mut namespace = NamespaceKind::new(&state.value_namespace, &state.type_namespace);
         for access in &path.path {
             match namespace.get_nested_namespace(ident, &state.ctx) {
                 Some(n) => namespace = n,
                 None => {
                     self.err
                         .report(path.loc, format!("Could not resolve '{}'", ident));
-                    return Type::Bug;
+                    return Err(());
                 }
             }
             ident = access;
         }
-        match namespace.get_type(ident) {
-            Some(t) => t,
+        let ident = ident.clone();
+        match namespace.get_type(&ident) {
+            Some(t) => Ok(t.t_var(&mut state.checker)),
             None => {
                 self.err
                     .report(path.loc, format!("Type '{}' does not exist", ident));
-                Type::Bug
+                Err(())
+            }
+        }
+    }
+
+    fn get_fun_t_var(&mut self, fun_id: FunId, state: &mut State) -> Result<TypeVar, ()> {
+        match state.fun_types.get(&fun_id) {
+            Some(fun_t_var) => Ok(*fun_t_var),
+            None => {
+                self.err.report_internal_no_loc(format!(
+                    "Function with id '{}' is not in state or ctx",
+                    fun_id
+                ));
+                Err(())
             }
         }
     }
 }
 
 /// Encapsulate different kinds of namespace: the one being built and others from the Ctx.
-enum NamespaceKind<'a> {
+enum NamespaceKind<'state, 'ctx> {
     Resolver(
-        &'a HashMap<String, ValueKind>,
-        &'a HashMap<String, TypeKind>,
+        &'state HashMap<String, ValueKind>,
+        &'state HashMap<String, TypeVar>,
     ),
-    Ctx(&'a ModuleDeclarations),
+    Ctx(&'ctx ModuleDeclarations),
 }
 
-impl<'a> NamespaceKind<'a> {
-    fn from_resolver_state(state: &'a State) -> Self {
-        NamespaceKind::Resolver(&state.value_namespace, &state.type_namespace)
+/// Encapsulate diffretent kinds of types: the one being inferred by the resolver and the one
+/// already type-checked from HIR.
+enum TypeKind<'ctx> {
+    Resolver(TypeVar),
+    Ctx(&'ctx hir::Type),
+}
+
+impl<'state, 'ctx> NamespaceKind<'state, 'ctx> {
+    fn new(values: &'state ValueNamespace, types: &'state TypeNamespace) -> Self {
+        NamespaceKind::Resolver(values, types)
     }
 
     /// Get a namespace inside of a namespace.
     /// Return None if the namespace does not exist (or the value exists but is not a namespace).
-    fn get_nested_namespace(&self, ident: &str, ctx: &'a Ctx) -> Option<Self> {
+    fn get_nested_namespace(&self, ident: &str, ctx: &'ctx Ctx) -> Option<Self> {
         match self {
             NamespaceKind::Resolver(namespace, _) => match namespace.get(ident) {
                 Some(ValueKind::Module(mod_id)) => {
@@ -1290,31 +1355,36 @@ impl<'a> NamespaceKind<'a> {
 
     /// Get a type from a namespace.
     /// Return None if the type does not exist.
-    fn get_type(&self, t: &str) -> Option<Type> {
+    fn get_type(&mut self, t: &str) -> Option<TypeKind> {
         match self {
-            NamespaceKind::Resolver(_, types) => match types.get(t) {
-                Some(t) => match t {
-                    TypeKind::Struct(s_id) => Some(Type::Struct(*s_id)),
-                },
-                None => None,
-            },
+            NamespaceKind::Resolver(_, types_vars) => {
+                types_vars.get(t).map(|t_var| TypeKind::Resolver(*t_var))
+            }
             NamespaceKind::Ctx(mod_decls) => match mod_decls.type_decls.get(t) {
-                Some(t) => match t {
-                    TypeDeclaration::Struct(s_id) => Some(Type::Struct(*s_id)),
-                },
+                Some(t) => Some(TypeKind::Ctx(t)),
                 None => None,
             },
         }
     }
 }
 
-fn check_built_in_type(t: &str) -> Option<Type> {
+impl<'ctx> TypeKind<'ctx> {
+    pub fn t_var(self, checker: &mut TypeChecker) -> TypeVar {
+        match self {
+            TypeKind::Resolver(t_var) => t_var,
+            TypeKind::Ctx(ty) => checker.lift_t(&ty),
+        }
+    }
+}
+
+/// Return the corresponding built in type or None.
+fn check_built_in_scalar(t: &str) -> Option<ScalarType> {
     match t {
-        "i32" => Some(Type::I32),
-        "i64" => Some(Type::I64),
-        "f32" => Some(Type::F32),
-        "f64" => Some(Type::F64),
-        "bool" => Some(Type::Bool),
+        "i32" => Some(ScalarType::I32),
+        "i64" => Some(ScalarType::I64),
+        "f32" => Some(ScalarType::F32),
+        "f64" => Some(ScalarType::F64),
+        "bool" => Some(ScalarType::Bool),
         _ => None,
     }
 }
@@ -1322,12 +1392,12 @@ fn check_built_in_type(t: &str) -> Option<Type> {
 /// Return the corresponding base type, if any.
 /// Base types are i32, i64, f32, f64 and are the only types that
 /// can be imported/exported at the time (i.e. before interface types)
-fn check_base_type(t: &str) -> Option<Type> {
+fn check_base_type(t: &str) -> Option<ScalarType> {
     match t {
-        "i32" => Some(Type::I32),
-        "i64" => Some(Type::I64),
-        "f32" => Some(Type::F32),
-        "f64" => Some(Type::F64),
+        "i32" => Some(ScalarType::I32),
+        "i64" => Some(ScalarType::I64),
+        "f32" => Some(ScalarType::F32),
+        "f64" => Some(ScalarType::F64),
         _ => None,
     }
 }
@@ -1335,10 +1405,14 @@ fn check_base_type(t: &str) -> Option<Type> {
 /// Return the corresponding base type, if any.
 ///
 /// See `check_base_type` for more details.
-fn check_base_type_from_path(t: &ast::Path) -> Option<Type> {
-    if !t.path.is_empty() {
-        None
+fn check_base_type_from_type(t: &ast::Type) -> Option<ScalarType> {
+    if let ast::Type::Simple(t) = t {
+        if !t.path.is_empty() {
+            None
+        } else {
+            check_base_type(&t.root)
+        }
     } else {
-        check_base_type(&t.root)
+        None
     }
 }

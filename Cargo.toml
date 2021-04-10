@@ -12,6 +12,7 @@ name = "zephyr"
 path = "src/bin/main.rs"
 
 [dependencies]
+zephyr-lang-derive = { path ="./derive" }
 
 [dependencies.clap]
 version = "3.0.0-beta.1"

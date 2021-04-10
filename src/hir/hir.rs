@@ -1,47 +1,56 @@
 #![allow(dead_code)] // Call::Indirect
-use super::names::{AsmStatement, Data, DataId, NameId};
-use super::types::Type as NameType;
+use super::names::{AsmStatement, DataStore};
+use super::store::Store;
 use crate::ctx::ModuleDeclarations;
 use crate::error::Location;
 
 use std::collections::HashMap;
 use std::fmt;
 
-const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
-const TYPE_I64: Type = Type::Scalar(ScalarType::I64);
-const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
-const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
-const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
-
-pub use super::names::{FunId, StructId};
+pub use super::names::{DataId, FunId, NameId, StructId, TupleId};
 pub use crate::ast::Package;
+
 pub type LocalId = usize; // For now NameId are used as LocalId
 pub type BasicBlockId = usize;
 
-#[derive(Clone, Eq, PartialEq)]
+pub type TupleStore = Store<TupleId, Tuple>;
+pub type StructStore = Store<StructId, Struct>;
+
+pub const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
+pub const TYPE_I64: Type = Type::Scalar(ScalarType::I64);
+pub const TYPE_F32: Type = Type::Scalar(ScalarType::F32);
+pub const TYPE_F64: Type = Type::Scalar(ScalarType::F64);
+pub const TYPE_BOOL: Type = Type::Scalar(ScalarType::Bool);
+
+// —————————————————————————————————— Types ————————————————————————————————— //
+
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Type {
     Scalar(ScalarType),
     Fun(FunctionType),
-    Tuple(TupleType),
+    Tuple(TupleId),
     Struct(StructId),
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+// The order of scalars is important, the first (smallest) will be picked when more than one are
+// acceptable.
+#[derive(Debug, Hash, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ScalarType {
     I32,
     I64,
     F32,
     F64,
     Bool,
+    Null,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum IntegerType {
     I32,
     I64,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
 pub enum NumericType {
     I32,
     I64,
@@ -49,25 +58,88 @@ pub enum NumericType {
     F64,
 }
 
-pub type TupleType = Vec<Type>;
+#[derive(Hash, Clone, Copy, Eq, PartialEq)]
+pub enum NonNullScalarType {
+    I32,
+    I64,
+    F32,
+    F64,
+    Bool,
+}
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct FunctionType {
     pub params: Vec<Type>,
-    pub ret: TupleType,
+    pub ret: Box<Type>,
+}
+
+impl Type {
+    /// Tries to convert this type into a scalar, return None if the conversion failed.
+    pub fn to_scalar(&self) -> Option<ScalarType> {
+        match self {
+            Type::Scalar(s) => Some(*s),
+            _ => None,
+        }
+    }
+
+    /// Tries to convert this type into a function, return None if the conversion failed.
+    pub fn to_fun(self) -> Option<FunctionType> {
+        match self {
+            Type::Fun(f) => Some(f),
+            _ => None,
+        }
+    }
 }
 
 impl FunctionType {
-    pub fn new(args: Vec<Type>, ret: Vec<Type>) -> Self {
-        FunctionType { params: args, ret }
+    pub fn new(params: Vec<Type>, ret: Type) -> Self {
+        FunctionType {
+            params,
+            ret: Box::new(ret),
+        }
     }
 }
+
+impl IntegerType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            IntegerType::I32 => ScalarType::I32,
+            IntegerType::I64 => ScalarType::I64,
+        }
+    }
+}
+
+impl NumericType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            NumericType::I32 => ScalarType::I32,
+            NumericType::I64 => ScalarType::I64,
+            NumericType::F32 => ScalarType::F32,
+            NumericType::F64 => ScalarType::F64,
+        }
+    }
+}
+
+impl NonNullScalarType {
+    pub fn get_t(&self) -> ScalarType {
+        match self {
+            NonNullScalarType::I32 => ScalarType::I32,
+            NonNullScalarType::I64 => ScalarType::I64,
+            NonNullScalarType::F32 => ScalarType::F32,
+            NonNullScalarType::F64 => ScalarType::F64,
+            NonNullScalarType::Bool => ScalarType::Bool,
+        }
+    }
+}
+
+// ———————————————————————————————————— Ast ————————————————————————————————— //
 
 pub struct Program {
     pub funs: Vec<Function>,
     pub imports: Vec<Imports>,
-    pub data: HashMap<DataId, Data>,
-    pub structs: HashMap<StructId, Struct>,
+    pub data: DataStore,
+    pub structs: StructStore,
+    pub tuples: TupleStore,
     pub pub_decls: ModuleDeclarations,
     pub package: Package,
 }
@@ -104,7 +176,7 @@ pub enum FunKind {
 pub struct Function {
     pub ident: String,
     pub params: Vec<LocalId>,
-    pub t: FunctionType,
+    pub t: FunctionType, // TODO: should we keep the type in a type store?
     pub locals: Vec<LocalVariable>,
     pub body: Body,
     pub loc: Location,
@@ -136,6 +208,11 @@ pub struct StructField {
     pub is_pub: bool,
     pub t: Type,
     pub loc: Location,
+}
+
+pub struct Tuple {
+    pub tup_id: TupleId,
+    pub types: Vec<Type>,
 }
 
 pub struct LocalVariable {
@@ -214,8 +291,7 @@ pub enum Expression {
     },
     Access {
         expr: Box<Expression>,
-        field: String,
-        struct_id: StructId,
+        kind: AccessKind,
         t: Type,
         loc: Location,
     },
@@ -224,14 +300,18 @@ pub enum Expression {
     },
 }
 
+pub enum AccessKind {
+    Struct { field: String, s_id: StructId },
+    Tuple { index: u32, tup_id: TupleId },
+}
+
 /// An expression that produces a place, that is a slot in which a value can be stored (memory
 /// address, variable index and so on).
 pub enum PlaceExpression {
     Variable(Variable),
     Access {
-        expr: Box<Expression>,
-        field: String,
-        struct_id: StructId,
+        expr: Box<PlaceExpression>,
+        kind: AccessKind,
         t: Type,
         loc: Location,
     },
@@ -280,6 +360,11 @@ pub enum Value {
         fields: Vec<FieldValue>,
         loc: Location,
     },
+    Tuple {
+        tup_id: TupleId,
+        values: Vec<Expression>,
+        loc: Location,
+    },
     DataPointer(DataId, Location), // A pointer to a memory location
 }
 
@@ -308,8 +393,8 @@ pub enum Binop {
     BinaryAnd(IntegerType),
     BinaryOr(IntegerType),
 
-    Eq(ScalarType),
-    Ne(ScalarType),
+    Eq(NonNullScalarType),
+    Ne(NonNullScalarType),
     Lt(NumericType),
     Gt(NumericType),
     Le(NumericType),
@@ -337,26 +422,6 @@ pub enum Memory {
     F64Store { align: u32, offset: u32 },
 }
 
-/// Lift an HIR type into a name type.
-pub fn lift_t(t: &Type) -> NameType {
-    match t {
-        Type::Scalar(x) => match x {
-            ScalarType::I32 => NameType::I32,
-            ScalarType::I64 => NameType::I64,
-            ScalarType::F32 => NameType::F32,
-            ScalarType::F64 => NameType::F64,
-            ScalarType::Bool => NameType::Bool,
-        },
-        Type::Struct(s_id) => NameType::Struct(*s_id),
-        Type::Tuple(_) => todo!(), // Tuples are not yet supported
-        Type::Fun(fun) => {
-            let params = fun.params.iter().map(|p| lift_t(p)).collect();
-            let ret = fun.ret.iter().map(|r| lift_t(r)).collect();
-            NameType::Fun(params, ret)
-        }
-    }
-}
-
 impl Expression {
     pub fn get_loc(&self) -> Location {
         match self {
@@ -367,6 +432,7 @@ impl Expression {
                 Value::I64(_, loc) => *loc,
                 Value::I32(_, loc) => *loc,
                 Value::Bool(_, loc) => *loc,
+                Value::Tuple { loc, .. } => *loc,
                 Value::Struct { loc, .. } => *loc,
                 Value::DataPointer(_, loc) => *loc,
             },
@@ -402,8 +468,8 @@ impl Binop {
             Binop::Gt(t) => t.get_t(),
             Binop::Le(t) => t.get_t(),
             Binop::Lt(t) => t.get_t(),
-            Binop::Ne(t) => *t,
-            Binop::Eq(t) => *t,
+            Binop::Ne(t) => t.get_t(),
+            Binop::Eq(t) => t.get_t(),
             Binop::Div(t) => t.get_t(),
             Binop::Mul(t) => t.get_t(),
             Binop::Sub(t) => t.get_t(),
@@ -412,25 +478,24 @@ impl Binop {
     }
 }
 
-impl IntegerType {
-    pub fn get_t(&self) -> ScalarType {
-        match self {
-            IntegerType::I32 => ScalarType::I32,
-            IntegerType::I64 => ScalarType::I64,
-        }
+// ———————————————————————————————— Helpers ————————————————————————————————— //
+
+/// Takes a field name and return the corresponding index in the tuple.
+///
+/// For instance in `tup._1` the field `._1` refers to the element of indec 1 in `tup`
+pub fn get_tuple_field(field: &str) -> Option<u32> {
+    let mut chars = field.chars();
+    if chars.next() != Some('_') {
+        return None;
+    }
+    if let Ok(idx) = u32::from_str_radix(chars.as_str(), 10) {
+        Some(idx)
+    } else {
+        None
     }
 }
 
-impl NumericType {
-    pub fn get_t(&self) -> ScalarType {
-        match self {
-            NumericType::I32 => ScalarType::I32,
-            NumericType::I64 => ScalarType::I64,
-            NumericType::F32 => ScalarType::F32,
-            NumericType::F64 => ScalarType::F64,
-        }
-    }
-}
+// ———————————————————————————————— Display ————————————————————————————————— //
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -438,14 +503,7 @@ impl fmt::Display for Type {
             Type::Scalar(t) => write!(f, "{}", t),
             Type::Fun(t) => write!(f, "{}", t),
             Type::Struct(s_id) => write!(f, "struct #{}", s_id),
-            Type::Tuple(t) => write!(
-                f,
-                "({})",
-                t.iter()
-                    .map(|t| format!("{}", t))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
+            Type::Tuple(tup_id) => write!(f, "tuple #{}", tup_id,),
         }
     }
 }
@@ -458,6 +516,7 @@ impl fmt::Display for ScalarType {
             ScalarType::I64 => write!(f, "i64"),
             ScalarType::I32 => write!(f, "i32"),
             ScalarType::Bool => write!(f, "bool"),
+            ScalarType::Null => write!(f, "null"),
         }
     }
 }
@@ -470,13 +529,7 @@ impl fmt::Display for FunctionType {
             .map(|t| format!("{}", t))
             .collect::<Vec<String>>()
             .join(", ");
-        let ret = self
-            .ret
-            .iter()
-            .map(|t| format!("{}", t))
-            .collect::<Vec<String>>()
-            .join(", ");
-        write!(f, "({}) -> ({})", args, ret)
+        write!(f, "fun ({}): {}", args, self.ret)
     }
 }
 
@@ -488,7 +541,7 @@ impl fmt::Display for Program {
             .map(|fun| format!("{}", fun))
             .collect::<Vec<String>>()
             .join("\n\n");
-        write!(f, "MIR {{\n{}\n}}", funs)
+        write!(f, "HIR {{\n{}\n}}", funs)
     }
 }
 
@@ -501,13 +554,7 @@ impl fmt::Display for Function {
             .map(|t| format!("{}", t))
             .collect::<Vec<String>>()
             .join(", ");
-        let ret = self
-            .t
-            .ret
-            .iter()
-            .map(|t| format!("{}", t))
-            .collect::<Vec<String>>()
-            .join(", ");
+        let ret = &self.t.ret;
         let locals = self
             .locals
             .iter()
@@ -604,8 +651,17 @@ impl fmt::Display for Expression {
                 expr_right,
                 ..
             } => write!(f, "({} {} {})", expr_left, binop, expr_right),
-            Expression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+            Expression::Access { expr, kind, .. } => write!(f, "{}.{}", expr, kind),
             Expression::Nop { .. } => write!(f, "nop"),
+        }
+    }
+}
+
+impl fmt::Display for AccessKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AccessKind::Struct { field, .. } => write!(f, "{}", field),
+            AccessKind::Tuple { index, .. } => write!(f, "_{}", index),
         }
     }
 }
@@ -614,7 +670,7 @@ impl fmt::Display for PlaceExpression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PlaceExpression::Variable(v) => write!(f, "{}", v.ident),
-            PlaceExpression::Access { expr, field, .. } => write!(f, "{}.{}", expr, field),
+            PlaceExpression::Access { expr, kind, .. } => write!(f, "{}.{}", expr, kind),
         }
     }
 }
@@ -622,7 +678,7 @@ impl fmt::Display for PlaceExpression {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::ExprStmt ( expr ) => write!(f, "{};", expr),
+            Statement::ExprStmt(expr) => write!(f, "{};", expr),
             Statement::LetStmt { var, expr } => write!(f, "let {} = {};", var.ident, expr),
             Statement::AssignStmt { target, expr } => write!(f, "{} = {};", target, expr),
             Statement::IfStmt {
@@ -669,6 +725,15 @@ impl fmt::Display for Value {
                 }
             }
             Value::DataPointer(data_id, _) => write!(f, "data #{}", data_id),
+            Value::Tuple { values, .. } => write!(
+                f,
+                "({})",
+                values
+                    .iter()
+                    .map(|val| format!("{}", val))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Value::Struct {
                 struct_id, fields, ..
             } => write!(
@@ -766,5 +831,24 @@ impl fmt::Display for Memory {
             Memory::F32Store { align, offset } => write!(f, "f32.store {}, {}", align, offset),
             Memory::F64Store { align, offset } => write!(f, "f64.store {}, {}", align, offset),
         }
+    }
+}
+
+// —————————————————————————————————— Test —————————————————————————————————— //
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tuple_fields() {
+        assert_eq!(get_tuple_field("_0").unwrap(), 0);
+        assert_eq!(get_tuple_field("_1").unwrap(), 1);
+        assert_eq!(get_tuple_field("_42").unwrap(), 42);
+        assert_eq!(get_tuple_field("_122").unwrap(), 122);
+
+        assert_eq!(get_tuple_field(".0"), None);
+        assert_eq!(get_tuple_field(".__0"), None);
+        assert_eq!(get_tuple_field(".zero"), None);
     }
 }

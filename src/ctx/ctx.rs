@@ -17,7 +17,9 @@ use crate::wasm;
 pub type ModId = u32;
 
 type StructMap = HashMap<hir::StructId, hir::Struct>;
+type TupleMap = HashMap<hir::TupleId, hir::Tuple>;
 type DataMap = HashMap<hir::DataId, hir::Data>;
+type TypeMap = HashMap<hir::TypeId, hir::Type>;
 type FunMap = HashMap<hir::FunId, hir::FunKind>;
 type ModMap = HashMap<ModId, ModulePath>;
 type ReverseModMap = HashMap<ModulePath, ModId>;
@@ -27,6 +29,8 @@ type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
 pub struct Ctx {
     // HIR elements
     structs: StructMap,
+    tuples: TupleMap,
+    types: TypeMap,
     data: DataMap,
     funs: FunMap,
     mods: ModMap,
@@ -45,6 +49,8 @@ impl Ctx {
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
+            tuples: HashMap::new(),
+            types: HashMap::new(),
             data: HashMap::new(),
             funs: HashMap::new(),
             mods: HashMap::new(),
@@ -64,8 +70,23 @@ impl Ctx {
     }
 
     /// Get a structure from its ID.
-    pub fn get_s(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
+    pub fn get_struct(&self, s_id: hir::StructId) -> Option<&hir::Struct> {
         self.structs.get(&s_id)
+    }
+
+    /// Get a tuple from its ID.
+    pub fn get_tuple(&self, tup_id: hir::TupleId) -> Option<&hir::Tuple> {
+        self.tuples.get(&tup_id)
+    }
+
+    /// Get a type from its ID.
+    pub fn get_type(&self, t_id: hir::TypeId) -> Option<&hir::Type> {
+        self.types.get(&t_id)
+    }
+
+    /// Get a function from its ID.
+    pub fn get_fun(&self, fun_id: hir::FunId) -> Option<&hir::FunKind> {
+        self.funs.get(&fun_id)
     }
 
     /// Get module declarations from the module ID.
@@ -94,6 +115,10 @@ impl Ctx {
 
     pub fn hir_structs(&self) -> &StructMap {
         &self.structs
+    }
+
+    pub fn hir_tuples(&self) -> &TupleMap {
+        &self.tuples
     }
 
     pub fn hir_imports(&self) -> &Vec<hir::Import> {
@@ -321,7 +346,7 @@ impl Ctx {
         let malloc_decl = self
             .get_public_decls(&modules.malloc, err, resolver)?
             .clone();
-        let malloc = self.get_fun(&malloc_decl, "malloc", &modules.malloc, err)?;
+        let malloc = self.get_fun_from_decls(&malloc_decl, "malloc", &modules.malloc, err)?;
         let malloc = known_functions::validate_malloc(malloc, err)?;
         Ok(KnownFunctions { malloc })
     }
@@ -334,7 +359,7 @@ impl Ctx {
     ) -> Result<KnownStructs, ()> {
         let modules = KnownStructPaths::get();
         let str_decl = self.get_public_decls(&modules.str, err, resolver)?.clone();
-        let str = self.get_struct(&str_decl, "Str", &modules.str, err)?;
+        let str = self.get_struct_from_decl(&str_decl, "Str", &modules.str, err)?;
         let str = known_functions::validate_str(str, err)?;
         Ok(KnownStructs { str })
     }
@@ -366,7 +391,7 @@ impl Ctx {
     ///  - fun: the identifier of the function.
     ///  - module: a path to the module.
     ///  - err: an error handler.
-    fn get_fun(
+    fn get_fun_from_decls(
         &self,
         public_decls: &ModuleDeclarations,
         fun: &str,
@@ -375,7 +400,7 @@ impl Ctx {
     ) -> Result<&hir::FunKind, ()> {
         if let Some(fun) = public_decls.val_decls.get(fun) {
             let fun_id = match fun {
-                hir::ValueDeclaration::Function { t: _, fun_id } => *fun_id,
+                hir::ValueDeclaration::Function(fun_id) => *fun_id,
                 _ => return Err(()),
             };
             let fun = self
@@ -397,7 +422,7 @@ impl Ctx {
     ///  - struc: the identifier of the struct.
     ///  - module: a path to the module.
     ///  - err: an error handler.
-    fn get_struct(
+    fn get_struct_from_decl(
         &self,
         public_decls: &ModuleDeclarations,
         struc: &str,
@@ -405,8 +430,11 @@ impl Ctx {
         err: &mut ErrorHandler,
     ) -> Result<&hir::Struct, ()> {
         if let Some(struc) = public_decls.type_decls.get(struc) {
-            let struct_id = match struc {
-                hir::TypeDeclaration::Struct(s_id) => s_id,
+            let struct_id = if let hir::Type::Struct(s_id) = struc {
+                s_id
+            } else {
+                err.report_no_loc(format!("Expected a struct, got '{}'", &struc));
+                return Err(());
             };
             let struc = self
                 .structs
@@ -427,7 +455,11 @@ impl Ctx {
     fn extend_hir(&mut self, hir: hir::Program, module: ModulePath) {
         for (s_id, struc) in hir.structs {
             let prev = self.structs.insert(s_id, struc);
-            assert!(prev.is_none()); // s_id must be unique
+            debug_assert!(prev.is_none()); // s_id must be unique
+        }
+        for (tup_id, tup) in hir.tuples {
+            let prev = self.tuples.insert(tup_id, tup);
+            debug_assert!(prev.is_none()); // tup_id must be unique
         }
         for fun in hir.funs {
             let prev = self.funs.insert(fun.fun_id, hir::FunKind::Fun(fun));
@@ -435,14 +467,14 @@ impl Ctx {
         }
         for (d_id, data) in hir.data {
             let prev = self.data.insert(d_id, data);
-            assert!(prev.is_none()); // d_id must be unique
+            debug_assert!(prev.is_none()); // d_id must be unique
         }
         for import in hir.imports {
             let mut prototypes = Vec::new();
             for fun in import.prototypes {
                 prototypes.push(fun.fun_id);
                 let prev = self.funs.insert(fun.fun_id, hir::FunKind::Extern(fun));
-                assert!(prev.is_none()); // fun_id must be unique
+                debug_assert!(prev.is_none()); // fun_id must be unique
             }
             self.imports.push(hir::Import {
                 from: import.from,
