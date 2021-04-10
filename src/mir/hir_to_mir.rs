@@ -477,6 +477,7 @@ impl<'a, 'arena> MirProducer<'a, 'arena> {
         }
         Ok(Tuple {
             size: offset,
+            nb_locals: local_offset,
             fields,
         })
     }
@@ -871,9 +872,41 @@ impl<'a, 'arena> MirProducer<'a, 'arena> {
                     }
                     types
                 }
-                AccessKind::Tuple { .. } => {
+                AccessKind::Tuple { tup_id, index } => {
+                    // For now let's evaluate the whole expression, this can be optimized when
+                    // dealing with a place expression (i.e. fetching only the required part)
                     self.lower_expr(expr, stmts, locals)?;
-                    todo!("Tuple access");
+                    let tup = self.get_tuple(tup_id)?;
+                    let field = &tup.fields[*index as usize];
+                    let mut types = Vec::with_capacity(field.t.len());
+                    let mut tmp_var = Vec::with_capacity(field.t.len());
+                    let nb_locals = field.nb_locals;
+                    let nb_before = field.local_offset;
+                    let nb_after = tup.nb_locals - nb_before - nb_locals;
+                    // Drop values after the values of interests
+                    for _ in 0..nb_after {
+                        stmts.push(Statement::Parametric(Parametric::Drop));
+                    }
+                    // Store values in temporary variables (could be optimized if nb_before == 0)
+                    for (t, _, _) in field.t.iter().rev() {
+                        types.push(*t);
+                        let tmp_var_id = self.fresh_local_id();
+                        locals.push(LocalVariable {
+                            id: tmp_var_id,
+                            t: *t,
+                        });
+                        stmts.push(Statement::Local(Local::Set(tmp_var_id)));
+                        tmp_var.push(tmp_var_id);
+                    }
+                    // Drop values before those of interest
+                    for _ in 0..nb_before {
+                        stmts.push(Statement::Parametric(Parametric::Drop));
+                    }
+                    // Restore values
+                    for tmp_var_id in tmp_var.iter().rev() {
+                        stmts.push(Statement::Local(Local::Get(*tmp_var_id)));
+                    }
+                    types
                 }
             },
             Expr::Nop { .. } => vec![],
@@ -932,47 +965,59 @@ impl<'a, 'arena> MirProducer<'a, 'arena> {
                 let locals = self.get_local_ids(var.n_id);
                 Ok(Place::Local(locals, types))
             }
-            PlaceExpr::Access { expr, kind, .. } => {
-                let place = self.lower_place_expression(expr)?;
-                match kind {
-                    AccessKind::Struct { field, s_id } => {
-                        let (address_l_id, total_offset) = match place {
-                            Place::Address {
-                                address_l_id,
-                                offset,
-                                ..
-                            } => (address_l_id, offset),
-                            Place::Local(locals_ids, _) => {
-                                if locals_ids.len() != 1 {
-                                    return Err(String::from(
-                                        "Struct must be represented by their pointers",
-                                    ));
-                                }
-                                (locals_ids[0], 0)
-                            }
-                        };
-                        let struc = self.get_struct(s_id)?;
-                        let field = struc.fields.get(field).unwrap();
-                        let offset = field.offset;
-                        Ok(Place::Address {
+            PlaceExpr::Access { expr, kind, .. } => match kind {
+                AccessKind::Struct { field, s_id } => {
+                    let place = self.lower_place_expression(expr)?;
+                    let (address_l_id, total_offset) = match place {
+                        Place::Address {
                             address_l_id,
-                            offset: offset + total_offset,
+                            offset,
+                            ..
+                        } => (address_l_id, offset),
+                        Place::Local(locals_ids, _) => {
+                            if locals_ids.len() != 1 {
+                                return Err(String::from(
+                                    "Struct must be represented by their pointers",
+                                ));
+                            }
+                            (locals_ids[0], 0)
+                        }
+                    };
+                    let struc = self.get_struct(s_id)?;
+                    let field = struc.fields.get(field).unwrap();
+                    let offset = field.offset;
+                    Ok(Place::Address {
+                        address_l_id,
+                        offset: offset + total_offset,
+                        t: &field.t,
+                    })
+                }
+                AccessKind::Tuple { index, tup_id } => {
+                    let tup = self.get_tuple(tup_id)?;
+                    let field = &tup.fields[*index as usize];
+                    let place = self.lower_place_expression(expr)?;
+                    match place {
+                        Place::Address {
+                            address_l_id,
+                            offset,
+                            ..
+                        } => Ok(Place::Address {
+                            address_l_id,
+                            offset: offset + field.offset,
                             t: &field.t,
-                        })
-                    }
-                    AccessKind::Tuple { .. } => {
-                        // TODO
-                        match place {
-                            Place::Address { .. } => {
-                                todo!()
+                        }),
+                        Place::Local(locals, _) => {
+                            let locals_start = field.local_offset;
+                            let locals_end = locals_start + field.nb_locals;
+                            let mut types = Vec::with_capacity(field.t.len());
+                            for (t, _, _) in &field.t {
+                                types.push(*t);
                             }
-                            Place::Local(_, _) => {
-                                todo!()
-                            }
+                            Ok(Place::Local(&locals[locals_start..locals_end], types))
                         }
                     }
                 }
-            }
+            },
         }
     }
 

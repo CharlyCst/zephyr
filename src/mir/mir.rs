@@ -58,7 +58,10 @@ pub struct StructField {
 pub struct Tuple {
     /// Total size of the tuple in bytes
     pub size: u32,
+    /// Idx -> Field
     pub fields: Vec<TupleField>,
+    /// Number of local variables to store the tupe, also equal to wasm stack size
+    pub nb_locals: usize,
 }
 
 pub struct TupleField {
