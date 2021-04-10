@@ -187,7 +187,6 @@ checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 name = "zephyr-lang"
 version = "0.1.0"
 dependencies = [
- "clap",
  "zephyr-lang-derive",
 ]
 
@@ -197,4 +196,12 @@ version = "0.1.0"
 dependencies = [
  "quote",
  "syn",
+]
+
+[[package]]
+name = "zephyrc"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "zephyr-lang",
 ]

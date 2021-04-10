@@ -6,7 +6,7 @@ setup:
 	curl https://wasmtime.dev/install.sh -sSf | bash
 
 .PHONY: build
-build: src/lib.rs
+build:
 	cargo build
 
 .PHONY: clean

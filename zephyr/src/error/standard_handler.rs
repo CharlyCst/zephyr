@@ -1,4 +1,4 @@
-use super::errors::{Error, ErrorType, Level, Location};
+use super::errors::{Error, ErrorKind, Level, Location};
 use super::handler::ErrorHandler;
 use std::collections::HashMap;
 
@@ -56,7 +56,7 @@ impl ErrorHandler for StandardErrorHandler {
     fn warn_no_loc(&mut self, message: String) {
         self.errors.push(Error {
             loc: None,
-            t: ErrorType::Any,
+            t: ErrorKind::Normal,
             level: Level::Warning,
             message,
         })
@@ -66,7 +66,7 @@ impl ErrorHandler for StandardErrorHandler {
     fn warn(&mut self, loc: Location, message: String) {
         self.errors.push(Error {
             loc: Some(loc),
-            t: ErrorType::Any,
+            t: ErrorKind::Normal,
             level: Level::Warning,
             message,
         })
@@ -77,7 +77,7 @@ impl ErrorHandler for StandardErrorHandler {
         self.has_error = true;
         self.errors.push(Error {
             loc: None,
-            t: ErrorType::Any,
+            t: ErrorKind::Normal,
             level: Level::Error,
             message,
         })
@@ -88,7 +88,7 @@ impl ErrorHandler for StandardErrorHandler {
         self.has_error = true;
         self.errors.push(Error {
             loc: Some(loc),
-            t: ErrorType::Any,
+            t: ErrorKind::Normal,
             level: Level::Error,
             message,
         })
@@ -99,7 +99,7 @@ impl ErrorHandler for StandardErrorHandler {
         self.has_error = true;
         self.errors.push(Error {
             loc: Some(loc),
-            t: ErrorType::Internal,
+            t: ErrorKind::Internal,
             level: Level::Error,
             message,
         })
@@ -110,7 +110,7 @@ impl ErrorHandler for StandardErrorHandler {
         self.has_error = true;
         self.errors.push(Error {
             loc: None,
-            t: ErrorType::Internal,
+            t: ErrorKind::Internal,
             level: Level::Error,
             message,
         })
@@ -187,7 +187,7 @@ impl StandardErrorHandler {
                 if let Some(err) = errors.first() {
                     let err = Error {
                         loc: None,
-                        t: ErrorType::Internal,
+                        t: ErrorKind::Internal,
                         level: Level::Error,
                         message: format!(
                             "Found errors with unknown file ID '{}': '{}'.",
@@ -297,8 +297,8 @@ impl StandardErrorHandler {
 
 fn get_color(e: &Error) -> &'static str {
     match e.t {
-        ErrorType::Internal => MAGENTA,
-        ErrorType::Any => match e.level {
+        ErrorKind::Internal => MAGENTA,
+        ErrorKind::Normal => match e.level {
             Level::Error => RED,
             Level::Warning => YELLOW,
         },
@@ -307,8 +307,8 @@ fn get_color(e: &Error) -> &'static str {
 
 fn get_err_name(e: &Error) -> &'static str {
     match e.t {
-        ErrorType::Internal => "Internal",
-        ErrorType::Any => match e.level {
+        ErrorKind::Internal => "Internal",
+        ErrorKind::Normal => match e.level {
             Level::Error => "Error",
             Level::Warning => "Warning",
         },

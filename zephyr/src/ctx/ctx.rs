@@ -6,12 +6,12 @@ use super::known_functions;
 use super::known_functions::{
     KnownFunctionPaths, KnownFunctions, KnownStructPaths, KnownStructs, KnownValues,
 };
-use super::utils::{ModuleDeclarations, ModuleKind, ModulePath, PreparedFile};
+use super::utils::ModuleDeclarations;
 use crate::ast;
 use crate::error::ErrorHandler;
 use crate::hir;
 use crate::mir;
-use crate::resolver::Resolver;
+use crate::resolver::{ModuleKind, ModulePath, PreparedFile, Resolver};
 use crate::wasm;
 
 pub type ModId = u32;
