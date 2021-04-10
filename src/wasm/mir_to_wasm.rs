@@ -79,12 +79,12 @@ impl<'a> LocalState<'a> {
 }
 
 /// Convert MIR to the final wasm output.
-pub struct Compiler<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Compiler<'err, E: ErrorHandler> {
+    err: &'err mut E,
 }
 
-impl<'a> Compiler<'a> {
-    pub fn new(error_handler: &mut ErrorHandler) -> Compiler {
+impl<'err, E: ErrorHandler> Compiler<'err, E> {
+    pub fn new(error_handler: &'err mut E) -> Self {
         Compiler { err: error_handler }
     }
 

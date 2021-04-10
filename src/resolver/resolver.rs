@@ -7,6 +7,6 @@ pub trait Resolver {
     fn resolve_module(
         &self,
         module: &ModulePath,
-        err: &mut ErrorHandler,
+        err: &mut impl ErrorHandler,
     ) -> Result<(Vec<PreparedFile>, ModuleKind), ()>;
 }

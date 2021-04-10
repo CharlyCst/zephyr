@@ -10,19 +10,15 @@ enum Declaration {
 }
 
 /// Zephyr assembly parser, it consumes tokens to produces MIR.
-pub struct Parser<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Parser<'err, E: ErrorHandler> {
+    err: &'err mut E,
     tokens: Vec<Token>,
     current: usize, // current token index
     package_id: u32,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(
-        tokens: Vec<Token>,
-        package_id: u32,
-        error_handler: &'a mut ErrorHandler,
-    ) -> Parser<'a> {
+impl<'err, E: ErrorHandler> Parser<'err, E> {
+    pub fn new(tokens: Vec<Token>, package_id: u32, error_handler: &'err mut E) -> Self {
         Parser {
             err: error_handler,
             tokens,

@@ -18,20 +18,20 @@ enum Type {
     F64,
 }
 
-pub struct AsmValidator<'err, 'a, 'ctx, 'ty> {
-    err: &'err mut ErrorHandler,
+pub struct AsmValidator<'err, 'a, 'ctx, 'ty, E: ErrorHandler> {
+    err: &'err mut E,
     checker: &'a mut TypeChecker<'ctx, 'ty>,
     fun_types: &'a HashMap<FunId, TypeVar>,
     names: &'a NameStore,
     funs: &'a Vec<Function>,
 }
 
-impl<'err, 'a, 'ctx, 'ty> AsmValidator<'err, 'a, 'ctx, 'ty> {
+impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> AsmValidator<'err, 'a, 'ctx, 'ty, E> {
     pub fn new(
         prog: &'a ResolvedProgram,
         checker: &'a mut TypeChecker<'ctx, 'ty>,
-        error_handler: &'err mut ErrorHandler,
-    ) -> AsmValidator<'err, 'a, 'ctx, 'ty> {
+        error_handler: &'err mut E,
+    ) -> Self {
         AsmValidator {
             err: error_handler,
             checker,

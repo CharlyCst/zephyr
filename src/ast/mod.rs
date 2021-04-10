@@ -25,7 +25,7 @@ pub fn get_ast(
     f_id: u16,
     mod_id: u32,
     kind: Kind,
-    error_handler: &mut ErrorHandler,
+    error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
     match kind {
@@ -37,7 +37,7 @@ pub fn get_ast(
 fn get_zephyr_ast(
     f_id: u16,
     mod_id: u32,
-    error_handler: &mut ErrorHandler,
+    error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
     if verbose {
@@ -69,7 +69,7 @@ fn get_zephyr_ast(
 fn get_asm_ast(
     f_id: u16,
     mod_id: u32,
-    error_handler: &mut ErrorHandler,
+    error_handler: &mut impl ErrorHandler,
     verbose: bool,
 ) -> ast::Program {
     if verbose {

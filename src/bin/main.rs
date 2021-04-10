@@ -2,11 +2,11 @@
 //!
 //! This file define de CLI of the zephyr compiler, it is build on top of the compiler library.
 
+use clap;
 use std::fs;
 use std::path;
-use clap;
 
-use zephyr::{ErrorHandler, StandardResolver, Ctx, ModulePath};
+use zephyr::{Ctx, ErrorHandler, ModulePath, StandardErrorHandler, StandardResolver};
 
 use clap::Clap;
 use std::path::PathBuf;
@@ -35,7 +35,7 @@ pub struct Config {
 fn main() {
     let config = Config::parse();
     let mut resolver = StandardResolver::new();
-    let mut err = ErrorHandler::new_no_file();
+    let mut err = StandardErrorHandler::new_no_file();
     let mut ctx = Ctx::new();
     ctx.set_verbose(config.verbose);
 

@@ -6,8 +6,8 @@ const RADIX: u32 = 10;
 
 /// Stores source code as a vector of chars and provides functions to convert
 /// the source code to a list of tokens.
-pub struct Scanner<'a> {
-    err: &'a mut ErrorHandler,
+pub struct Scanner<'a, E: ErrorHandler> {
+    err: &'a mut E,
     f_id: u16,
     code: Vec<char>,
     start: usize,
@@ -17,9 +17,9 @@ pub struct Scanner<'a> {
     parenthesis_count: i32,
 }
 
-impl<'a> Scanner<'a> {
+impl<'a, E: ErrorHandler> Scanner<'a, E> {
     // f_id MUST exist, no check performed.
-    pub fn new(f_id: u16, error_handler: &'a mut ErrorHandler) -> Scanner<'a> {
+    pub fn new(f_id: u16, error_handler: &'a mut E) -> Self {
         let keywords: HashMap<String, TokenType> = [
             (String::from("as"), TokenType::As),
             (String::from("else"), TokenType::Else),
