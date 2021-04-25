@@ -1,0 +1,4 @@
+standalone module missing_runtime_keyword
+
+abstract Oops {}
+

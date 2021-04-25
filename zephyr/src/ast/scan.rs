@@ -23,6 +23,7 @@ impl<'a, E: ErrorHandler> Scanner<'a, E> {
     // f_id MUST exist, no check performed.
     pub fn new(f_id: FileId, error_handler: &'a mut E) -> Self {
         let keywords: HashMap<String, TokenType> = [
+            (String::from("abstract"), TokenType::Abstract),
             (String::from("as"), TokenType::As),
             (String::from("else"), TokenType::Else),
             (String::from("expose"), TokenType::Expose),

@@ -150,6 +150,7 @@ pub enum Declaration {
     Expose(Expose),
     Imports(Imports),
     Struct(Struct),
+    AbstractRuntime(AbstractRuntime),
 }
 
 pub struct Program {
@@ -189,6 +190,12 @@ pub struct Module {
 
 pub struct Imports {
     pub from: String,
+    pub prototypes: Vec<FunctionPrototype>,
+    pub loc: Location,
+}
+
+pub struct AbstractRuntime {
+    pub name: String,
     pub prototypes: Vec<FunctionPrototype>,
     pub loc: Location,
 }

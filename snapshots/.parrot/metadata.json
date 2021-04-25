@@ -222,6 +222,17 @@
       "exit_code": 65,
       "stdout": "non-tuple.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr --check missing_runtime_keyword.zph",
+      "name": "missing-runtime-keyword",
+      "description": "At the time being 'abstract' must always be followed by the 'runtime' keyword\n#parser",
+      "tags": [
+        "parser"
+      ],
+      "exit_code": 65,
+      "stdout": "missing-runtime-keyword.out",
+      "stderr": null
     }
   ]
 }

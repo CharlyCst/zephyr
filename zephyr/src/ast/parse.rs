@@ -26,10 +26,11 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
     /// (functions, use, expose)
     pub fn parse(&mut self) -> Program {
         let mut funs = Vec::new();
+        let mut used = Vec::new();
         let mut structs = Vec::new();
         let mut exposed = Vec::new();
         let mut imports = Vec::new();
-        let mut used = Vec::new();
+        let mut runtimes = Vec::new();
 
         let module = match self.module() {
             Ok(pkg) => pkg,
@@ -59,13 +60,14 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
                     Declaration::Use(uses) => used.push(uses),
                     Declaration::Expose(expose) => exposed.push(expose),
                     Declaration::Imports(import) => imports.push(import),
+                    Declaration::AbstractRuntime(runtime) => runtimes.push(runtime),
                 },
                 Err(()) => self.err.silent_report(),
             }
         }
 
         Program {
-            module: module,
+            module,
             funs,
             structs,
             exposed,
@@ -273,6 +275,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             TokenType::Expose => Ok(Declaration::Expose(self.expose()?)),
             TokenType::From => Ok(Declaration::Imports(self.imports()?)),
             TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
+            TokenType::Abstract => Ok(Declaration::AbstractRuntime(self.runtime()?)),
             TokenType::Pub => match self.peekpeek().t {
                 TokenType::Fun => Ok(Declaration::Function(self.function()?)),
                 TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
@@ -529,6 +532,40 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             t,
             loc,
         })
+    }
+
+    fn runtime(&mut self) -> Result<AbstractRuntime, ()> {
+        self.next_match_report_synchronize_decl(
+            TokenType::Abstract,
+            "Expect 'abstract' keyword when declaring an abstract runtime",
+        )?;
+        self.next_match_report_synchronize_decl(
+            TokenType::Runtime,
+            "Expect 'runtime' keyword for an 'abstract runtime' declaration",
+        )?;
+        let loc = self.peek().loc;
+        let name = self.expect_identifier("Expect identifier after 'runtime' keyword")?;
+        let prototypes = self.runtime_block()?;
+        self.consume_semi_colon();
+        Ok(AbstractRuntime {
+            name,
+            prototypes,
+            loc,
+        })
+    }
+
+    fn runtime_block(&mut self) -> Result<Vec<FunctionPrototype>, ()> {
+        let entries = Vec::new();
+        self.next_match_report_synchronize_decl(
+            TokenType::LeftBrace,
+            "Expected a left brace '{' to open struct definition block",
+        )?;
+        // TODO
+        self.next_match_report(
+            TokenType::RightBrace,
+            "Expect a right brace ('}') after a struct declaration",
+        )?;
+        Ok(entries)
     }
 
     /// Parses the 'function' grammar element

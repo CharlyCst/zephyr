@@ -1,0 +1,9 @@
+standalone module empty_art
+
+expose main as _start
+
+abstract runtime Empty {}
+
+fun main(): i32 {
+	return 42
+}

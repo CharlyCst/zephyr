@@ -5,9 +5,10 @@
 The grammar is defined as follow, and parsed in recursive descent fashion.
 
 ```
-program        -> package declaration* EOF
+program        -> module declaration* EOF
 
-package        -> "standalone"? "runtime"? "package" IDENTIFIER ";"
+module         -> "standalone"? module_kind IDENTIFIER ";"
+module_kind    -> "runtime"? "module"
 
 declaration    -> use | expose | function | struct | imports
 use            -> "use" path ( "as" IDENTIFIER)? ";"
@@ -15,6 +16,7 @@ expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 imports        -> "from" IDENTIFIER "import" import_block ";"
 function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
 struct         -> "pub"? struct IDENTIFIER struct_block  ";"
+runtime        -> "abstract" "runtime" IDENTIFIER runtime_block ";"
 
 import_block   -> "{" import* "}"
 import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
@@ -24,6 +26,9 @@ struct_field   -> "pub"? IDENTIFIER ":" type
 
 parameters     -> IDENTIFIER ":" type ( "," IDENTIFIER ":" type )* ","?
 result         -> (":" type)?
+
+runtime_block  -> "{" runtime_entry* "}"
+runtime_entry  -> "fun" IDENTIFIER "(" parameters ? ")" result ";"
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt
@@ -70,9 +75,9 @@ It is worth noting that there is no semi-colon `;` in Zephyr, but some are inser
 This grammar is used by the zasm front end, it is much simpler and closer to wasm. Its main purpose is to ease the use of low level wasm instructions needed for the runtime and standard library.
 
 ```
-program     -> package declaration* EOF
+program     -> module declaration* EOF
 
-package     -> "package" IDENTIFIER ";"
+module      -> "module" IDENTIFIER ";"
 declaration -> expose | function
 expose      -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 function    -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"

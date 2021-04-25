@@ -40,6 +40,7 @@ pub enum TokenType {
     StringLit(String),
 
     // Keywords
+    Abstract,
     As,
     Else,
     Expose,

@@ -1,0 +1,4 @@
+    3 | abstract Oops {}
+                 [31m^^^^[0m
+[31m[1mError:[0m[31m Expect 'runtime' keyword for an 'abstract runtime' declaration[0m
+
