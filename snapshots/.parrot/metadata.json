@@ -233,6 +233,18 @@
       "exit_code": 65,
       "stdout": "missing-runtime-keyword.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr --check missing_runtime_name.zph",
+      "name": "missing-runtime-name",
+      "description": "When the name of a runtime interface is missing the parser should raise an error.\nTODO: currently the parser raises false errors because of bad synchronization, we should fix that...\n#parser #todo",
+      "tags": [
+        "parser",
+        "todo"
+      ],
+      "exit_code": 65,
+      "stdout": "missing-runtime-name.out",
+      "stderr": null
     }
   ]
 }

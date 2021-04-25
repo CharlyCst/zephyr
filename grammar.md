@@ -14,21 +14,22 @@ declaration    -> use | expose | function | struct | imports
 use            -> "use" path ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 imports        -> "from" IDENTIFIER "import" import_block ";"
-function       -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result block ";"
+function       -> "pub"? prototype block ";"
 struct         -> "pub"? struct IDENTIFIER struct_block  ";"
 runtime        -> "abstract" "runtime" IDENTIFIER runtime_block ";"
 
 import_block   -> "{" import* "}"
-import         -> "pub"? "fun" IDENTIFIER "(" parameters ? ")" result ("as" IDENTIFIER) ";"
+import         -> "pub"? prototype ("as" IDENTIFIER) ";"
 
 struct_block   -> "{" ( struct_field ( ("," | ";") struct_field )* ("," | ";")? )? "}"
 struct_field   -> "pub"? IDENTIFIER ":" type
 
+prototype      -> "fun" IDENTIFIER "(" parameters ? ")" result
 parameters     -> IDENTIFIER ":" type ( "," IDENTIFIER ":" type )* ","?
 result         -> (":" type)?
 
-runtime_block  -> "{" runtime_entry* "}"
-runtime_entry  -> "fun" IDENTIFIER "(" parameters ? ")" result ";"
+runtime_block  -> "{" runtime_fun* "}"
+runtime_fun    -> prototype ";"
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt

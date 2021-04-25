@@ -1,0 +1,12 @@
+    3 | abstract runtime {
+                         [31m^[0m
+[31m[1mError:[0m[31m Expect identifier after 'runtime' keyword[0m
+
+    4 |     fun test(a: i32, b: i32): i32
+                [31m^^^^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose' or 'from ... import'.[0m
+
+    5 | }
+        [31m^[0m
+[31m[1mError:[0m[31m Top level declaration must be one of 'function', 'use', 'expose' or 'from ... import'.[0m
+

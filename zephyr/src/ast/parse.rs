@@ -30,7 +30,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let mut structs = Vec::new();
         let mut exposed = Vec::new();
         let mut imports = Vec::new();
-        let mut runtimes = Vec::new();
+        let mut abstract_runtimes = Vec::new();
 
         let module = match self.module() {
             Ok(pkg) => pkg,
@@ -60,7 +60,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
                     Declaration::Use(uses) => used.push(uses),
                     Declaration::Expose(expose) => exposed.push(expose),
                     Declaration::Imports(import) => imports.push(import),
-                    Declaration::AbstractRuntime(runtime) => runtimes.push(runtime),
+                    Declaration::AbstractRuntime(runtime) => abstract_runtimes.push(runtime),
                 },
                 Err(()) => self.err.silent_report(),
             }
@@ -73,6 +73,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             exposed,
             imports,
             used,
+            abstract_runtimes,
         }
     }
 
@@ -409,36 +410,11 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
     /// Parses the 'import' grammar element
     fn import(&mut self) -> Result<FunctionPrototype, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        self.next_match_report_synchronize_decl(TokenType::Fun, "Unexpected function prototype")?;
-        let loc = self.peek().loc;
-        let ident = if let Token {
-            t: TokenType::Identifier(ref ident),
-            ..
-        } = self.advance()
-        {
-            ident.clone()
-        } else {
-            self.err.report(
-                loc,
-                String::from("Expected a function identifier after 'import'"),
-            );
-            self.synchronize_decl();
-            return Err(());
-        };
-        self.next_match_report_synchronize_decl(
-            TokenType::LeftPar,
-            "Parenthesis are expected after import identifier",
-        )?;
-        let params = self.parameters();
-        self.next_match_report_synchronize_decl(
-            TokenType::RightPar,
-            "Expected a right parenthesis ')'",
-        )?;
-        let result = self.result();
-        let alias = if self.next_match(TokenType::As) {
+        let mut proto = self.prototype()?;
+        if self.next_match(TokenType::As) {
             let token = self.advance();
             if let TokenType::Identifier(ref ident) = token.t {
-                Some(ident.clone())
+                proto.alias = Some(ident.clone());
             } else {
                 let loc = token.loc;
                 self.err.report(
@@ -447,19 +423,12 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
                 );
                 return Err(());
             }
-        } else {
-            None
-        };
+        }
         let end = self.peek().loc;
         self.consume_semi_colon();
-        Ok(FunctionPrototype {
-            ident,
-            params,
-            result,
-            alias,
-            is_pub,
-            loc: loc.merge(end),
-        })
+        proto.loc = proto.loc.merge(end);
+        proto.is_pub = is_pub;
+        Ok(proto)
     }
 
     /// Parses the 'struct" grammar element
@@ -555,39 +524,28 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
     }
 
     fn runtime_block(&mut self) -> Result<Vec<FunctionPrototype>, ()> {
-        let entries = Vec::new();
         self.next_match_report_synchronize_decl(
             TokenType::LeftBrace,
-            "Expected a left brace '{' to open struct definition block",
+            "Expected a left brace '{' to open abstract runtime definition block",
         )?;
-        // TODO
-        self.next_match_report(
-            TokenType::RightBrace,
-            "Expect a right brace ('}') after a struct declaration",
-        )?;
+        let mut entries = Vec::new();
+        while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
+            entries.push(self.runtime_fun()?);
+        }
         Ok(entries)
+    }
+
+    fn runtime_fun(&mut self) -> Result<FunctionPrototype, ()> {
+        let proto = self.prototype()?;
+        self.consume_semi_colon();
+        Ok(proto)
     }
 
     /// Parses the 'function' grammar element
     fn function(&mut self) -> Result<Function, ()> {
         let is_pub = self.next_match(TokenType::Pub);
-        self.next_match_report_synchronize_decl(
-            TokenType::Fun,
-            "Unexpected top level declaration",
-        )?;
-        let loc = self.peek().loc;
-        let ident = self.expect_identifier("Expected identifier after 'fun' keyword")?;
-        self.next_match_report_synchronize_decl(
-            TokenType::LeftPar,
-            "Parenthesis are expected after function declaration",
-        )?;
-        let params = self.parameters();
-        self.next_match_report_synchronize_decl(
-            TokenType::RightPar,
-            "Parenthesis are expected after function declaration",
-        )?;
-        let result = self.result();
-        let error = if result.is_some() {
+        let proto = self.prototype()?;
+        let error = if proto.result.is_some() {
             "A left brace '{' is expected at the beginning of the function body."
         } else {
             "Expected a type (': MyType') or a brace ('{')."
@@ -596,12 +554,51 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let block = self.block()?;
         self.consume_semi_colon();
         Ok(Function {
+            ident: proto.ident,
+            params: proto.params,
+            result: proto.result,
+            body: Body::Zephyr(block),
+            is_pub,
+            loc: proto.loc,
+        })
+    }
+
+    /// Parses the 'prototype' grammar element.
+    /// 'pub' is set to false and 'alias' to None.
+    fn prototype(&mut self) -> Result<FunctionPrototype, ()> {
+        self.next_match_report_synchronize_decl(TokenType::Fun, "Expected a function definition")?;
+        let loc = self.peek().loc;
+        let ident = if let Token {
+            t: TokenType::Identifier(ref ident),
+            ..
+        } = self.advance()
+        {
+            ident.clone()
+        } else {
+            self.err.report(
+                loc,
+                String::from("Expected a function identifier after 'import'"),
+            );
+            self.synchronize_decl();
+            return Err(());
+        };
+        self.next_match_report_synchronize_decl(
+            TokenType::LeftPar,
+            "Parenthesis are expected after import identifier",
+        )?;
+        let params = self.parameters();
+        self.next_match_report_synchronize_decl(
+            TokenType::RightPar,
+            "Expected a right parenthesis ')'",
+        )?;
+        let result = self.result();
+        Ok(FunctionPrototype {
             ident,
             params,
             result,
-            body: Body::Zephyr(block),
-            is_pub,
             loc,
+            alias: None,
+            is_pub: false,
         })
     }
 

@@ -161,6 +161,7 @@ pub struct Program {
     pub exposed: Vec<Expose>,
     ///Functions imported from the host runtime.
     pub imports: Vec<Imports>,
+    pub abstract_runtimes: Vec<AbstractRuntime>,
     pub used: Vec<Use>,
 }
 

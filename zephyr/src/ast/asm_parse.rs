@@ -64,6 +64,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             structs: vec![],
             imports: vec![],
             used: vec![],
+            abstract_runtimes: vec![],
         }
     }
 

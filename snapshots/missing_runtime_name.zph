@@ -1,0 +1,6 @@
+standalone module missing_runtime_name
+
+abstract runtime {
+    fun test(a: i32, b: i32): i32
+}
+
