@@ -1,0 +1,10 @@
+standalone module empty_impl
+expose main as _start
+
+abstract runtime empty {}
+
+impl empty {}
+
+fun main(): i32 {
+	return 42
+}

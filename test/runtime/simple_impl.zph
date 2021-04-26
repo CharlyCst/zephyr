@@ -1,0 +1,17 @@
+standalone module simple_art
+
+expose main as _start
+
+abstract runtime simple {
+    fun test(a: i32, b: i32): i32
+}
+
+impl simple {
+    fun test(a: i32, b: i32): i32 {
+        return a + b
+    }
+}
+
+fun main(): i32 {
+    return 42
+}

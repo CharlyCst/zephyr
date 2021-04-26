@@ -10,13 +10,14 @@ program        -> module declaration* EOF
 module         -> "standalone"? module_kind IDENTIFIER ";"
 module_kind    -> "runtime"? "module"
 
-declaration    -> use | expose | function | struct | imports
+declaration    -> use | expose | function | struct | imports | runtime | impl_runtime
 use            -> "use" path ( "as" IDENTIFIER)? ";"
 expose         -> "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 imports        -> "from" IDENTIFIER "import" import_block ";"
 function       -> "pub"? prototype block ";"
 struct         -> "pub"? struct IDENTIFIER struct_block  ";"
 runtime        -> "abstract" "runtime" IDENTIFIER runtime_block ";"
+impl_runtime   -> "impl" path impl_rt_block ";"
 
 import_block   -> "{" import* "}"
 import         -> "pub"? prototype ("as" IDENTIFIER) ";"
@@ -30,6 +31,9 @@ result         -> (":" type)?
 
 runtime_block  -> "{" runtime_fun* "}"
 runtime_fun    -> prototype ";"
+
+impl_rt_block  -> "{" impl_rt_decl* "}"
+impl_rt_decl   -> function | use
 
 statement      -> expr_stmt | assign_stmt | let_stmt | if_stmt
                 | while_stmt | return_stmt

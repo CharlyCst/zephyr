@@ -1,0 +1,9 @@
+standalone module unnecessary_pub_in_impl
+
+abstract runtime simple {
+    fun foo()
+}
+
+impl simple {
+    pub fun foo() {}
+}

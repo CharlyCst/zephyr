@@ -151,6 +151,12 @@ pub enum Declaration {
     Imports(Imports),
     Struct(Struct),
     AbstractRuntime(AbstractRuntime),
+    Impl(RuntimeImplementation),
+}
+
+pub enum ImplRuntimeDeclaration {
+    Use(Use),
+    Function(Function),
 }
 
 pub struct Program {
@@ -199,6 +205,10 @@ pub struct AbstractRuntime {
     pub name: String,
     pub prototypes: Vec<FunctionPrototype>,
     pub loc: Location,
+}
+
+pub struct RuntimeImplementation {
+    pub abstract_runtime: Path,
 }
 
 pub struct Struct {

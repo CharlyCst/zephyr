@@ -76,6 +76,7 @@ fn main() {
     let _ = ctx.add_module(module, &mut err, &mut resolver);
     err.flush_and_exit_if_err();
     if config.check {
+        err.flush(); // flush warnings
         std::process::exit(0);
     }
     let wasm = match ctx.get_wasm(&mut err, &resolver) {

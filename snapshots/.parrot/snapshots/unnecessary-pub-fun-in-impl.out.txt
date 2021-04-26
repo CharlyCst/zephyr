@@ -1,0 +1,4 @@
+    8 |     pub fun foo() {}
+            [33m^^^[0m
+[33m[1mWarning:[0m[33m Unnecessary qualifier: functions of the interface are automatically public[0m
+

@@ -31,6 +31,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let mut exposed = Vec::new();
         let mut imports = Vec::new();
         let mut abstract_runtimes = Vec::new();
+        let mut runtime_implementations = Vec::new();
 
         let module = match self.module() {
             Ok(pkg) => pkg,
@@ -61,6 +62,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
                     Declaration::Expose(expose) => exposed.push(expose),
                     Declaration::Imports(import) => imports.push(import),
                     Declaration::AbstractRuntime(runtime) => abstract_runtimes.push(runtime),
+                    Declaration::Impl(runtime_impl) => runtime_implementations.push(runtime_impl),
                 },
                 Err(()) => self.err.silent_report(),
             }
@@ -277,6 +279,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             TokenType::From => Ok(Declaration::Imports(self.imports()?)),
             TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
             TokenType::Abstract => Ok(Declaration::AbstractRuntime(self.runtime()?)),
+            TokenType::Impl => Ok(Declaration::Impl(self.impl_runtime()?)),
             TokenType::Pub => match self.peekpeek().t {
                 TokenType::Fun => Ok(Declaration::Function(self.function()?)),
                 TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
@@ -539,6 +542,55 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let proto = self.prototype()?;
         self.consume_semi_colon();
         Ok(proto)
+    }
+
+    fn impl_runtime(&mut self) -> Result<RuntimeImplementation, ()> {
+        self.next_match_report_synchronize_decl(
+            TokenType::Impl,
+            "Expected 'impl' keyword when implementing an abstract runtime interface",
+        )?;
+        let abstract_runtime = self.path()?;
+        let _ = self.impl_runtime_block()?;
+        self.consume_semi_colon();
+        Ok(RuntimeImplementation { abstract_runtime })
+    }
+
+    fn impl_runtime_block(&mut self) -> Result<Vec<ImplRuntimeDeclaration>, ()> {
+        self.next_match_report_synchronize_decl(
+            TokenType::LeftBrace,
+            "Expected a left brace '{' to open a runtime implementation block",
+        )?;
+        let mut declarations = Vec::new();
+        while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
+            declarations.push(self.impl_runtime_declaration()?);
+        }
+        Ok(declarations)
+    }
+
+    fn impl_runtime_declaration(&mut self) -> Result<ImplRuntimeDeclaration, ()> {
+        match self.peek().t {
+            TokenType::Fun => Ok(ImplRuntimeDeclaration::Function(self.function()?)),
+            TokenType::Use => Ok(ImplRuntimeDeclaration::Use(self._use()?)),
+            TokenType::Pub => match self.peekpeek().t {
+                TokenType::Fun => {
+                    self.err.warn(
+                        self.peek().loc,
+                        String::from("Unnecessary qualifier: functions of the interface are automatically public"),
+                    );
+                    Ok(ImplRuntimeDeclaration::Function(self.function()?))
+                }
+                _ => {
+                    self.err.report(self.peekpeek().loc, String::from("Only function declarations and use statements are allowed inside runtime implementation"));
+                    self.synchronize_decl();
+                    Err(())
+                }
+            },
+            _ => {
+                self.err.report(self.peek().loc ,String::from("Only function declarations and use statements are allowed inside runtime implementation"));
+                self.synchronize_decl();
+                Err(())
+            }
+        }
     }
 
     /// Parses the 'function' grammar element

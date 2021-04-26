@@ -177,7 +177,7 @@
     },
     {
       "cmd": "../target/debug/zephyr incomplete_struct_field.zph",
-      "name": "incomplete_struct_field",
+      "name": "incomplete-struct-field",
       "description": "Should raise an explicit error when an expression is missing after a field's colon \":\".\n#struct #error",
       "tags": [
         "struct",
@@ -244,6 +244,18 @@
       ],
       "exit_code": 65,
       "stdout": "missing-runtime-name.out",
+      "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr unnecessary_pub_in_impl.zph --check",
+      "name": "unnecessary-pub-fun-in-impl",
+      "description": "Functions in runtime implementation does not need to be marked as public, because functions of the interface are automatically made public and the other can't be called from outside the implementation. The compiler should issue a simple #warning.\n#parser",
+      "tags": [
+        "warning",
+        "parser"
+      ],
+      "exit_code": 0,
+      "stdout": "unnecessary-pub-fun-in-impl.out",
       "stderr": null
     }
   ]

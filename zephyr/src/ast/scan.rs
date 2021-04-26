@@ -31,6 +31,7 @@ impl<'a, E: ErrorHandler> Scanner<'a, E> {
             (String::from("from"), TokenType::From),
             (String::from("fun"), TokenType::Fun),
             (String::from("if"), TokenType::If),
+            (String::from("impl"), TokenType::Impl),
             (String::from("import"), TokenType::Import),
             (String::from("let"), TokenType::Let),
             (String::from("module"), TokenType::Module),
