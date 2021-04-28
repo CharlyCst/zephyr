@@ -7,7 +7,7 @@ use crate::mir::Value as MirValue;
 use std::collections::HashMap;
 use std::fmt;
 
-pub use super::store::{DataId, FunId, StructId, TupleId, TypeId};
+pub use super::store::{AbsRuntimeId, DataId, FunId, StructId, TupleId, TypeId};
 pub use super::type_check::TypeVar;
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
@@ -15,6 +15,7 @@ pub type NameId = usize;
 pub type DataStore = Store<DataId, Data>;
 pub type StructStore = Store<StructId, Struct>;
 pub type FunStore = Store<FunId, Function>;
+pub type AbsRuntimeStore = Store<AbsRuntimeId, AbstractRuntime>;
 
 /// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
@@ -31,6 +32,7 @@ pub struct ResolvedProgram {
 pub enum ValueKind {
     Function(FunId, TypeVar),
     Module(ModId),
+    AbstractRuntime(AbsRuntimeId),
 }
 
 /// All the kind of types that can be found in the Type Namespace.
@@ -89,6 +91,12 @@ pub struct Struct {
 pub struct StructField {
     pub is_pub: bool,
     pub t_var: TypeVar,
+    pub loc: Location,
+}
+
+pub struct AbstractRuntime {
+    pub ident: String,
+    pub funs: HashMap<String, (FunId, TypeVar)>,
     pub loc: Location,
 }
 
@@ -198,6 +206,10 @@ pub enum Expression {
         mod_id: ModId,
         loc: Location,
     },
+    AbstractRuntime {
+        abs_runtime_id: AbsRuntimeId,
+        loc: Location,
+    },
     Binary {
         expr_left: Box<Expression>,
         binop: BinaryOperator,
@@ -244,6 +256,7 @@ impl Expression {
             Expression::Function { loc, .. } => *loc,
             Expression::Access { loc, .. } => *loc,
             Expression::Namespace { loc, .. } => *loc,
+            Expression::AbstractRuntime { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,

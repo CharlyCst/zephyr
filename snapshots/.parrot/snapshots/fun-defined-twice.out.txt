@@ -1,4 +1,4 @@
     4 | fun twin() {}
             [31m^^^^[0m
-[31m[1mError:[0m[31m A function 'twin' already exists[0m
+[31m[1mError:[0m[31m Duplicate identifier: a function 'twin' already exists[0m
 

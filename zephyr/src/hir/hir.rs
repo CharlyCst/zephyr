@@ -171,6 +171,7 @@ pub struct Import {
 pub enum FunKind {
     Fun(Function),
     Extern(FunctionPrototype),
+    Abstract(AbstractFunction),
 }
 
 pub struct Function {
@@ -192,6 +193,40 @@ pub struct FunctionPrototype {
     pub is_pub: bool,
     pub loc: Location,
     pub fun_id: FunId,
+}
+
+pub struct AbstractFunction {
+    pub ident: String,
+    pub t: FunctionType,
+    pub loc: Location,
+    pub fun_id: FunId,
+    // TODO: Reference to abstract runtime
+}
+
+impl FunKind {
+    pub fn t(&self) -> &FunctionType {
+        match self {
+            FunKind::Fun(fun) => &fun.t,
+            FunKind::Extern(fun) => &fun.t,
+            FunKind::Abstract(fun) => &fun.t,
+        }
+    }
+
+    pub fn id(&self) -> FunId {
+        match self {
+            FunKind::Fun(fun) => fun.fun_id,
+            FunKind::Extern(fun) => fun.fun_id,
+            FunKind::Abstract(fun) => fun.fun_id,
+        }
+    }
+
+    pub fn loc(&self) -> Location {
+        match self {
+            FunKind::Fun(fun) => fun.loc,
+            FunKind::Extern(fun) => fun.loc,
+            FunKind::Abstract(fun) => fun.loc,
+        }
+    }
 }
 
 #[derive(Clone)]

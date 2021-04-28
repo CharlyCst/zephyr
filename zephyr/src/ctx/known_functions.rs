@@ -9,10 +9,10 @@
 //! ```ignore
 //! malloc: i32 -> i32
 //! ```
-use crate::resolver::ModulePath;
 use crate::error::ErrorHandler;
 use crate::hir::known_ids::*;
 use crate::hir::{FunId, FunKind, ScalarType, Struct, StructId, Type};
+use crate::resolver::ModulePath;
 
 const CORE: &str = "core";
 
@@ -85,15 +85,14 @@ impl KnownStructPaths {
 // —————————————————————————————— Validation ——————————————————————————————— //
 
 pub fn validate_malloc(fun: &FunKind, err: &mut impl ErrorHandler) -> Result<FunId, ()> {
-    let (fun_id, loc, params, ret) = match fun {
-        FunKind::Fun(fun) => (fun.fun_id, fun.loc, &fun.t.params, &fun.t.ret),
-        FunKind::Extern(fun) => (fun.fun_id, fun.loc, &fun.t.params, &fun.t.ret),
-    };
-    if params != &vec![Type::Scalar(ScalarType::I32)] {
+    let fun_id = fun.id();
+    let fun_t = fun.t();
+    let loc = fun.loc();
+    if fun_t.params != vec![Type::Scalar(ScalarType::I32)] {
         err.report_internal(loc, String::from("Unexpected types for malloc parameters"));
         return Err(());
     }
-    if ret.as_ref() != &Type::Scalar(ScalarType::I32) {
+    if fun_t.ret.as_ref() != &Type::Scalar(ScalarType::I32) {
         err.report_internal(loc, String::from("Unexpected return value in malloc"));
         return Err(());
     }

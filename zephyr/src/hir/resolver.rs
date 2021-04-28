@@ -1,5 +1,4 @@
-use super::hir;
-use super::hir::{FunKind, ScalarType};
+use super::hir::ScalarType;
 use super::names::*;
 use super::store::Store;
 use super::type_check::{TypeChecker, TypeVar};
@@ -7,24 +6,32 @@ use crate::ast;
 use crate::ctx::{Ctx, KnownValues, ModId, ModuleDeclarations, ValueDeclaration};
 use crate::error::{ErrorHandler, Location};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 type ValueNamespace = HashMap<String, ValueKind>;
 type TypeNamespace = HashMap<String, TypeVar>;
 
 struct State<'a, 'ctx, 'ty> {
-    names: NameStore,
-    data: DataStore,
-    funs: FunStore,
-    fun_types: HashMap<FunId, TypeVar>,
     contexts: Vec<HashMap<String, usize>>,
-    value_namespace: ValueNamespace,
-    type_namespace: TypeNamespace,
+    namespace: StateNamespace,
     imported_modules: HashMap<String, ModId>,
     checker: &'a mut TypeChecker<'ctx, 'ty>,
     known_values: &'a KnownValues,
     mod_id: ModId,
     ctx: &'ctx Ctx,
+}
+
+/// The global namespace of the module
+struct StateNamespace {
+    // Values & Types in the namespace
+    values: ValueNamespace,
+    types: TypeNamespace,
+    // The actual values & types
+    names: NameStore,
+    data: DataStore,
+    funs: FunStore,
+    fun_types: HashMap<FunId, TypeVar>,
+    abs_runtimes: AbsRuntimeStore,
 }
 
 impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
@@ -37,12 +44,15 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
     ) -> Self {
         let contexts = vec![HashMap::new()];
         Self {
-            data: Store::new(mod_id),
-            funs: Store::new(mod_id),
-            names: NameStore::new(),
-            fun_types: HashMap::new(),
-            value_namespace: HashMap::new(),
-            type_namespace: HashMap::new(),
+            namespace: StateNamespace {
+                values: HashMap::new(),
+                types: HashMap::new(),
+                data: Store::new(mod_id),
+                funs: Store::new(mod_id),
+                names: NameStore::new(),
+                fun_types: HashMap::new(),
+                abs_runtimes: Store::new(mod_id),
+            },
             checker,
             contexts,
             imported_modules,
@@ -73,16 +83,24 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
 
         let ident_key = ident.clone();
         let t_var = self.checker.fresh();
-        let n_id = self.names.fresh(ident, loc, t_var);
+        let n_id = self.namespace.names.fresh(ident, loc, t_var);
         self.add_in_context(ident_key, n_id);
         Ok((n_id, t_var))
+    }
+
+    /// Declare a name out of any context. This can be used e.g. for abstract runtimes which
+    /// doesn't depend on the global context.
+    pub fn declare_out_of_context(&mut self, ident: String, loc: Location) -> (NameId, TypeVar) {
+        let t_var = self.checker.fresh();
+        let n_id = self.namespace.names.fresh(ident, loc, t_var);
+        (n_id, t_var)
     }
 
     /// Return the corresponding Name if it is in context. This does not include used alias.
     pub fn find_in_context(&self, ident: &str) -> Option<&Name> {
         for ctx in self.contexts.iter().rev() {
             match ctx.get(ident) {
-                Some(id) => return Some(self.names.get(*id)),
+                Some(id) => return Some(self.namespace.names.get(*id)),
                 None => (),
             }
         }
@@ -97,7 +115,9 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
         };
     }
 
-    /// Maintain references to the function in all apropriate places.
+    /// Maintain references to a top level function in all apropriate places.
+    ///
+    /// !Warning: the function is not inserted in the function store.
     pub fn declare_fun(
         &mut self,
         ident: String,
@@ -106,13 +126,35 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
         loc: Location,
         err: &mut impl ErrorHandler,
     ) {
-        if let Some(prev) = self.value_namespace.get(&ident) {
+        if let Some(prev) = self.namespace.values.get(&ident) {
             Self::value_already_defined(&ident, &prev, loc, err);
             return;
         }
-        self.value_namespace
+        self.namespace
+            .values
             .insert(ident, ValueKind::Function(fun_id, t_var));
-        self.fun_types.insert(fun_id, t_var);
+        self.namespace.fun_types.insert(fun_id, t_var);
+    }
+
+    /// Declare a new abstract runtime.
+    pub fn declare_abstract_runtime(
+        &mut self,
+        ident: String,
+        abs_runtime: AbstractRuntime,
+        loc: Location,
+        err: &mut impl ErrorHandler,
+    ) {
+        if let Some(prev) = self.namespace.values.get(&ident) {
+            Self::value_already_defined(&ident, &prev, loc, err);
+            return;
+        }
+        let abs_runtime_id = self.namespace.abs_runtimes.fresh_id();
+        self.namespace
+            .values
+            .insert(ident, ValueKind::AbstractRuntime(abs_runtime_id));
+        self.namespace
+            .abs_runtimes
+            .insert(abs_runtime_id, abs_runtime);
     }
 
     /// Raises an error indicating that a value with the given identifier has already been declared.
@@ -122,15 +164,15 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
         loc: Location,
         err: &mut impl ErrorHandler,
     ) {
-        match value {
-            ValueKind::Function(_, _) => {
-                err.report(loc, format!("A function '{}' already exists", ident))
-            }
-            ValueKind::Module(_) => err.report(
-                loc,
-                String::from("A module of the same name already exists"),
-            ),
-        }
+        let other = match value {
+            ValueKind::Function(_, _) => "a function",
+            ValueKind::Module(_) => "a module",
+            ValueKind::AbstractRuntime(_) => "an abstract runtime",
+        };
+        err.report(
+            loc,
+            format!("Duplicate identifier: {} '{}' already exists", other, ident),
+        )
     }
 }
 
@@ -169,6 +211,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         );
         let structs = self.register_and_resolve_structs(ast_program.structs, &mut state);
         self.register_used_mods(ast_program.used, &mut state);
+        self.register_and_resolve_abstract_runtimes(ast_program.abstract_runtimes, &mut state);
         let declared_funs = self.register_functions(funs, &mut state);
 
         // Resolve exposed funs
@@ -185,9 +228,9 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             funs: named_funs,
             structs,
             imports,
-            data: state.data,
-            names: state.names,
-            fun_types: state.fun_types,
+            data: state.namespace.data,
+            names: state.namespace.names,
+            fun_types: state.namespace.fun_types,
             module: ast_program.module,
         }
     }
@@ -594,8 +637,9 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 }
                 ast::Value::Str { val, loc } => {
                     let len = val.len() as u64;
-                    let data_id = state.data.fresh_id();
+                    let data_id = state.namespace.data.fresh_id();
                     state
+                        .namespace
                         .data
                         .insert(data_id, Data::Str(data_id, val.into_bytes()));
                     let str_s_id = state.known_values.structs.str;
@@ -928,7 +972,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             state
                 .checker
                 .set_fun(fun_t_var, params, ret, self.err, fun.loc);
-            let fun_id = state.funs.fresh_id();
+            let fun_id = state.namespace.funs.fresh_id();
             state.declare_fun(fun.ident.clone(), fun_id, fun_t_var, fun.loc, self.err);
             declared_funs.push(DeclaredFunction {
                 ident: fun.ident,
@@ -963,73 +1007,108 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         for import in imports {
             resolved_imports.push(Imports {
                 from: import.from,
-                prototypes: self.register_and_resolve_prototypes(import.prototypes, state),
+                prototypes: self.register_and_resolve_prototypes(import.prototypes, false, state),
                 loc: import.loc,
             })
         }
         resolved_imports
     }
 
-    /// Register top level prototypes definition into the global state (`state`) and return
-    /// resolved functions.
+    /// Register prototype definitions, if `isolated` is false they are added to the global
+    /// context, they are delcared in isolation otherwise (there can be name collision only between
+    /// themselves).
     fn register_and_resolve_prototypes(
         &mut self,
         prototypes: Vec<ast::FunctionPrototype>,
+        isolated: bool,
         state: &mut State,
     ) -> Vec<FunctionPrototype> {
         let mut resolved_protos = Vec::with_capacity(prototypes.len());
+        let mut idents = HashSet::new();
         for proto in prototypes {
-            let mut params = Vec::new();
-            // Check parameter types
-            for param in proto.params.iter() {
-                if let Some(t) = check_base_type_from_type(&param.t) {
-                    params.push(state.checker.scalar(t));
-                } else {
-                    self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
+            // Check for name collision in isolated environment.
+            if isolated {
+                let is_new = idents.insert(proto.ident.clone());
+                if !is_new {
+                    self.err.report(
+                        proto.loc,
+                        format!("A function '{}' already exists", &proto.ident),
+                    );
+                    continue;
                 }
             }
-
-            // Check result type
-            let ret = if let Some(t) = &proto.result {
-                if let Some(t) = check_base_type_from_type(t) {
-                    state.checker.scalar(t)
-                } else {
-                    self.err.report(t.get_loc(), format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
-                    state.checker.scalar(ScalarType::Null)
-                }
-            } else {
-                state.checker.scalar(ScalarType::Null)
-            };
-
-            let ident = if let Some(ref alias) = proto.alias {
-                alias.clone()
-            } else {
-                proto.ident.clone()
-            };
-
-            match state.declare(ident.clone(), proto.loc) {
-                Ok((n_id, t_var)) => {
-                    let fun_id = state.funs.fresh_id();
-                    state
-                        .checker
-                        .set_fun(t_var, params, ret, self.err, proto.loc);
-                    state.declare_fun(proto.ident.clone(), fun_id, t_var, proto.loc, self.err);
-                    resolved_protos.push(FunctionPrototype {
-                        ident: proto.ident,
-                        is_pub: proto.is_pub,
-                        alias: proto.alias,
-                        fun_id,
-                        n_id,
-                        loc: proto.loc,
-                    })
-                }
-                Err(_decl_loc) => {
-                    let error = format!("Function {} declared multiple times", ident);
-                    self.err.report(proto.loc, error);
-                }
+            // Resolve prootype
+            match self.register_and_resolve_prototype(proto, isolated, state) {
+                Ok(proto) => resolved_protos.push(proto),
+                Err(()) => (),
             }
         }
         resolved_protos
+    }
+
+    /// Resolve and register a prototype, either in the global scope or in isolation (id `isolated`
+    /// is `true`.
+    fn register_and_resolve_prototype(
+        &mut self,
+        proto: ast::FunctionPrototype,
+        isolated: bool,
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) -> Result<FunctionPrototype, ()> {
+        let mut params = Vec::new();
+        // Check parameter types
+        for param in proto.params.iter() {
+            if let Some(t) = check_base_type_from_type(&param.t) {
+                params.push(state.checker.scalar(t));
+            } else {
+                self.err.report(param.loc, format!("Unexpected parameter type: {}. Only i32, i64, f32 and f64 can be used in import prototypes.", &param.t));
+            }
+        }
+
+        // Check result type
+        let ret = if let Some(t) = &proto.result {
+            if let Some(t) = check_base_type_from_type(t) {
+                state.checker.scalar(t)
+            } else {
+                self.err.report(t.get_loc(), format!("Unexpected return type: {}. Only i32, i64, f32 and f64 can be returned by imported functions.", t));
+                state.checker.scalar(ScalarType::Null)
+            }
+        } else {
+            state.checker.scalar(ScalarType::Null)
+        };
+
+        let ident = if let Some(ref alias) = proto.alias {
+            alias.clone()
+        } else {
+            proto.ident.clone()
+        };
+
+        // Declare a new name name
+        let (n_id, t_var) = if isolated {
+            state.declare_out_of_context(ident, proto.loc)
+        } else {
+            match state.declare(ident.clone(), proto.loc) {
+                Ok((n_id, t_var)) => (n_id, t_var),
+                Err(_decl_loc) => {
+                    let error = format!("Function {} declared multiple times", ident);
+                    self.err.report(proto.loc, error);
+                    return Err(());
+                }
+            }
+        };
+
+        let fun_id = state.namespace.funs.fresh_id();
+        state
+            .checker
+            .set_fun(t_var, params, ret, self.err, proto.loc);
+        state.declare_fun(proto.ident.clone(), fun_id, t_var, proto.loc, self.err);
+        Ok(FunctionPrototype {
+            ident: proto.ident,
+            is_pub: proto.is_pub,
+            alias: proto.alias,
+            fun_id,
+            n_id,
+            loc: proto.loc,
+        })
     }
 
     /// Register the top level structs in the Type namespace, then resolve the structs fields.
@@ -1053,7 +1132,8 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         let t_var = state.checker.fresh();
         state.checker.set_struct(t_var, s_id, self.err, struc.loc);
         let exists = state
-            .type_namespace
+            .namespace
+            .types
             .insert(struc.ident.clone(), t_var)
             .is_some();
         if exists {
@@ -1100,7 +1180,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     ) -> HashMap<FunId, String> {
         let mut exposed_funs = HashMap::with_capacity(exposed.len());
         for fun in exposed {
-            if let Some(ValueKind::Function(f_id, _)) = state.value_namespace.get(&fun.ident) {
+            if let Some(ValueKind::Function(f_id, _)) = state.namespace.values.get(&fun.ident) {
                 let exposed_name = if let Some(alias) = fun.alias {
                     alias
                 } else {
@@ -1132,7 +1212,8 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             match state.ctx.get_mod_id_from_path(&import.path) {
                 Some(mod_id) => {
                     state
-                        .value_namespace
+                        .namespace
+                        .values
                         .insert(ident, ValueKind::Module(mod_id));
                 }
                 None => {
@@ -1143,6 +1224,30 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     );
                 }
             }
+        }
+    }
+
+    /// Add the abstract runtime to the global namespace.
+    fn register_and_resolve_abstract_runtimes(
+        &mut self,
+        abstract_runtimes: Vec<ast::AbstractRuntime>,
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) {
+        for runtime in abstract_runtimes {
+            let ident = runtime.ident.clone();
+            let loc = runtime.loc;
+            let mut funs = HashMap::new();
+            let prototypes = self.register_and_resolve_prototypes(runtime.prototypes, true, state);
+            for proto in prototypes {
+                let t_var = state.namespace.names.get(proto.n_id).t_var;
+                funs.insert(proto.ident.clone(), (proto.fun_id, t_var));
+            }
+            let runtime = AbstractRuntime {
+                ident: runtime.ident,
+                funs,
+                loc,
+            };
+            state.declare_abstract_runtime(ident, runtime, loc, self.err);
         }
     }
 
@@ -1168,8 +1273,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                                 loc,
                             };
                             let fun_t = match state.ctx.get_fun(*fun_id) {
-                                Some(FunKind::Fun(fun)) => &fun.t,
-                                Some(FunKind::Extern(fun)) => &fun.t,
+                                Some(fun) => fun.t(),
                                 None => {
                                     self.err.report_internal(
                                         loc,
@@ -1200,7 +1304,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 Err(())
             }
         } else {
-            if let Some(value) = state.value_namespace.get(val) {
+            if let Some(value) = state.namespace.values.get(val) {
                 match value {
                     ValueKind::Function(fun_id, _) => {
                         let fun_id = *fun_id;
@@ -1211,6 +1315,15 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     ValueKind::Module(mod_id) => {
                         let mod_id = *mod_id;
                         let expr = Expression::Namespace { mod_id, loc };
+                        let t_var = state.checker.scalar(ScalarType::Null);
+                        Ok(Some((expr, t_var)))
+                    }
+                    ValueKind::AbstractRuntime(abs_runtime_id) => {
+                        let abs_runtime_id = *abs_runtime_id;
+                        let expr = Expression::AbstractRuntime {
+                            abs_runtime_id,
+                            loc,
+                        };
                         let t_var = state.checker.scalar(ScalarType::Null);
                         Ok(Some((expr, t_var)))
                     }
@@ -1258,7 +1371,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             }
         } else {
             // Look for type in local namespace
-            if let Some(t_var) = state.type_namespace.get(t) {
+            if let Some(t_var) = state.namespace.types.get(t) {
                 Ok(*t_var)
             } else {
                 self.err.report(loc, format!("Unknown type: '{}'", t));
@@ -1302,21 +1415,34 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             }
         }
         let mut ident = &path.root;
-        let mut namespace = NamespaceKind::new(&state.value_namespace, &state.type_namespace);
+        let mut namespace = None;
         for access in &path.path {
-            match namespace.get_nested_namespace(ident, &state.ctx) {
-                Some(n) => namespace = n,
-                None => {
-                    self.err
-                        .report(path.loc, format!("Could not resolve '{}'", ident));
-                    return Err(());
+            namespace = match namespace {
+                None => state
+                    .namespace
+                    .get_nested_namespace(ident, &state.namespace, state.ctx),
+                Some(namespace) => {
+                    namespace.get_nested_namespace(ident, &state.namespace, state.ctx)
                 }
+            };
+            if namespace.is_none() {
+                self.err
+                    .report(path.loc, format!("Could not resolve '{}'", ident));
+                return Err(());
             }
             ident = access;
         }
         let ident = ident.clone();
-        match namespace.get_type(&ident) {
-            Some(t) => Ok(t.t_var(&mut state.checker)),
+        let t = match namespace {
+            None => state
+                .namespace
+                .get_type(&ident, state.checker, &state.namespace, state.ctx),
+            Some(namespace) => {
+                namespace.get_type(&ident, state.checker, &state.namespace, state.ctx)
+            }
+        };
+        match t {
+            Some(t) => Ok(t),
             None => {
                 self.err
                     .report(path.loc, format!("Type '{}' does not exist", ident));
@@ -1326,7 +1452,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     }
 
     fn get_fun_t_var(&mut self, fun_id: FunId, state: &mut State) -> Result<TypeVar, ()> {
-        match state.fun_types.get(&fun_id) {
+        match state.namespace.fun_types.get(&fun_id) {
             Some(fun_t_var) => Ok(*fun_t_var),
             None => {
                 self.err.report_internal_no_loc(format!(
@@ -1339,69 +1465,252 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     }
 }
 
+// —————————————————————————————— Namespaces ———————————————————————————————— //
+
 /// Encapsulate different kinds of namespace: the one being built and others from the Ctx.
-enum NamespaceKind<'state, 'ctx> {
-    Resolver(
-        &'state HashMap<String, ValueKind>,
-        &'state HashMap<String, TypeVar>,
-    ),
-    Ctx(&'ctx ModuleDeclarations),
+enum NamespaceKind {
+    Module(ModId),
+    ResolverAbstractRuntime(AbsRuntimeId),
 }
 
-/// Encapsulate diffretent kinds of types: the one being inferred by the resolver and the one
-/// already type-checked from HIR.
-enum TypeKind<'ctx> {
-    Resolver(TypeVar),
-    Ctx(&'ctx hir::Type),
-}
-
-impl<'state, 'ctx> NamespaceKind<'state, 'ctx> {
-    fn new(values: &'state ValueNamespace, types: &'state TypeNamespace) -> Self {
-        NamespaceKind::Resolver(values, types)
-    }
-
+trait Namespace {
     /// Get a namespace inside of a namespace.
     /// Return None if the namespace does not exist (or the value exists but is not a namespace).
-    fn get_nested_namespace(&self, ident: &str, ctx: &'ctx Ctx) -> Option<Self> {
-        match self {
-            NamespaceKind::Resolver(namespace, _) => match namespace.get(ident) {
-                Some(ValueKind::Module(mod_id)) => {
-                    Some(NamespaceKind::Ctx(ctx.get_mod_from_id(*mod_id)?))
-                }
-                _ => None,
-            },
-            NamespaceKind::Ctx(mod_decls) => match mod_decls.val_decls.get(ident) {
-                Some(ValueDeclaration::Module(mod_id)) => {
-                    Some(NamespaceKind::Ctx(ctx.get_mod_from_id(*mod_id)?))
-                }
-                _ => None,
-            },
-        }
-    }
+    fn get_nested_namespace(
+        &self,
+        ident: &str,
+        state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<NamespaceKind>;
 
     /// Get a type from a namespace.
     /// Return None if the type does not exist.
-    fn get_type(&mut self, t: &str) -> Option<TypeKind> {
-        match self {
-            NamespaceKind::Resolver(_, types_vars) => {
-                types_vars.get(t).map(|t_var| TypeKind::Resolver(*t_var))
+    fn get_type(
+        &self,
+        t: &str,
+        checker: &mut TypeChecker,
+        state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<TypeVar>;
+
+    /// Get a value from a namespace.
+    /// Return None if the values does not exist.
+    fn get_value(
+        &self,
+        ident: &str,
+        loc: Location,
+        checker: &mut TypeChecker,
+        state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<(Expression, TypeVar)>;
+}
+
+impl Namespace for ModuleDeclarations {
+    fn get_nested_namespace<'ctx>(
+        &self,
+        ident: &str,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<NamespaceKind> {
+        match self.val_decls.get(ident) {
+            Some(ValueDeclaration::Module(mod_id)) => Some(NamespaceKind::Module(*mod_id)),
+            _ => None,
+        }
+    }
+
+    fn get_type(
+        &self,
+        t: &str,
+        checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<TypeVar> {
+        match self.type_decls.get(t) {
+            Some(t) => Some(checker.lift_t(t)),
+            None => None,
+        }
+    }
+
+    fn get_value(
+        &self,
+        ident: &str,
+        loc: Location,
+        checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<(Expression, TypeVar)> {
+        match self.val_decls.get(ident)? {
+            ValueDeclaration::Function(fun_id) => {
+                let fun_id = *fun_id;
+                let fun_t = ctx.get_fun(fun_id)?.t();
+                let t_var = checker.lift_t_fun(fun_t);
+                let expr = Expression::Function { fun_id, loc };
+                Some((expr, t_var))
             }
-            NamespaceKind::Ctx(mod_decls) => match mod_decls.type_decls.get(t) {
-                Some(t) => Some(TypeKind::Ctx(t)),
-                None => None,
-            },
+            ValueDeclaration::Module(mod_id) => {
+                let mod_id = *mod_id;
+                let expr = Expression::Namespace { mod_id, loc };
+                let t_var = checker.scalar(ScalarType::Null);
+                Some((expr, t_var))
+            }
         }
     }
 }
 
-impl<'ctx> TypeKind<'ctx> {
-    pub fn t_var(self, checker: &mut TypeChecker) -> TypeVar {
-        match self {
-            TypeKind::Resolver(t_var) => t_var,
-            TypeKind::Ctx(ty) => checker.lift_t(&ty),
+impl Namespace for StateNamespace {
+    fn get_nested_namespace<'ctx>(
+        &self,
+        ident: &str,
+        _state: &StateNamespace,
+        _ctx: &'ctx Ctx,
+    ) -> Option<NamespaceKind> {
+        match self.values.get(ident) {
+            Some(ValueKind::Module(mod_id)) => Some(NamespaceKind::Module(*mod_id)),
+            _ => None,
+        }
+    }
+
+    fn get_type(
+        &self,
+        t: &str,
+        _checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<TypeVar> {
+        self.types.get(t).map(|t| *t)
+    }
+
+    fn get_value(
+        &self,
+        ident: &str,
+        loc: Location,
+        checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<(Expression, TypeVar)> {
+        match self.values.get(ident)? {
+            ValueKind::Function(fun_id, t_var) => {
+                let fun_id = *fun_id;
+                let expr = Expression::Function { fun_id, loc };
+                Some((expr, *t_var))
+            }
+            ValueKind::Module(mod_id) => {
+                let mod_id = *mod_id;
+                let expr = Expression::Namespace { mod_id, loc };
+                let t_var = checker.scalar(ScalarType::Null);
+                Some((expr, t_var))
+            }
+            ValueKind::AbstractRuntime(abs_runtime_id) => {
+                let abs_runtime_id = *abs_runtime_id;
+                let expr = Expression::AbstractRuntime {
+                    abs_runtime_id,
+                    loc,
+                };
+                let t_var = checker.scalar(ScalarType::Null);
+                Some((expr, t_var))
+            }
         }
     }
 }
+
+impl Namespace for AbstractRuntime {
+    fn get_nested_namespace(
+        &self,
+        _ident: &str,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<NamespaceKind> {
+        None
+    }
+
+    fn get_type(
+        &self,
+        _t: &str,
+        _checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<TypeVar> {
+        None
+    }
+
+    fn get_value(
+        &self,
+        ident: &str,
+        loc: Location,
+        _checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        _ctx: &Ctx,
+    ) -> Option<(Expression, TypeVar)> {
+        let (fun_id, t_var) = *self.funs.get(ident)?;
+        let expr = Expression::Function { fun_id, loc };
+        Some((expr, t_var))
+    }
+}
+
+impl Namespace for NamespaceKind {
+    fn get_nested_namespace<'ctx>(
+        &self,
+        ident: &str,
+        _state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<NamespaceKind> {
+        match self {
+            NamespaceKind::Module(mod_id) => {
+                debug_assert!(ctx.get_mod_from_id(*mod_id).is_some());
+                let module_declarations = ctx.get_mod_from_id(*mod_id).unwrap();
+                match module_declarations.val_decls.get(ident) {
+                    Some(ValueDeclaration::Module(mod_id)) => Some(NamespaceKind::Module(*mod_id)),
+                    _ => None,
+                }
+            }
+            NamespaceKind::ResolverAbstractRuntime(_) => None,
+        }
+    }
+
+    fn get_type(
+        &self,
+        t: &str,
+        checker: &mut TypeChecker,
+        _state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<TypeVar> {
+        match self {
+            NamespaceKind::Module(mod_id) => {
+                debug_assert!(ctx.get_mod_from_id(*mod_id).is_some());
+                let module_declarations = ctx.get_mod_from_id(*mod_id).unwrap();
+                match module_declarations.type_decls.get(t) {
+                    Some(t) => Some(checker.lift_t(t)),
+                    None => None,
+                }
+            }
+            NamespaceKind::ResolverAbstractRuntime(_) => None,
+        }
+    }
+
+    fn get_value(
+        &self,
+        ident: &str,
+        loc: Location,
+        checker: &mut TypeChecker,
+        state: &StateNamespace,
+        ctx: &Ctx,
+    ) -> Option<(Expression, TypeVar)> {
+        match self {
+            NamespaceKind::Module(mod_id) => {
+                debug_assert!(ctx.get_mod_from_id(*mod_id).is_some());
+                let module_declarations = ctx.get_mod_from_id(*mod_id).unwrap();
+                module_declarations.get_value(ident, loc, checker, state, ctx)
+            }
+            NamespaceKind::ResolverAbstractRuntime(abs_runtime_id) => {
+                debug_assert!(state.abs_runtimes.get(*abs_runtime_id).is_some());
+                let runtime = state.abs_runtimes.get(*abs_runtime_id).unwrap();
+                runtime.get_value(ident, loc, checker, state, ctx)
+            }
+        }
+    }
+}
+
+// ————————————————————————————————— Utils —————————————————————————————————— //
 
 /// Return the corresponding built in type or None.
 fn check_built_in_scalar(t: &str) -> Option<ScalarType> {

@@ -490,6 +490,7 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
                 }
             }
             Expr::Namespace { loc, .. } => Ok(Expression::Nop { loc }),
+            Expr::AbstractRuntime { loc, .. } => Ok(Expression::Nop { loc }),
         }
     }
 

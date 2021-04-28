@@ -42,6 +42,7 @@ define_id!(StructId);
 define_id!(TupleId);
 define_id!(TypeId);
 define_id!(TypeVarId);
+define_id!(AbsRuntimeId);
 
 /// A list of IDs for known funs and strucs.
 pub mod known_ids {

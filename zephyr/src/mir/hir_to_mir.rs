@@ -169,6 +169,9 @@ impl<'a, 'arena, E: ErrorHandler> MirProducer<'a, 'arena, E> {
                     FunKind::Extern(_) => {
                         continue;
                     }
+                    FunKind::Abstract(_) => {
+                        continue;
+                    }
                 },
                 None => {
                     self.err.report_internal_no_loc(format!(
@@ -211,15 +214,16 @@ impl<'a, 'arena, E: ErrorHandler> MirProducer<'a, 'arena, E> {
                     continue;
                 }
                 let proto = match self.hir.funs.get(&fun_id) {
-                    Some(fun) => match fun {
-                        FunKind::Extern(proto) => proto,
-                        FunKind::Fun(_) => {
+                    Some(fun) => {
+                        if let FunKind::Extern(proto) = fun {
+                            proto
+                        } else {
                             self.err.report_internal_no_loc(String::from(
                                 "Import a non external function in HIR lowering",
                             ));
                             continue;
                         }
-                    },
+                    }
                     None => {
                         self.err.report_internal_no_loc(format!(
                             "Can't lower hir extern fun: no fun with id '{}'",

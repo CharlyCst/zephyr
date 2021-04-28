@@ -168,6 +168,7 @@ pub struct Program {
     ///Functions imported from the host runtime.
     pub imports: Vec<Imports>,
     pub abstract_runtimes: Vec<AbstractRuntime>,
+    pub runtime_impls: Vec<RuntimeImplementation>,
     pub used: Vec<Use>,
 }
 
@@ -202,13 +203,15 @@ pub struct Imports {
 }
 
 pub struct AbstractRuntime {
-    pub name: String,
+    pub ident: String,
     pub prototypes: Vec<FunctionPrototype>,
     pub loc: Location,
 }
 
 pub struct RuntimeImplementation {
     pub abstract_runtime: Path,
+    pub used: Vec<Use>,
+    pub funs: Vec<Function>,
 }
 
 pub struct Struct {

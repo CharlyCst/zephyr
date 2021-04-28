@@ -31,7 +31,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
         let mut exposed = Vec::new();
         let mut imports = Vec::new();
         let mut abstract_runtimes = Vec::new();
-        let mut runtime_implementations = Vec::new();
+        let mut runtime_impls = Vec::new();
 
         let module = match self.module() {
             Ok(pkg) => pkg,
@@ -62,7 +62,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
                     Declaration::Expose(expose) => exposed.push(expose),
                     Declaration::Imports(import) => imports.push(import),
                     Declaration::AbstractRuntime(runtime) => abstract_runtimes.push(runtime),
-                    Declaration::Impl(runtime_impl) => runtime_implementations.push(runtime_impl),
+                    Declaration::Impl(runtime_impl) => runtime_impls.push(runtime_impl),
                 },
                 Err(()) => self.err.silent_report(),
             }
@@ -76,6 +76,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             imports,
             used,
             abstract_runtimes,
+            runtime_impls,
         }
     }
 
@@ -516,11 +517,11 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             "Expect 'runtime' keyword for an 'abstract runtime' declaration",
         )?;
         let loc = self.peek().loc;
-        let name = self.expect_identifier("Expect identifier after 'runtime' keyword")?;
+        let ident = self.expect_identifier("Expect identifier after 'runtime' keyword")?;
         let prototypes = self.runtime_block()?;
         self.consume_semi_colon();
         Ok(AbstractRuntime {
-            name,
+            ident,
             prototypes,
             loc,
         })
@@ -550,21 +551,29 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             "Expected 'impl' keyword when implementing an abstract runtime interface",
         )?;
         let abstract_runtime = self.path()?;
-        let _ = self.impl_runtime_block()?;
+        let (funs, used) = self.impl_runtime_block()?;
         self.consume_semi_colon();
-        Ok(RuntimeImplementation { abstract_runtime })
+        Ok(RuntimeImplementation {
+            abstract_runtime,
+            funs,
+            used,
+        })
     }
 
-    fn impl_runtime_block(&mut self) -> Result<Vec<ImplRuntimeDeclaration>, ()> {
+    fn impl_runtime_block(&mut self) -> Result<(Vec<Function>, Vec<Use>), ()> {
         self.next_match_report_synchronize_decl(
             TokenType::LeftBrace,
             "Expected a left brace '{' to open a runtime implementation block",
         )?;
-        let mut declarations = Vec::new();
+        let mut used = Vec::new();
+        let mut funs = Vec::new();
         while !self.next_match(TokenType::RightBrace) && !self.is_at_end() {
-            declarations.push(self.impl_runtime_declaration()?);
+            match self.impl_runtime_declaration()? {
+                ImplRuntimeDeclaration::Use(use_) => used.push(use_),
+                ImplRuntimeDeclaration::Function(fun) => funs.push(fun),
+            }
         }
-        Ok(declarations)
+        Ok((funs, used))
     }
 
     fn impl_runtime_declaration(&mut self) -> Result<ImplRuntimeDeclaration, ()> {
