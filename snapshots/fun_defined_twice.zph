@@ -1,0 +1,5 @@
+standalone module fun_defined_twice
+
+fun twin() {}
+fun twin() {}
+

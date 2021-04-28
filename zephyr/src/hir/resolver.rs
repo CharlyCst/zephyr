@@ -98,10 +98,39 @@ impl<'a, 'ctx, 'ty> State<'a, 'ctx, 'ty> {
     }
 
     /// Maintain references to the function in all apropriate places.
-    pub fn declare_fun(&mut self, ident: String, fun_id: FunId, t_var: TypeVar) {
+    pub fn declare_fun(
+        &mut self,
+        ident: String,
+        fun_id: FunId,
+        t_var: TypeVar,
+        loc: Location,
+        err: &mut impl ErrorHandler,
+    ) {
+        if let Some(prev) = self.value_namespace.get(&ident) {
+            Self::value_already_defined(&ident, &prev, loc, err);
+            return;
+        }
         self.value_namespace
             .insert(ident, ValueKind::Function(fun_id, t_var));
         self.fun_types.insert(fun_id, t_var);
+    }
+
+    /// Raises an error indicating that a value with the given identifier has already been declared.
+    fn value_already_defined(
+        ident: &str,
+        value: &ValueKind,
+        loc: Location,
+        err: &mut impl ErrorHandler,
+    ) {
+        match value {
+            ValueKind::Function(_, _) => {
+                err.report(loc, format!("A function '{}' already exists", ident))
+            }
+            ValueKind::Module(_) => err.report(
+                loc,
+                String::from("A module of the same name already exists"),
+            ),
+        }
     }
 }
 
@@ -900,7 +929,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 .checker
                 .set_fun(fun_t_var, params, ret, self.err, fun.loc);
             let fun_id = state.funs.fresh_id();
-            state.declare_fun(fun.ident.clone(), fun_id, fun_t_var);
+            state.declare_fun(fun.ident.clone(), fun_id, fun_t_var, fun.loc, self.err);
             declared_funs.push(DeclaredFunction {
                 ident: fun.ident,
                 params: declared_params,
@@ -984,7 +1013,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     state
                         .checker
                         .set_fun(t_var, params, ret, self.err, proto.loc);
-                    state.declare_fun(proto.ident.clone(), fun_id, t_var);
+                    state.declare_fun(proto.ident.clone(), fun_id, t_var, proto.loc, self.err);
                     resolved_protos.push(FunctionPrototype {
                         ident: proto.ident,
                         is_pub: proto.is_pub,
@@ -1162,15 +1191,12 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                         }
                     }
                 } else {
-                    self.err.report(
-                        loc,
-                        format!("Value '{}' does not exists", val),
-                    );
+                    self.err
+                        .report(loc, format!("Value '{}' does not exists", val));
                     Err(())
                 }
             } else {
-                self.err
-                    .report(loc, format!("Namespace does not exist"));
+                self.err.report(loc, format!("Namespace does not exist"));
                 Err(())
             }
         } else {

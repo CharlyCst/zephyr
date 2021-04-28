@@ -257,6 +257,17 @@
       "exit_code": 0,
       "stdout": "unnecessary-pub-fun-in-impl.out",
       "stderr": null
+    },
+    {
+      "cmd": "../target/debug/zephyr fun_defined_twice.zph --check",
+      "name": "fun-defined-twice",
+      "description": "Two functions can't have the same name inside of the same module, otherwise there is an ambiguity the function is called.\n#resolver",
+      "tags": [
+        "resolver"
+      ],
+      "exit_code": 65,
+      "stdout": "fun-defined-twice.out",
+      "stderr": null
     }
   ]
 }
