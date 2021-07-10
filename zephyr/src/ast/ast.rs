@@ -329,6 +329,20 @@ pub enum AsmParametric {
 
 // ———————————————————————————————— Display ———————————————————————————————— //
 
+/// Indent a block of code.
+fn indent(code: &str) -> String {
+    code.split('\n')
+        .map(|line| {
+            if line.len() > 0 {
+                format!("    {}", line)
+            } else {
+                String::from("")
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut program = String::from("");
@@ -336,11 +350,7 @@ impl fmt::Display for Program {
         program.push_str(&format!("packge \"{}\";\n\n", self.module.name));
         // Use
         for is_used in &self.used {
-            program.push_str(&format!("use \"{}\"", is_used.path));
-            if let Some(ref alias) = is_used.alias {
-                program.push_str(&format!(" as {}", alias));
-            }
-            program.push_str(";\n");
+            program.push_str(&format!("{}", is_used));
         }
         if self.used.len() > 0 {
             program.push_str("\n");
@@ -356,11 +366,89 @@ impl fmt::Display for Program {
         if self.exposed.len() > 0 {
             program.push_str("\n");
         }
+        // Abstract runtimes
+        for art in &self.abstract_runtimes {
+            program.push_str(&format!("{}\n", art));
+        }
+        // Runtime implementations
+        for rt_impl in &self.runtime_impls {
+            program.push_str(&format!("{}\n", rt_impl));
+        }
         // Fun
         for stmt in &self.funs {
             program.push_str(&format!("{}\n", stmt));
         }
         write!(f, "{}", program)
+    }
+}
+
+impl fmt::Display for Use {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let alias = if let Some(ref alias) = self.alias {
+            format!(" as {}", alias)
+        } else {
+            String::from("")
+        };
+        write!(f, "use {}{};\n", self.path, alias)
+    }
+}
+
+impl fmt::Display for AbstractRuntime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let protos = self
+            .prototypes
+            .iter()
+            .map(|proto| format!("{}", proto))
+            .collect::<Vec<String>>()
+            .join("\n");
+        write!(f, "abstract runtime {} {{\n{}}};\n", self.ident, indent(&protos))
+    }
+}
+
+impl fmt::Display for RuntimeImplementation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let used = self
+            .used
+            .iter()
+            .map(|use_stmt| format!("{}", use_stmt))
+            .collect::<Vec<String>>()
+            .join("");
+        let funs = self
+            .funs
+            .iter()
+            .map(|fun| format!("{}\n", fun))
+            .collect::<Vec<String>>()
+            .join("\n");
+        write!(
+            f,
+            "impl {} {{\n{}{}}};\n",
+            self.abstract_runtime,
+            indent(&used),
+            indent(&funs)
+        )
+    }
+}
+
+impl fmt::Display for FunctionPrototype {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let prefix = if self.is_pub { "pub " } else { "" };
+        let params = self
+            .params
+            .iter()
+            .map(|v| {
+                let mut param = v.ident.clone();
+                param.push_str(" ");
+                param.push_str(&format!("{}", v.t));
+                param
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
+        let result_type = if let Some(ref t) = self.result {
+            format!("{}", t)
+        } else {
+            String::from("")
+        };
+        write!(f, "{}{}({}) {};\n", prefix, self.ident, params, result_type)
     }
 }
 

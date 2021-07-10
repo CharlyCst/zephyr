@@ -1,4 +1,4 @@
-standalone module simple_art
+standalone module simple_impl
 
 expose main as _start
 
@@ -13,5 +13,5 @@ impl simple {
 }
 
 fun main(): i32 {
-    return 42
+    return simple.test(40, 2)
 }
