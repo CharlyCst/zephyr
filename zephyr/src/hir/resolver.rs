@@ -231,6 +231,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             data: state.namespace.data,
             names: state.namespace.names,
             fun_types: state.namespace.fun_types,
+            abs_runtimes: state.namespace.abs_runtimes,
             module: ast_program.module,
         }
     }
@@ -719,7 +720,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     Ok((expr, name.t_var))
                 } else if let Some(mod_id) = state.imported_modules.get(&var.ident) {
                     let expr = Expression::Namespace {
-                        mod_id: *mod_id,
+                        namespace: NamespaceKind::Module(*mod_id),
                         loc: var.loc,
                     };
                     let t_var = state.checker.scalar(ScalarType::Null);
@@ -805,9 +806,9 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                         };
                         Ok((expr, field_t_var))
                     }
-                    Expression::Namespace { mod_id, loc } => {
+                    Expression::Namespace { namespace, loc } => {
                         // Namespace imported from another module
-                        self.resolve_namespace_expr(mod_id, loc, *field, state)
+                        self.resolve_namespace_expr(namespace, loc, *field, state)
                     }
                     _ => {
                         self.err.report(
@@ -825,7 +826,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     /// namespace.
     fn resolve_namespace_expr(
         &mut self,
-        mod_id: ModId,
+        namespace: NamespaceKind,
         namespace_loc: Location,
         field: ast::Expression,
         state: &mut State,
@@ -833,7 +834,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         match field {
             ast::Expression::Variable(var) => {
                 let var = ast::Variable {
-                    namespace: Some(mod_id),
+                    namespace: Some(namespace),
                     ident: var.ident,
                     t: var.t,
                     loc: var.loc,
@@ -844,7 +845,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 ident, fields, loc, ..
             }) => {
                 let value = ast::Value::Struct {
-                    namespace: Some(mod_id),
+                    namespace: Some(namespace),
                     ident,
                     fields,
                     loc,
@@ -1251,77 +1252,66 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         }
     }
 
-    /// Look for a value in either the given namespace of the local one.
+    /// Look for a value in either the given namespace or the local one.
     ///
     /// If no namespace is passed, this function does not raise any error (which allows to fall
     /// back to the local variables without presenting an error to the user).
     fn get_value(
         &mut self,
         val: &str,
-        namespace: Option<ModId>,
+        namespace: Option<NamespaceKind>,
         loc: Location,
         state: &mut State,
     ) -> Result<Option<(Expression, TypeVar)>, ()> {
-        if let Some(namespace) = namespace {
-            // Look for a value in used namespace
-            if let Some(declarations) = state.ctx.get_mod_from_id(namespace) {
-                if let Some(value) = declarations.val_decls.get(val) {
-                    match value {
-                        ValueDeclaration::Function(fun_id) => {
-                            let expr = Expression::Function {
-                                fun_id: *fun_id,
-                                loc,
-                            };
-                            let fun_t = match state.ctx.get_fun(*fun_id) {
-                                Some(fun) => fun.t(),
-                                None => {
-                                    self.err.report_internal(
-                                        loc,
-                                        format!("No function with id {} in context", fun_id),
-                                    );
-                                    return Err(());
-                                }
-                            };
-                            let t_var = state.checker.lift_t_fun(fun_t);
-                            Ok(Some((expr, t_var)))
-                        }
-                        ValueDeclaration::Module(mod_id) => {
-                            let expr = Expression::Namespace {
-                                mod_id: *mod_id,
-                                loc,
-                            };
-                            let t_var = state.checker.scalar(ScalarType::Null);
-                            Ok(Some((expr, t_var)))
-                        }
-                    }
-                } else {
-                    self.err
-                        .report(loc, format!("Value '{}' does not exists", val));
-                    Err(())
-                }
-            } else {
-                self.err.report(loc, format!("Namespace does not exist"));
-                Err(())
+        match namespace {
+            Some(NamespaceKind::Module(mod_id)) => {
+                self.get_value_from_module(val, mod_id, loc, state)
             }
-        } else {
-            if let Some(value) = state.namespace.values.get(val) {
+            Some(NamespaceKind::AbstractRuntime(art_id)) => todo!(),
+            None => self.get_value_from_local_namespace(val, loc, state),
+        }
+    }
+
+    /// Specialized implementation of `get_value`.
+    fn get_value_from_module(
+        &mut self,
+        val: &str,
+        mod_id: ModId,
+        loc: Location,
+        state: &mut State,
+    ) -> Result<Option<(Expression, TypeVar)>, ()> {
+        if let Some(declarations) = state.ctx.get_mod_from_id(mod_id) {
+            if let Some(value) = declarations.val_decls.get(val) {
                 match value {
-                    ValueKind::Function(fun_id, _) => {
-                        let fun_id = *fun_id;
-                        let expr = Expression::Function { fun_id, loc };
-                        let t_var = self.get_fun_t_var(fun_id, state)?;
+                    ValueDeclaration::Function(fun_id) => {
+                        let expr = Expression::Function {
+                            fun_id: *fun_id,
+                            loc,
+                        };
+                        let fun_t = match state.ctx.get_fun(*fun_id) {
+                            Some(fun) => fun.t(),
+                            None => {
+                                self.err.report_internal(
+                                    loc,
+                                    format!("No function with id {} in context", fun_id),
+                                );
+                                return Err(());
+                            }
+                        };
+                        let t_var = state.checker.lift_t_fun(fun_t);
                         Ok(Some((expr, t_var)))
                     }
-                    ValueKind::Module(mod_id) => {
-                        let mod_id = *mod_id;
-                        let expr = Expression::Namespace { mod_id, loc };
+                    ValueDeclaration::Module(mod_id) => {
+                        let expr = Expression::Namespace {
+                            namespace: NamespaceKind::Module(*mod_id),
+                            loc,
+                        };
                         let t_var = state.checker.scalar(ScalarType::Null);
                         Ok(Some((expr, t_var)))
                     }
-                    ValueKind::AbstractRuntime(abs_runtime_id) => {
-                        let abs_runtime_id = *abs_runtime_id;
-                        let expr = Expression::AbstractRuntime {
-                            abs_runtime_id,
+                    ValueDeclaration::AbstractRuntime(art_id) => {
+                        let expr = Expression::Namespace {
+                            namespace: NamespaceKind::AbstractRuntime(*art_id),
                             loc,
                         };
                         let t_var = state.checker.scalar(ScalarType::Null);
@@ -1329,8 +1319,46 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     }
                 }
             } else {
-                Ok(None)
+                self.err
+                    .report(loc, format!("Value '{}' does not exists", val));
+                Err(())
             }
+        } else {
+            self.err.report(loc, format!("Namespace does not exist"));
+            Err(())
+        }
+    }
+
+    /// Specialized implementation of `get_value`.
+    fn get_value_from_local_namespace(
+        &mut self,
+        val: &str,
+        loc: Location,
+        state: &mut State,
+    ) -> Result<Option<(Expression, TypeVar)>, ()> {
+        if let Some(value) = state.namespace.values.get(val) {
+            match value {
+                ValueKind::Function(fun_id, _) => {
+                    let fun_id = *fun_id;
+                    let expr = Expression::Function { fun_id, loc };
+                    let t_var = self.get_fun_t_var(fun_id, state)?;
+                    Ok(Some((expr, t_var)))
+                }
+                ValueKind::Module(mod_id) => {
+                    let namespace = NamespaceKind::Module(*mod_id);
+                    let expr = Expression::Namespace { namespace, loc };
+                    let t_var = state.checker.scalar(ScalarType::Null);
+                    Ok(Some((expr, t_var)))
+                }
+                ValueKind::AbstractRuntime(art_id) => {
+                    let namespace = NamespaceKind::AbstractRuntime(*art_id);
+                    let expr = Expression::Namespace { namespace, loc };
+                    let t_var = state.checker.scalar(ScalarType::Null);
+                    Ok(Some((expr, t_var)))
+                }
+            }
+        } else {
+            Ok(None)
         }
     }
 
@@ -1340,43 +1368,60 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     fn get_type_from_str(
         &mut self,
         t: &str,
-        namespace: Option<ModId>,
+        namespace: Option<NamespaceKind>,
         loc: Location,
         state: &mut State,
     ) -> Result<TypeVar, ()> {
         if let Some(t) = check_built_in_scalar(t) {
             return Ok(state.checker.scalar(t));
         }
-        if let Some(mod_id) = namespace {
-            // Look for type in used namespace
-            if let Some(declarations) = state.ctx.get_mod_from_id(mod_id) {
-                if let Some(t) = declarations.type_decls.get(t) {
-                    Ok(state.checker.lift_t(t))
-                } else {
-                    if let Some(path) = state.ctx.get_mod_path_from_id(mod_id) {
-                        self.err
-                            .report(loc, format!("Type '{}' does not exist in '{}'", t, path));
-                    } else {
-                        self.err.report_internal(
-                            loc,
-                            format!("Module ID '{:?}' has no associated path in context", mod_id),
-                        );
-                    }
-                    Err(())
-                }
-            } else {
-                self.err
-                    .report_internal(loc, format!("Module with ID '{:?}' does not exist", mod_id));
-                Err(())
+        match namespace {
+            Some(NamespaceKind::Module(mod_id)) => {
+                self.get_type_from_str_in_module(t, mod_id, loc, state)
             }
-        } else {
-            // Look for type in local namespace
-            if let Some(t_var) = state.namespace.types.get(t) {
-                Ok(*t_var)
-            } else {
+            Some(NamespaceKind::AbstractRuntime(art_id)) => {
                 self.err.report(loc, format!("Unknown type: '{}'", t));
                 Err(())
             }
+            None => {
+                // Look for type in local namespace
+                if let Some(t_var) = state.namespace.types.get(t) {
+                    Ok(*t_var)
+                } else {
+                    self.err.report(loc, format!("Unknown type: '{}'", t));
+                    Err(())
+                }
+            }
+        }
+    }
+
+    /// Specialized implementation of `get_type_from_str`.
+    fn get_type_from_str_in_module(
+        &mut self,
+        t: &str,
+        mod_id: ModId,
+        loc: Location,
+        state: &mut State,
+    ) -> Result<TypeVar, ()> {
+        if let Some(declarations) = state.ctx.get_mod_from_id(mod_id) {
+            if let Some(t) = declarations.type_decls.get(t) {
+                Ok(state.checker.lift_t(t))
+            } else {
+                if let Some(path) = state.ctx.get_mod_path_from_id(mod_id) {
+                    self.err
+                        .report(loc, format!("Type '{}' does not exist in '{}'", t, path));
+                } else {
+                    self.err.report_internal(
+                        loc,
+                        format!("Module ID '{:?}' has no associated path in context", mod_id),
+                    );
+                }
+                Err(())
+            }
+        } else {
+            self.err
+                .report_internal(loc, format!("Module with ID '{:?}' does not exist", mod_id));
+            Err(())
         }
     }
 
@@ -1468,11 +1513,6 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
 // —————————————————————————————— Namespaces ———————————————————————————————— //
 
 /// Encapsulate different kinds of namespace: the one being built and others from the Ctx.
-enum NamespaceKind {
-    Module(ModId),
-    ResolverAbstractRuntime(AbsRuntimeId),
-}
-
 trait Namespace {
     /// Get a namespace inside of a namespace.
     /// Return None if the namespace does not exist (or the value exists but is not a namespace).
@@ -1548,8 +1588,14 @@ impl Namespace for ModuleDeclarations {
                 Some((expr, t_var))
             }
             ValueDeclaration::Module(mod_id) => {
-                let mod_id = *mod_id;
-                let expr = Expression::Namespace { mod_id, loc };
+                let namespace = NamespaceKind::Module(*mod_id);
+                let expr = Expression::Namespace { namespace, loc };
+                let t_var = checker.scalar(ScalarType::Null);
+                Some((expr, t_var))
+            }
+            ValueDeclaration::AbstractRuntime(art_id) => {
+                let namespace = NamespaceKind::AbstractRuntime(*art_id);
+                let expr = Expression::Namespace { namespace, loc };
                 let t_var = checker.scalar(ScalarType::Null);
                 Some((expr, t_var))
             }
@@ -1566,6 +1612,9 @@ impl Namespace for StateNamespace {
     ) -> Option<NamespaceKind> {
         match self.values.get(ident) {
             Some(ValueKind::Module(mod_id)) => Some(NamespaceKind::Module(*mod_id)),
+            Some(ValueKind::AbstractRuntime(art_id)) => {
+                Some(NamespaceKind::AbstractRuntime(*art_id))
+            }
             _ => None,
         }
     }
@@ -1595,17 +1644,14 @@ impl Namespace for StateNamespace {
                 Some((expr, *t_var))
             }
             ValueKind::Module(mod_id) => {
-                let mod_id = *mod_id;
-                let expr = Expression::Namespace { mod_id, loc };
+                let namespace = NamespaceKind::Module(*mod_id);
+                let expr = Expression::Namespace { namespace, loc };
                 let t_var = checker.scalar(ScalarType::Null);
                 Some((expr, t_var))
             }
-            ValueKind::AbstractRuntime(abs_runtime_id) => {
-                let abs_runtime_id = *abs_runtime_id;
-                let expr = Expression::AbstractRuntime {
-                    abs_runtime_id,
-                    loc,
-                };
+            ValueKind::AbstractRuntime(art) => {
+                let namespace = NamespaceKind::AbstractRuntime(*art);
+                let expr = Expression::Namespace { namespace, loc };
                 let t_var = checker.scalar(ScalarType::Null);
                 Some((expr, t_var))
             }
@@ -1663,7 +1709,7 @@ impl Namespace for NamespaceKind {
                     _ => None,
                 }
             }
-            NamespaceKind::ResolverAbstractRuntime(_) => None,
+            NamespaceKind::AbstractRuntime(_) => None,
         }
     }
 
@@ -1683,7 +1729,7 @@ impl Namespace for NamespaceKind {
                     None => None,
                 }
             }
-            NamespaceKind::ResolverAbstractRuntime(_) => None,
+            NamespaceKind::AbstractRuntime(_) => None,
         }
     }
 
@@ -1701,7 +1747,7 @@ impl Namespace for NamespaceKind {
                 let module_declarations = ctx.get_mod_from_id(*mod_id).unwrap();
                 module_declarations.get_value(ident, loc, checker, state, ctx)
             }
-            NamespaceKind::ResolverAbstractRuntime(abs_runtime_id) => {
+            NamespaceKind::AbstractRuntime(abs_runtime_id) => {
                 debug_assert!(state.abs_runtimes.get(*abs_runtime_id).is_some());
                 let runtime = state.abs_runtimes.get(*abs_runtime_id).unwrap();
                 runtime.get_value(ident, loc, checker, state, ctx)

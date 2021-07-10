@@ -9,7 +9,7 @@ pub use self::names::{
 };
 pub use crate::ast::Module;
 pub use hir::*;
-pub use names::{Data, DataId};
+pub use names::{Data, DataId, NamespaceKind};
 pub use store::known_ids;
 pub use store::Identifier;
 

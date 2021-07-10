@@ -7,7 +7,7 @@ use crate::error::Location;
 use std::collections::HashMap;
 use std::fmt;
 
-pub use super::names::{DataId, FunId, NameId, StructId, TupleId};
+pub use super::names::{AbsRuntimeId, DataId, FunId, NameId, StructId, TupleId};
 pub use crate::ast::Module;
 
 pub type LocalId = usize; // For now NameId are used as LocalId
@@ -15,6 +15,7 @@ pub type BasicBlockId = usize;
 
 pub type TupleStore = Store<TupleId, Tuple>;
 pub type StructStore = Store<StructId, Struct>;
+pub type AbsRuntimeStore = Store<AbsRuntimeId, AbstractRuntime>;
 
 pub const TYPE_I32: Type = Type::Scalar(ScalarType::I32);
 pub const TYPE_I64: Type = Type::Scalar(ScalarType::I64);
@@ -140,6 +141,7 @@ pub struct Program {
     pub data: DataStore,
     pub structs: StructStore,
     pub tuples: TupleStore,
+    pub abs_runtimes: AbsRuntimeStore,
     pub pub_decls: ModuleDeclarations,
     pub module: Module,
 }
@@ -165,6 +167,12 @@ pub struct Imports {
 pub struct Import {
     pub from: String,
     pub prototypes: Vec<FunId>,
+    pub loc: Location,
+}
+
+pub struct AbstractRuntime {
+    pub ident: String,
+    pub funs: HashMap<String, FunId>,
     pub loc: Location,
 }
 

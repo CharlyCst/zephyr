@@ -20,17 +20,24 @@ pub type AbsRuntimeStore = Store<AbsRuntimeId, AbstractRuntime>;
 /// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
     pub funs: Vec<Function>,
+    pub fun_types: HashMap<FunId, TypeVar>,
     pub data: DataStore,
     pub structs: StructStore,
-    pub fun_types: HashMap<FunId, TypeVar>,
     pub imports: Vec<Imports>,
+    pub abs_runtimes: AbsRuntimeStore,
     pub names: NameStore,
     pub module: Module,
 }
 
-/// All the kind of values that can be found in the Value Namespace.
+/// All the kinds of values that can be found in the Value Namespace.
 pub enum ValueKind {
     Function(FunId, TypeVar),
+    Module(ModId),
+    AbstractRuntime(AbsRuntimeId),
+}
+
+/// All the kinds of namespaces in Zephyr.
+pub enum NamespaceKind {
     Module(ModId),
     AbstractRuntime(AbsRuntimeId),
 }
@@ -104,6 +111,7 @@ pub struct AbstractRuntime {
 pub enum ValueDeclaration {
     Function(FunId),
     Module(ModId),
+    AbstractRuntime(AbsRuntimeId),
 }
 
 pub enum Body {
@@ -203,11 +211,7 @@ pub enum Expression {
         loc: Location,
     },
     Namespace {
-        mod_id: ModId,
-        loc: Location,
-    },
-    AbstractRuntime {
-        abs_runtime_id: AbsRuntimeId,
+        namespace: NamespaceKind,
         loc: Location,
     },
     Binary {
@@ -256,7 +260,6 @@ impl Expression {
             Expression::Function { loc, .. } => *loc,
             Expression::Access { loc, .. } => *loc,
             Expression::Namespace { loc, .. } => *loc,
-            Expression::AbstractRuntime { loc, .. } => *loc,
             Expression::Unary { loc, .. } => *loc,
             Expression::Binary { loc, .. } => *loc,
             Expression::CallDirect { loc, .. } => *loc,

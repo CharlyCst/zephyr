@@ -72,6 +72,19 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
                     None
                 }
             });
+
+        let abs_runtimes = prog.abs_runtimes.transmute(|abs_rt| {
+            Some(AbstractRuntime {
+                ident: abs_rt.ident,
+                funs: abs_rt
+                    .funs
+                    .into_iter()
+                    .map(|(ident, (fun_id, _))| (ident, fun_id))
+                    .collect(),
+                loc: abs_rt.loc,
+            })
+        });
+
         let pub_decls = self.get_pub_decls(prog.module.id, &funs, &imports, &structs);
 
         Program {
@@ -79,6 +92,7 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
             imports,
             structs,
             pub_decls,
+            abs_runtimes,
             tuples: checker.get_tuples(),
             data: prog.data,
             module: prog.module,
@@ -490,7 +504,6 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
                 }
             }
             Expr::Namespace { loc, .. } => Ok(Expression::Nop { loc }),
-            Expr::AbstractRuntime { loc, .. } => Ok(Expression::Nop { loc }),
         }
     }
 

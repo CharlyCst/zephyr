@@ -1,6 +1,7 @@
 use std::fmt;
 
 pub use crate::ctx::ModId;
+use crate::hir::NamespaceKind;
 use crate::error::Location;
 use crate::mir::Value as MirValue;
 pub use crate::resolver::ModulePath;
@@ -40,7 +41,7 @@ pub enum Value {
     },
     Struct {
         /// Namespaces are reserved for HIR resolution.
-        namespace: Option<ModId>,
+        namespace: Option<NamespaceKind>,
         ident: String,
         fields: Vec<FieldValue>,
         loc: Location,
@@ -90,8 +91,8 @@ pub struct Parameter {
 }
 
 pub struct Variable {
-    /// Namespaces are reserver for HIR resolution
-    pub namespace: Option<ModId>,
+    /// Namespaces are reserved for HIR resolution
+    pub namespace: Option<NamespaceKind>,
     pub ident: String,
     pub t: Option<String>,
     pub loc: Location,

@@ -17,6 +17,7 @@ use crate::wasm;
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
 pub struct ModId(pub u32);
 
+// type AbsRuntimeMap = HashMap<>
 type StructMap = HashMap<hir::StructId, hir::Struct>;
 type TupleMap = HashMap<hir::TupleId, hir::Tuple>;
 type DataMap = HashMap<hir::DataId, hir::Data>;
