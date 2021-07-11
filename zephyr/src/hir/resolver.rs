@@ -1,4 +1,4 @@
-use super::hir::ScalarType;
+use super::hir::{self, ScalarType};
 use super::names::*;
 use super::store::Store;
 use super::type_check::{TypeChecker, TypeVar};
@@ -1267,7 +1267,9 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             Some(NamespaceKind::Module(mod_id)) => {
                 self.get_value_from_module(val, mod_id, loc, state)
             }
-            Some(NamespaceKind::AbstractRuntime(art_id)) => todo!(),
+            Some(NamespaceKind::AbstractRuntime(art_id)) => {
+                self.get_value_from_abstract_runtime(val, art_id, loc, state)
+            }
             None => self.get_value_from_local_namespace(val, loc, state),
         }
     }
@@ -1330,6 +1332,21 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     }
 
     /// Specialized implementation of `get_value`.
+    fn get_value_from_abstract_runtime(
+        &mut self,
+        val: &str,
+        art_id: AbsRuntimeId,
+        loc: Location,
+        state: &mut State,
+    ) -> Result<Option<(Expression, TypeVar)>, ()> {
+        if let Some(art) = state.namespace.abs_runtimes.get(art_id) {
+            Ok(art.get_value(val, loc, state.checker, state.ctx))
+        } else {
+            todo!()
+        }
+    }
+
+    /// Specialized implementation of `get_value`.
     fn get_value_from_local_namespace(
         &mut self,
         val: &str,
@@ -1379,7 +1396,8 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             Some(NamespaceKind::Module(mod_id)) => {
                 self.get_type_from_str_in_module(t, mod_id, loc, state)
             }
-            Some(NamespaceKind::AbstractRuntime(art_id)) => {
+            Some(NamespaceKind::AbstractRuntime(_)) => {
+                // For now abstract runtimes can not declare new types.
                 self.err.report(loc, format!("Unknown type: '{}'", t));
                 Err(())
             }
@@ -1463,12 +1481,8 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         let mut namespace = None;
         for access in &path.path {
             namespace = match namespace {
-                None => state
-                    .namespace
-                    .get_nested_namespace(ident, &state.namespace, state.ctx),
-                Some(namespace) => {
-                    namespace.get_nested_namespace(ident, &state.namespace, state.ctx)
-                }
+                None => state.namespace.get_nested_namespace(ident, state.ctx),
+                Some(namespace) => namespace.get_nested_namespace(ident, state.ctx),
             };
             if namespace.is_none() {
                 self.err
@@ -1479,12 +1493,8 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         }
         let ident = ident.clone();
         let t = match namespace {
-            None => state
-                .namespace
-                .get_type(&ident, state.checker, &state.namespace, state.ctx),
-            Some(namespace) => {
-                namespace.get_type(&ident, state.checker, &state.namespace, state.ctx)
-            }
+            None => state.namespace.get_type(&ident, state.checker, state.ctx),
+            Some(namespace) => namespace.get_type(&ident, state.checker, state.ctx),
         };
         match t {
             Some(t) => Ok(t),
@@ -1516,22 +1526,11 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
 trait Namespace {
     /// Get a namespace inside of a namespace.
     /// Return None if the namespace does not exist (or the value exists but is not a namespace).
-    fn get_nested_namespace(
-        &self,
-        ident: &str,
-        state: &StateNamespace,
-        ctx: &Ctx,
-    ) -> Option<NamespaceKind>;
+    fn get_nested_namespace(&self, ident: &str, ctx: &Ctx) -> Option<NamespaceKind>;
 
     /// Get a type from a namespace.
     /// Return None if the type does not exist.
-    fn get_type(
-        &self,
-        t: &str,
-        checker: &mut TypeChecker,
-        state: &StateNamespace,
-        ctx: &Ctx,
-    ) -> Option<TypeVar>;
+    fn get_type(&self, t: &str, checker: &mut TypeChecker, ctx: &Ctx) -> Option<TypeVar>;
 
     /// Get a value from a namespace.
     /// Return None if the values does not exist.
@@ -1540,31 +1539,19 @@ trait Namespace {
         ident: &str,
         loc: Location,
         checker: &mut TypeChecker,
-        state: &StateNamespace,
         ctx: &Ctx,
     ) -> Option<(Expression, TypeVar)>;
 }
 
 impl Namespace for ModuleDeclarations {
-    fn get_nested_namespace<'ctx>(
-        &self,
-        ident: &str,
-        _state: &StateNamespace,
-        _ctx: &Ctx,
-    ) -> Option<NamespaceKind> {
+    fn get_nested_namespace<'ctx>(&self, ident: &str, _ctx: &Ctx) -> Option<NamespaceKind> {
         match self.val_decls.get(ident) {
             Some(ValueDeclaration::Module(mod_id)) => Some(NamespaceKind::Module(*mod_id)),
             _ => None,
         }
     }
 
-    fn get_type(
-        &self,
-        t: &str,
-        checker: &mut TypeChecker,
-        _state: &StateNamespace,
-        _ctx: &Ctx,
-    ) -> Option<TypeVar> {
+    fn get_type(&self, t: &str, checker: &mut TypeChecker, _ctx: &Ctx) -> Option<TypeVar> {
         match self.type_decls.get(t) {
             Some(t) => Some(checker.lift_t(t)),
             None => None,
@@ -1576,7 +1563,6 @@ impl Namespace for ModuleDeclarations {
         ident: &str,
         loc: Location,
         checker: &mut TypeChecker,
-        _state: &StateNamespace,
         ctx: &Ctx,
     ) -> Option<(Expression, TypeVar)> {
         match self.val_decls.get(ident)? {
@@ -1604,12 +1590,7 @@ impl Namespace for ModuleDeclarations {
 }
 
 impl Namespace for StateNamespace {
-    fn get_nested_namespace<'ctx>(
-        &self,
-        ident: &str,
-        _state: &StateNamespace,
-        _ctx: &'ctx Ctx,
-    ) -> Option<NamespaceKind> {
+    fn get_nested_namespace<'ctx>(&self, ident: &str, _ctx: &'ctx Ctx) -> Option<NamespaceKind> {
         match self.values.get(ident) {
             Some(ValueKind::Module(mod_id)) => Some(NamespaceKind::Module(*mod_id)),
             Some(ValueKind::AbstractRuntime(art_id)) => {
@@ -1619,13 +1600,7 @@ impl Namespace for StateNamespace {
         }
     }
 
-    fn get_type(
-        &self,
-        t: &str,
-        _checker: &mut TypeChecker,
-        _state: &StateNamespace,
-        _ctx: &Ctx,
-    ) -> Option<TypeVar> {
+    fn get_type(&self, t: &str, _checker: &mut TypeChecker, _ctx: &Ctx) -> Option<TypeVar> {
         self.types.get(t).map(|t| *t)
     }
 
@@ -1634,7 +1609,6 @@ impl Namespace for StateNamespace {
         ident: &str,
         loc: Location,
         checker: &mut TypeChecker,
-        _state: &StateNamespace,
         _ctx: &Ctx,
     ) -> Option<(Expression, TypeVar)> {
         match self.values.get(ident)? {
@@ -1660,22 +1634,11 @@ impl Namespace for StateNamespace {
 }
 
 impl Namespace for AbstractRuntime {
-    fn get_nested_namespace(
-        &self,
-        _ident: &str,
-        _state: &StateNamespace,
-        _ctx: &Ctx,
-    ) -> Option<NamespaceKind> {
+    fn get_nested_namespace(&self, _ident: &str, _ctx: &Ctx) -> Option<NamespaceKind> {
         None
     }
 
-    fn get_type(
-        &self,
-        _t: &str,
-        _checker: &mut TypeChecker,
-        _state: &StateNamespace,
-        _ctx: &Ctx,
-    ) -> Option<TypeVar> {
+    fn get_type(&self, _t: &str, _checker: &mut TypeChecker, _ctx: &Ctx) -> Option<TypeVar> {
         None
     }
 
@@ -1684,7 +1647,6 @@ impl Namespace for AbstractRuntime {
         ident: &str,
         loc: Location,
         _checker: &mut TypeChecker,
-        _state: &StateNamespace,
         _ctx: &Ctx,
     ) -> Option<(Expression, TypeVar)> {
         let (fun_id, t_var) = *self.funs.get(ident)?;
@@ -1693,13 +1655,33 @@ impl Namespace for AbstractRuntime {
     }
 }
 
-impl Namespace for NamespaceKind {
-    fn get_nested_namespace<'ctx>(
+impl Namespace for hir::AbstractRuntime {
+    fn get_nested_namespace(&self, _ident: &str, _ctx: &Ctx) -> Option<NamespaceKind> {
+        None
+    }
+
+    fn get_type(&self, _t: &str, _checker: &mut TypeChecker, _ctx: &Ctx) -> Option<TypeVar> {
+        None
+    }
+
+    fn get_value(
         &self,
         ident: &str,
-        _state: &StateNamespace,
+        loc: Location,
+        checker: &mut TypeChecker,
         ctx: &Ctx,
-    ) -> Option<NamespaceKind> {
+    ) -> Option<(Expression, TypeVar)> {
+        // For now an abstract runtime can only hold functions
+        let fun_id = *self.funs.get(ident)?;
+        let fun_t = ctx.get_fun(fun_id)?.t();
+        let t_var = checker.lift_t_fun(fun_t);
+        let expr = Expression::Function { fun_id, loc };
+        Some((expr, t_var))
+    }
+}
+
+impl Namespace for NamespaceKind {
+    fn get_nested_namespace<'ctx>(&self, ident: &str, ctx: &Ctx) -> Option<NamespaceKind> {
         match self {
             NamespaceKind::Module(mod_id) => {
                 debug_assert!(ctx.get_mod_from_id(*mod_id).is_some());
@@ -1713,13 +1695,7 @@ impl Namespace for NamespaceKind {
         }
     }
 
-    fn get_type(
-        &self,
-        t: &str,
-        checker: &mut TypeChecker,
-        _state: &StateNamespace,
-        ctx: &Ctx,
-    ) -> Option<TypeVar> {
+    fn get_type(&self, t: &str, checker: &mut TypeChecker, ctx: &Ctx) -> Option<TypeVar> {
         match self {
             NamespaceKind::Module(mod_id) => {
                 debug_assert!(ctx.get_mod_from_id(*mod_id).is_some());
@@ -1738,19 +1714,18 @@ impl Namespace for NamespaceKind {
         ident: &str,
         loc: Location,
         checker: &mut TypeChecker,
-        state: &StateNamespace,
         ctx: &Ctx,
     ) -> Option<(Expression, TypeVar)> {
         match self {
             NamespaceKind::Module(mod_id) => {
                 debug_assert!(ctx.get_mod_from_id(*mod_id).is_some());
                 let module_declarations = ctx.get_mod_from_id(*mod_id).unwrap();
-                module_declarations.get_value(ident, loc, checker, state, ctx)
+                module_declarations.get_value(ident, loc, checker, ctx)
             }
-            NamespaceKind::AbstractRuntime(abs_runtime_id) => {
-                debug_assert!(state.abs_runtimes.get(*abs_runtime_id).is_some());
-                let runtime = state.abs_runtimes.get(*abs_runtime_id).unwrap();
-                runtime.get_value(ident, loc, checker, state, ctx)
+            NamespaceKind::AbstractRuntime(art_id) => {
+                debug_assert!(ctx.get_abstract_runtime(*art_id).is_some());
+                let runtime = ctx.get_abstract_runtime(*art_id).unwrap();
+                runtime.get_value(ident, loc, checker, ctx)
             }
         }
     }

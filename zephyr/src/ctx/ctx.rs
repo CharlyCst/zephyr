@@ -17,7 +17,7 @@ use crate::wasm;
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
 pub struct ModId(pub u32);
 
-// type AbsRuntimeMap = HashMap<>
+type AbsRuntimeMap = HashMap<hir::AbsRuntimeId, hir::AbstractRuntime>;
 type StructMap = HashMap<hir::StructId, hir::Struct>;
 type TupleMap = HashMap<hir::TupleId, hir::Tuple>;
 type DataMap = HashMap<hir::DataId, hir::Data>;
@@ -30,6 +30,7 @@ type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
 /// The global compilation context.
 pub struct Ctx {
     // HIR elements
+    abs_runtimes: AbsRuntimeMap,
     structs: StructMap,
     tuples: TupleMap,
     types: TypeMap,
@@ -50,6 +51,7 @@ pub struct Ctx {
 impl Ctx {
     pub fn new() -> Self {
         Self {
+            abs_runtimes: HashMap::new(),
             structs: HashMap::new(),
             tuples: HashMap::new(),
             types: HashMap::new(),
@@ -89,6 +91,11 @@ impl Ctx {
     /// Get a function from its ID.
     pub fn get_fun(&self, fun_id: hir::FunId) -> Option<&hir::FunKind> {
         self.funs.get(&fun_id)
+    }
+
+    /// Get an abstract runtime from its ID.
+    pub fn get_abstract_runtime(&self, art_id: hir::AbsRuntimeId) -> Option<&hir::AbstractRuntime> {
+        self.abs_runtimes.get(&art_id)
     }
 
     /// Get module declarations from the module ID.
@@ -470,6 +477,10 @@ impl Ctx {
         for (d_id, data) in hir.data {
             let prev = self.data.insert(d_id, data);
             debug_assert!(prev.is_none()); // d_id must be unique
+        }
+        for (art_id, art) in hir.abs_runtimes {
+            let prev = self.abs_runtimes.insert(art_id, art);
+            debug_assert!(prev.is_none());
         }
         for import in hir.imports {
             let mut prototypes = Vec::new();
