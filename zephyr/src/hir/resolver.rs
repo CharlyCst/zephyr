@@ -212,22 +212,48 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         let structs = self.register_and_resolve_structs(ast_program.structs, &mut state);
         self.register_used_mods(ast_program.used, &mut state);
         self.register_and_resolve_abstract_runtimes(ast_program.abstract_runtimes, &mut state);
-        let declared_funs = self.register_functions(funs, &mut state);
+        let resolved_funs = self.resolve_function_signature(funs, &mut state);
+        self.declare_functions(&resolved_funs, &mut state);
 
         // Resolve exposed funs
         let exposed_funs = self.resolve_exports(ast_program.exposed, &mut state);
 
         // Resolve function bodies
-        for fun in declared_funs.into_iter() {
-            if let Some(named_fun) = self.resolve_function(fun, &exposed_funs, &mut state) {
-                named_funs.push(named_fun);
+        for fun in resolved_funs.into_iter() {
+            let exposed = exposed_funs.get(&fun.fun_id).cloned();
+            let named_fun = self.resolve_function(fun, exposed, &mut state);
+            named_funs.push(named_fun);
+        }
+
+        // Resolve runtime implementations
+        let mut runtime_impls = HashMap::with_capacity(ast_program.runtime_impls.len());
+        for rt_impl in ast_program.runtime_impls {
+            let art_id = match self.get_abstract_runtime_id(&rt_impl.abstract_runtime, &mut state) {
+                Ok(art_id) => art_id,
+                Err(_) => continue,
+            };
+
+            let funs = self.resolve_function_signature(rt_impl.funs, &mut state);
+            let mut rt_funs = HashMap::with_capacity(funs.len());
+            for fun in funs {
+                let fun = self.resolve_function(fun, None, &mut state);
+                rt_funs.insert(fun.ident.clone(), fun.fun_id);
+                named_funs.push(fun);
             }
+            runtime_impls.insert(
+                art_id,
+                RuntimeImpl {
+                    abs_runtime: art_id,
+                    funs: rt_funs,
+                },
+            );
         }
 
         ResolvedProgram {
             funs: named_funs,
             structs,
             imports,
+            runtime_impls,
             data: state.namespace.data,
             names: state.namespace.names,
             fun_types: state.namespace.fun_types,
@@ -237,13 +263,13 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
     }
 
     /// Check that each names used inside the function are correctly defined.
-    /// Also responsible for checking if the function is exposed.
+    /// If `exposed` is some then the functions will be exposed to the runtime.
     fn resolve_function(
         &mut self,
-        fun: DeclaredFunction,
-        exposed_funs: &HashMap<FunId, String>,
+        fun: PreResolvedFunction,
+        exposed: Option<String>,
         state: &mut State,
-    ) -> Option<Function> {
+    ) -> Function {
         state.new_scope();
         let mut locals = Vec::new();
         let mut fun_params = Vec::new();
@@ -265,18 +291,12 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             }
         }
 
-        let exposed = if let Some(exposed_name) = exposed_funs.get(&fun.fun_id) {
-            Some(exposed_name.clone())
-        } else {
-            None
-        };
-
         match fun.body {
             ast::Body::Zephyr(block) => {
                 let block = self.resolve_block(block, state, &mut locals, fun.fun_id);
                 state.exit_scope();
 
-                Some(Function {
+                Function {
                     ident: fun.ident,
                     params: fun_params,
                     locals,
@@ -285,13 +305,13 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     exposed,
                     loc: fun.loc,
                     fun_id: fun.fun_id,
-                })
+                }
             }
             ast::Body::Asm(stmts) => {
                 let stmts = self.resolve_asm(stmts, state);
                 state.exit_scope();
 
-                Some(Function {
+                Function {
                     ident: fun.ident,
                     params: fun_params,
                     locals,
@@ -300,7 +320,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     exposed,
                     loc: fun.loc,
                     fun_id: fun.fun_id,
-                })
+                }
             }
         }
     }
@@ -940,13 +960,13 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         }
     }
 
-    /// Register top level functions into the global state (`state`).
-    fn register_functions(
+    /// Resolve the function signature, creating a corresponding type in the typing context.
+    fn resolve_function_signature(
         &mut self,
         funs: Vec<ast::Function>,
         state: &mut State<'a, 'ctx, 'ty>,
-    ) -> Vec<DeclaredFunction> {
-        let mut declared_funs = Vec::with_capacity(funs.len());
+    ) -> Vec<PreResolvedFunction> {
+        let mut resolved_funs = Vec::with_capacity(funs.len());
         for fun in funs {
             // Check parameters types
             let mut params = Vec::new();
@@ -974,18 +994,29 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 .checker
                 .set_fun(fun_t_var, params, ret, self.err, fun.loc);
             let fun_id = state.namespace.funs.fresh_id();
-            state.declare_fun(fun.ident.clone(), fun_id, fun_t_var, fun.loc, self.err);
-            declared_funs.push(DeclaredFunction {
+            resolved_funs.push(PreResolvedFunction {
                 ident: fun.ident,
                 params: declared_params,
                 body: fun.body,
                 is_pub: fun.is_pub,
                 loc: fun.loc,
+                t_var: fun_t_var,
                 fun_id,
             })
         }
 
-        declared_funs
+        resolved_funs
+    }
+
+    /// Declare a list of functions to make them accessible from the global state.
+    fn declare_functions(
+        &mut self,
+        funs: &Vec<PreResolvedFunction>,
+        state: &mut State<'a, 'ctx, 'ty>,
+    ) {
+        for fun in funs {
+            state.declare_fun(fun.ident.clone(), fun.fun_id, fun.t_var, fun.loc, self.err);
+        }
     }
 
     /// Register top level imports into the global state (`state`) and return resolved
@@ -1514,6 +1545,55 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                     "Function with id '{}' is not in state or ctx",
                     fun_id
                 ));
+                Err(())
+            }
+        }
+    }
+
+    /// Return an abstract runtime ID from a path.
+    fn get_abstract_runtime_id(
+        &mut self,
+        path: &ast::Path,
+        state: &mut State,
+    ) -> Result<AbsRuntimeId, ()> {
+        // Helper function, try to cast a value into a namespace and display helpful error message
+        // in case of failure.
+        fn value_to_namespace(
+            value: Option<(Expression, TypeVar)>,
+            path: &ast::Path,
+            err: &mut impl ErrorHandler,
+        ) -> Result<NamespaceKind, ()> {
+            match value {
+                Some((Expression::Namespace { namespace, .. }, _)) => Ok(namespace),
+                Some((expr, _)) => {
+                    err.report(expr.get_loc(), String::from("Invalid abstract runtime"));
+                    return Err(());
+                }
+                None => {
+                    err.report(
+                        path.loc,
+                        format!("Could not find abtract runtime '{}' in context", &path),
+                    );
+                    return Err(());
+                }
+            }
+        }
+
+        // Get the path root
+        let val = self.get_value(&path.root, None, path.loc, state)?;
+        let mut namespace = value_to_namespace(val, path, self.err)?;
+
+        // Walk the path
+        for item in &path.path {
+            let val = namespace.get_value(item, path.loc, &mut state.checker, state.ctx);
+            namespace = value_to_namespace(val, path, self.err)?
+        }
+
+        match namespace {
+            NamespaceKind::AbstractRuntime(art_id) => Ok(art_id),
+            _ => {
+                self.err
+                    .report(path.loc, format!("'{}' is not an abstract runtime", path));
                 Err(())
             }
         }

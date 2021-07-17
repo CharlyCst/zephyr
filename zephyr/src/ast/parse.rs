@@ -62,7 +62,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
                     Declaration::Expose(expose) => exposed.push(expose),
                     Declaration::Imports(import) => imports.push(import),
                     Declaration::AbstractRuntime(runtime) => abstract_runtimes.push(runtime),
-                    Declaration::Impl(runtime_impl) => runtime_impls.push(runtime_impl),
+                    Declaration::RuntimeImpl(runtime_impl) => runtime_impls.push(runtime_impl),
                 },
                 Err(()) => self.err.silent_report(),
             }
@@ -280,7 +280,7 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
             TokenType::From => Ok(Declaration::Imports(self.imports()?)),
             TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),
             TokenType::Abstract => Ok(Declaration::AbstractRuntime(self.runtime()?)),
-            TokenType::Impl => Ok(Declaration::Impl(self.impl_runtime()?)),
+            TokenType::Impl => Ok(Declaration::RuntimeImpl(self.impl_runtime()?)),
             TokenType::Pub => match self.peekpeek().t {
                 TokenType::Fun => Ok(Declaration::Function(self.function()?)),
                 TokenType::Struct => Ok(Declaration::Struct(self._struct()?)),

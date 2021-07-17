@@ -152,7 +152,7 @@ pub enum Declaration {
     Imports(Imports),
     Struct(Struct),
     AbstractRuntime(AbstractRuntime),
-    Impl(RuntimeImplementation),
+    RuntimeImpl(RuntimeImplementation),
 }
 
 pub enum ImplRuntimeDeclaration {

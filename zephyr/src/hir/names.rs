@@ -25,6 +25,7 @@ pub struct ResolvedProgram {
     pub structs: StructStore,
     pub imports: Vec<Imports>,
     pub abs_runtimes: AbsRuntimeStore,
+    pub runtime_impls: HashMap<AbsRuntimeId, RuntimeImpl>,
     pub names: NameStore,
     pub module: Module,
 }
@@ -69,13 +70,15 @@ pub struct Function {
     pub fun_id: FunId,
 }
 
-pub struct DeclaredFunction {
+/// Functions whose prototype has been resolved, the body has not.
+pub struct PreResolvedFunction {
     pub ident: String,
     pub params: Vec<(ast::Parameter, TypeVar)>,
     pub body: ast::Body,
     pub is_pub: bool,
     pub loc: Location,
     pub fun_id: FunId,
+    pub t_var: TypeVar,
 }
 
 pub struct FunctionPrototype {
@@ -105,6 +108,11 @@ pub struct AbstractRuntime {
     pub ident: String,
     pub funs: HashMap<String, (FunId, TypeVar)>,
     pub loc: Location,
+}
+
+pub struct RuntimeImpl {
+    pub abs_runtime: AbsRuntimeId,
+    pub funs: HashMap<String, FunId>
 }
 
 #[derive(Clone)]
