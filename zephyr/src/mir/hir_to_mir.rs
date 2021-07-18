@@ -289,11 +289,9 @@ impl<'a, 'arena, E: ErrorHandler> MirProducer<'a, 'arena, E> {
     // —————————————————————————— Register items usage —————————————————————————— //
     //                                                                            //
     // HIR items are lazily lowered to MIR, that way only items required by the   //
-    // program ends up in the Wasm file.                                          //
-    // Whenever an item is used it _must_ be registered, so that it will be       //
-    // in the executable file.                                                    //
-    // For instance when using a `DataPointer(DataId)`, the `DataId` must be      //
-    // registered.                                                                //
+    // program ends up in the Wasm file. Whenever an item is used it _must_ be    //
+    // registered, so that it will be in the executable file. For instance when   //
+    // using a `DataPointer(DataId)`, the `DataId` must be registered.            //
     //                                                                            //
     // —————————————————————————————————————————————————————————————————————————— //
 

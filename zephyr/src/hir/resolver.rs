@@ -226,7 +226,8 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
         }
 
         // Resolve runtime implementations
-        let mut runtime_impls = HashMap::with_capacity(ast_program.runtime_impls.len());
+        let mut runtime_impls = Store::new(ast_program.module.id); // TODO: factorize that...
+        let mut abs_runtime_mapping = HashMap::with_capacity(ast_program.runtime_impls.len());
         for rt_impl in ast_program.runtime_impls {
             let art_id = match self.get_abstract_runtime_id(&rt_impl.abstract_runtime, &mut state) {
                 Ok(art_id) => art_id,
@@ -240,13 +241,20 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
                 rt_funs.insert(fun.ident.clone(), fun.fun_id);
                 named_funs.push(fun);
             }
-            runtime_impls.insert(
-                art_id,
-                RuntimeImpl {
-                    abs_runtime: art_id,
-                    funs: rt_funs,
-                },
-            );
+            let rt_impl_id = runtime_impls.add(RuntimeImpl {
+                abs_runtime: art_id,
+                funs: rt_funs,
+                loc: rt_impl.loc,
+            });
+            if let Some(_) = abs_runtime_mapping.insert(art_id, rt_impl_id) {
+                self.err.report(
+                    rt_impl.loc,
+                    format!(
+                        "Abstract runtime '{}' is already implemented in this module",
+                        &rt_impl.abstract_runtime
+                    ),
+                );
+            }
         }
 
         ResolvedProgram {
@@ -254,6 +262,7 @@ impl<'err, 'a, 'ctx, 'ty, E: ErrorHandler> NameResolver<'err, E> {
             structs,
             imports,
             runtime_impls,
+            abs_runtime_mapping,
             data: state.namespace.data,
             names: state.namespace.names,
             fun_types: state.namespace.fun_types,

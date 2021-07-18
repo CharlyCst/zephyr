@@ -546,17 +546,20 @@ impl<'err, E: ErrorHandler> Parser<'err, E> {
     }
 
     fn impl_runtime(&mut self) -> Result<RuntimeImplementation, ()> {
+        let loc = self.peek().loc;
         self.next_match_report_synchronize_decl(
             TokenType::Impl,
             "Expected 'impl' keyword when implementing an abstract runtime interface",
         )?;
         let abstract_runtime = self.path()?;
+        let loc = loc.merge(self.peek().loc);
         let (funs, used) = self.impl_runtime_block()?;
         self.consume_semi_colon();
         Ok(RuntimeImplementation {
             abstract_runtime,
             funs,
             used,
+            loc,
         })
     }
 

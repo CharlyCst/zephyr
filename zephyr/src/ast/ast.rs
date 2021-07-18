@@ -213,6 +213,7 @@ pub struct RuntimeImplementation {
     pub abstract_runtime: Path,
     pub used: Vec<Use>,
     pub funs: Vec<Function>,
+    pub loc: Location,
 }
 
 pub struct Struct {

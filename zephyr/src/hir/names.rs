@@ -7,7 +7,7 @@ use crate::mir::Value as MirValue;
 use std::collections::HashMap;
 use std::fmt;
 
-pub use super::store::{AbsRuntimeId, DataId, FunId, StructId, TupleId, TypeId};
+pub use super::store::{AbsRuntimeId, DataId, FunId, RuntimeImplId, StructId, TupleId, TypeId};
 pub use super::type_check::TypeVar;
 pub use crate::ast::{AsmControl, AsmMemory, AsmParametric};
 
@@ -16,6 +16,7 @@ pub type DataStore = Store<DataId, Data>;
 pub type StructStore = Store<StructId, Struct>;
 pub type FunStore = Store<FunId, Function>;
 pub type AbsRuntimeStore = Store<AbsRuntimeId, AbstractRuntime>;
+pub type RuntimeImplStore = Store<RuntimeImplId, RuntimeImpl>;
 
 /// A resolved program, ready to be typechecked.
 pub struct ResolvedProgram {
@@ -25,7 +26,8 @@ pub struct ResolvedProgram {
     pub structs: StructStore,
     pub imports: Vec<Imports>,
     pub abs_runtimes: AbsRuntimeStore,
-    pub runtime_impls: HashMap<AbsRuntimeId, RuntimeImpl>,
+    pub runtime_impls: RuntimeImplStore,
+    pub abs_runtime_mapping: HashMap<AbsRuntimeId, RuntimeImplId>,
     pub names: NameStore,
     pub module: Module,
 }
@@ -112,7 +114,8 @@ pub struct AbstractRuntime {
 
 pub struct RuntimeImpl {
     pub abs_runtime: AbsRuntimeId,
-    pub funs: HashMap<String, FunId>
+    pub funs: HashMap<String, FunId>,
+    pub loc: Location,
 }
 
 #[derive(Clone)]

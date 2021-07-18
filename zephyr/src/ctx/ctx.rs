@@ -17,6 +17,7 @@ use crate::wasm;
 #[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
 pub struct ModId(pub u32);
 
+type RuntimeImplMap = HashMap<hir::RuntimeImplId, hir::RuntimeImpl>;
 type AbsRuntimeMap = HashMap<hir::AbsRuntimeId, hir::AbstractRuntime>;
 type StructMap = HashMap<hir::StructId, hir::Struct>;
 type TupleMap = HashMap<hir::TupleId, hir::Tuple>;
@@ -26,10 +27,13 @@ type FunMap = HashMap<hir::FunId, hir::FunKind>;
 type ModMap = HashMap<ModId, ModulePath>;
 type ReverseModMap = HashMap<ModulePath, ModId>;
 type DeclMap = HashMap<ModulePath, ModuleDeclarations>;
+/// A mapping from abstract runtime to a list of available concrete implementations.
+type ConcreteImplementation = HashMap<hir::AbsRuntimeId, Vec<hir::RuntimeImplId>>;
 
 /// The global compilation context.
 pub struct Ctx {
     // HIR elements
+    runtime_impls: RuntimeImplMap,
     abs_runtimes: AbsRuntimeMap,
     structs: StructMap,
     tuples: TupleMap,
@@ -41,6 +45,7 @@ pub struct Ctx {
     public_decls: DeclMap,
     imports: Vec<hir::Import>,
     packages: Vec<hir::Module>,
+    concrete_impls: ConcreteImplementation,
 
     // Configuration
     knwon_values: KnownValues,
@@ -51,6 +56,7 @@ pub struct Ctx {
 impl Ctx {
     pub fn new() -> Self {
         Self {
+            runtime_impls: HashMap::new(),
             abs_runtimes: HashMap::new(),
             structs: HashMap::new(),
             tuples: HashMap::new(),
@@ -62,6 +68,7 @@ impl Ctx {
             imports: Vec::new(),
             packages: Vec::new(),
             public_decls: HashMap::new(),
+            concrete_impls: HashMap::new(),
             knwon_values: KnownValues::uninitialized(),
             mod_id: Cell::new(ModId(1)), // ModId 0 is reserverd
             verbose: false,
@@ -480,7 +487,18 @@ impl Ctx {
         }
         for (art_id, art) in hir.abs_runtimes {
             let prev = self.abs_runtimes.insert(art_id, art);
-            debug_assert!(prev.is_none());
+            debug_assert!(prev.is_none()); // art_id must be unique
+        }
+        for (rt_impl_id, rt_impl) in hir.runtime_impls {
+            let prev = self.runtime_impls.insert(rt_impl_id, rt_impl);
+            debug_assert!(prev.is_none()); // rt_impl_id must be unique
+        }
+        for (art_id, rt_impls) in hir.abs_runtime_mapping {
+            if let Some(impls) = self.concrete_impls.get_mut(&art_id) {
+                impls.extend(rt_impls);
+            } else {
+                self.concrete_impls.insert(art_id, rt_impls);
+            }
         }
         for import in hir.imports {
             let mut prototypes = Vec::new();

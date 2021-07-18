@@ -85,6 +85,13 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
             })
         });
 
+        let runtime_impls = prog.runtime_impls;
+        let abs_runtime_mapping = prog
+            .abs_runtime_mapping
+            .into_iter()
+            .map(|(art_id, rt_impl_id)| (art_id, vec![rt_impl_id]))
+            .collect();
+
         let pub_decls = self.get_pub_decls(prog.module.id, &funs, &imports, &structs);
 
         Program {
@@ -93,6 +100,8 @@ impl<'a, E: ErrorHandler> HirProducer<'a, E> {
             structs,
             pub_decls,
             abs_runtimes,
+            runtime_impls,
+            abs_runtime_mapping,
             tuples: checker.get_tuples(),
             data: prog.data,
             module: prog.module,
