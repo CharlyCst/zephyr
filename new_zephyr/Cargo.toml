@@ -1,0 +1,11 @@
+[package]
+name = "new-zephyr-lang"
+version = "0.1.0"
+authors = ["CharlyCst <charly.castes@epfl.ch>"]
+edition = "2018"
+
+# [lib]
+# name = "zephyr"
+
+[dependencies]
+
