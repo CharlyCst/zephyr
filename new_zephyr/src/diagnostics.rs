@@ -1,7 +1,9 @@
 //! Diagnostics
 #![allow(dead_code)]
 
-#[derive(Default)]
+use std::fmt;
+
+#[derive(Default, Debug)]
 pub struct Diagnostics {
     diagnostics: Vec<Diagnostic>,
     /// Wether a diagnostic with the Error level has been produced.
@@ -22,9 +24,16 @@ enum Level {
     Warning,
 }
 
-pub struct Location {
+#[derive(Clone, Copy)]
+pub struct Position {
     pub line: u32,
     pub column: u32,
+}
+
+#[derive(Clone, Copy)]
+pub struct Location {
+    pub start: Position,
+    pub end: Position,
 }
 
 pub trait Error {
@@ -80,5 +89,23 @@ impl Diagnostics {
             level: Level::Warning,
             loc: None,
         })
+    }
+}
+
+impl fmt::Debug for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let level = match self.level {
+            Level::Error => "error",
+            Level::Warning => "warning",
+        };
+        let loc = if let Some(Location { start, end }) = self.loc {
+            format!(
+                " - {}:{}~{}:{}",
+                start.line, start.column, end.line, end.column
+            )
+        } else {
+            String::from("")
+        };
+        write!(f, "<{} - {}{}>", level, self.error.message(), loc)
     }
 }
