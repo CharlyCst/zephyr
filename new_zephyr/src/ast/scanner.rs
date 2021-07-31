@@ -9,7 +9,8 @@ use super::tokens::TokenType;
 use crate::diagnostics::{Diagnostics, Location, Position};
 
 struct Scanner<'a> {
-    source: &'a [u8],
+    source: &'a str,
+    chars: Peekable<'a>,
     tokens: Vec<TokenType>,
     err: Diagnostics,
 
@@ -18,8 +19,6 @@ struct Scanner<'a> {
     /// Idex of the start of the line
     line_start: usize,
 
-    /// Index of the current character
-    current: usize,
     /// Index of the start of the current token
     start: usize,
     /// Number of opened parenthesis
@@ -31,12 +30,12 @@ struct Scanner<'a> {
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
-            source: source.as_bytes(),
+            source,
+            chars: Peekable::new(source),
             tokens: Vec::new(),
             err: Diagnostics::default(),
             line: 1,
             line_start: 0,
-            current: 0,
             start: 0,
             parenthesis_count: 0,
             stmt_ender: false,
@@ -55,96 +54,99 @@ impl<'a> Scanner<'a> {
     /// Scan the next token, advancing the cursor.
     fn scan_token(&mut self) {
         let token = match self.advance() {
-            // Single character tokens
-            b'(' => TokenType::LeftPar,
-            b')' => TokenType::RightPar,
-            b'{' => TokenType::LeftBrace,
-            b'}' => TokenType::RightBrace,
-            b',' => TokenType::Comma,
-            b':' => TokenType::Colon,
-            b'.' => TokenType::Dot,
-            b'-' => TokenType::Minus,
-            b'+' => TokenType::Plus,
-            b'*' => TokenType::Star,
-            b'%' => TokenType::Percent,
-            b'^' => TokenType::Hat,
+            Some(c) => match c {
+                // Single character tokens
+                '(' => TokenType::LeftPar,
+                ')' => TokenType::RightPar,
+                '{' => TokenType::LeftBrace,
+                '}' => TokenType::RightBrace,
+                ',' => TokenType::Comma,
+                ':' => TokenType::Colon,
+                '.' => TokenType::Dot,
+                '-' => TokenType::Minus,
+                '+' => TokenType::Plus,
+                '*' => TokenType::Star,
+                '%' => TokenType::Percent,
+                '^' => TokenType::Hat,
 
-            // Two character tokens
-            b'!' => {
-                if self.next_match(b'=') {
-                    TokenType::BangEqual
-                } else {
-                    TokenType::Bang
+                // Two character tokens
+                '!' => {
+                    if self.next_match('=') {
+                        TokenType::BangEqual
+                    } else {
+                        TokenType::Bang
+                    }
                 }
-            }
-            b'=' => {
-                if self.next_match(b'=') {
-                    TokenType::EqualEqual
-                } else {
-                    TokenType::Equal
+                '=' => {
+                    if self.next_match('=') {
+                        TokenType::EqualEqual
+                    } else {
+                        TokenType::Equal
+                    }
                 }
-            }
-            b'>' => {
-                if self.next_match(b'=') {
-                    TokenType::GreaterEqual
-                } else {
-                    TokenType::Greater
+                '>' => {
+                    if self.next_match('=') {
+                        TokenType::GreaterEqual
+                    } else {
+                        TokenType::Greater
+                    }
                 }
-            }
-            b'<' => {
-                if self.next_match(b'=') {
-                    TokenType::LessEqual
-                } else {
-                    TokenType::Less
+                '<' => {
+                    if self.next_match('=') {
+                        TokenType::LessEqual
+                    } else {
+                        TokenType::Less
+                    }
                 }
-            }
-            b'&' => {
-                if self.next_match(b'&') {
-                    TokenType::AndAnd
-                } else {
-                    TokenType::And
+                '&' => {
+                    if self.next_match('&') {
+                        TokenType::AndAnd
+                    } else {
+                        TokenType::And
+                    }
                 }
-            }
-            b'|' => {
-                if self.next_match(b'|') {
-                    TokenType::OrOr
-                } else {
-                    TokenType::Or
+                '|' => {
+                    if self.next_match('|') {
+                        TokenType::OrOr
+                    } else {
+                        TokenType::Or
+                    }
                 }
-            }
-            b'/' => {
-                if self.next_match(b'/') {
-                    self.consume_comment();
+                '/' => {
+                    if self.next_match('/') {
+                        self.consume_comment();
+                        return;
+                    } else {
+                        TokenType::Slash
+                    }
+                }
+
+                // Whitespaces and end of line
+                '\n' => {
+                    self.new_line();
                     return;
-                } else {
-                    TokenType::Slash
                 }
-            }
-
-            // Whitespaces and end of line
-            b'\n' => {
-                self.new_line();
-                return;
-            }
-            b' ' | b'\t' | b'\r' => {
-                self.consume_whitespace();
-                return;
-            }
-
-            // Advanced logic for multi-character tokens
-            c => {
-                if c.is_ascii_digit() {
-                    self.scan_number();
-                } else if c.is_ascii_alphabetic() || c == b'_' {
-                    self.scan_identifier();
-                } else if c == b'"' {
-                    self.scan_string();
-                } else {
-                    self.err
-                        .report(ScanError::UnexpectedCharacter(c), self.get_previous_loc(1));
+                ' ' | '\t' | '\r' => {
+                    self.consume_whitespace();
+                    return;
                 }
-                return;
-            }
+
+                // Advanced logic for multi-character tokens
+                c => {
+                    if c.is_ascii_digit() {
+                        self.scan_number();
+                    } else if c.is_ascii_alphabetic() || c == '_' {
+                        self.scan_identifier();
+                    } else if c == '"' {
+                        self.scan_string();
+                    } else {
+                        let loc = self.get_previous_loc(1);
+                        self.err.report(ScanError::UnexpectedCharacter(c), loc);
+                    }
+                    return;
+                }
+            },
+            None => TokenType::EOF,
         };
         self.add_token(token);
     }
@@ -156,12 +158,19 @@ impl<'a> Scanner<'a> {
     fn scan_identifier(&mut self) {
         // Move until the end of the current identifier [a-zA-Z0-9_]
         // Note: we don't disambiguate with numbers here, the caller should do it
-        while !self.is_at_end() && self.peek().is_ascii_alphanumeric() || self.peek() == b'_' {
+        while let Some(c) = self.peek() {
+            if !c.is_alphanumeric() && c != '_' {
+                break;
+            }
             self.advance();
         }
+
         // Convert that sequence of chars to a string
-        // TODO: error handling
-        let ident = str::from_utf8(&self.source[self.start..self.current]).unwrap();
+        let ident = if let Some(end) = self.peek_idx() {
+            &self.source[self.start..end]
+        } else {
+            &self.source[self.start..]
+        };
         if let Some(keyword) = as_keyword(&ident) {
             self.add_token(keyword);
         } else {
@@ -173,119 +182,172 @@ impl<'a> Scanner<'a> {
 
     /// Consumes any (non carriage-return) characters between double quotes
     fn scan_string(&mut self) {
-        let mut bytes = Vec::new();
+        let mut str_val = String::new();
 
         // Consume until the next char is a double quote
-        while !self.is_at_end() {
-            match self.advance() {
+        while let Some(c) = self.advance() {
+            match c {
                 // Some characters might be escaped, we have to process those differently
-                b'\\' => match self.advance() {
-                    b'\\' => bytes.push(b'\\'),
-                    b'n' => bytes.push(b'\n'),
-                    b'r' => bytes.push(b'\r'),
-                    b't' => bytes.push(b'\t'),
-                    b'0' => bytes.push(b'\0'),
-                    b'"' => bytes.push(b'"'),
-                    c => {
-                        let loc = self.get_previous_loc(2);
-                        self.err.report(ScanError::BadEscapeSequence(c), loc);
+                '\\' => match self.advance() {
+                    Some(c) => match c {
+                        '\\' => str_val.push('\\'),
+                        'n' => str_val.push('\n'),
+                        'r' => str_val.push('\r'),
+                        't' => str_val.push('\t'),
+                        '0' => str_val.push('\0'),
+                        '"' => str_val.push('"'),
+                        c => {
+                            let loc = self.get_previous_loc(2);
+                            self.err.report(ScanError::BadEscapeSequence(c), loc);
+                        }
+                    },
+                    None => {
+                        let loc = self.get_current_token_loc();
+                        self.err.report(ScanError::UnpairedDoubleQuote, loc);
                     }
                 },
-                b'"' => break, // End of string
-                b'\n' => {
+                '"' => break, // End of string
+                '\n' => {
                     // Exit if the double quote is not found on this line
-                    self.err
-                        .report(ScanError::MultilineString, self.get_current_token_loc());
+                    let loc = self.get_current_token_loc();
+                    self.err.report(ScanError::MultilineString, loc);
                     break;
                 }
-                c => bytes.push(c),
+                c => str_val.push(c),
             }
         }
-        let str_val = String::from_utf8(bytes).unwrap(); // TODO: error handling
         self.add_token(TokenType::StringLit(str_val));
     }
 
     // ———————————————————————————————— Numbers ————————————————————————————————— //
+    // Note that we consume all alphanumeric characters, not only digits. This is //
+    // done on purpose to emit an error in the scanner rather than in the parser. //
+    // —————————————————————————————————————————————————————————————————————————— //
 
-    // TODO: report an error if a non-numeric character is found
     /// Consumes consecutive digit characters and push a number token
     fn scan_number(&mut self) {
         // Look for a basis (hexa or binary)
-        if self.peek() == b'x' {
-            self.advance();
-            self.scan_hexadecimal_number()
-        } else if self.peek() == b'b' {
-            self.advance();
-            self.scan_binary_number()
-        } else {
-            self.scan_decimal_number()
+        match self.peek() {
+            Some('x') => {
+                self.advance();
+                self.scan_hexadecimal_number()
+            }
+            Some('b') => {
+                self.advance();
+                self.scan_binary_number()
+            }
+            Some(_) => self.scan_decimal_number(),
+            None => (),
         }
     }
 
     fn scan_decimal_number(&mut self) {
-        let start = self.start;
         let mut is_float = false;
 
         // Consume digits
-        while !self.is_at_end() && self.peek().is_ascii_digit() {
+        while let Some(c) = self.peek() {
+            if !c.is_alphanumeric() {
+                break;
+            }
             self.advance();
         }
-        if self.peek() == b'.' {
+        if self.peek() == Some('.') {
             is_float = true;
-            while !self.is_at_end() && self.peek().is_ascii_digit() {
+            while let Some(c) = self.peek() {
+                if !c.is_alphanumeric() {
+                    break;
+                }
                 self.advance();
             }
         }
 
         // Parse token
-        let bytes = &self.source[start..self.current];
-        let bytes = str::from_utf8(bytes).unwrap();
-        let token = if is_float {
-            let float = bytes.parse::<f64>().unwrap(); // TODO: error handling
-            TokenType::FloatLit(float)
+        let bytes = if let Some(end) = self.peek_idx() {
+            &self.source[self.start..end]
         } else {
-            let int = bytes.parse::<u64>().unwrap(); // TODO: error handling
-            TokenType::IntegerLit(int)
+            &self.source[self.start..]
         };
-        self.add_token(token);
+        if is_float {
+            if let Ok(float) = bytes.parse::<f64>() {
+                self.add_token(TokenType::FloatLit(float));
+            } else {
+                let loc = self.get_current_token_loc();
+                self.err.report(ScanError::BadNumber, loc);
+            }
+        } else {
+            if let Ok(int) = bytes.parse::<u64>() {
+                self.add_token(TokenType::IntegerLit(int));
+            } else {
+                let loc = self.get_current_token_loc();
+                self.err.report(ScanError::BadNumber, loc);
+            }
+        };
     }
 
     fn scan_hexadecimal_number(&mut self) {
-        let start = self.current;
+        // Record the start of the number
+        let start = if let Some(idx) = self.peek_idx() {
+            idx
+        } else {
+            let loc = self.get_current_token_loc();
+            self.err.report(ScanError::MalformedHexa, loc);
+            return;
+        };
 
         // Consume digits
-        while !self.is_at_end() && self.peek().is_ascii_digit() {
+        while let Some(c) = self.peek() {
+            if !c.is_alphanumeric() {
+                break;
+            }
             self.advance();
         }
+
         // Floating points are not valid in hexadecimal
-        if self.peek() == b'.' {
-            self.err
-                .report(ScanError::NoFloatHexa, self.get_current_loc());
+        if self.peek() == Some('.') {
+            let loc = self.get_current_loc();
+            self.err.report(ScanError::NoFloatHexa, loc);
         }
 
         // Parse token
-        let bytes = &self.source[start..self.current];
-        let bytes = str::from_utf8(bytes).unwrap();
+        let bytes = if let Some(end) = self.peek_idx() {
+            &self.source[start..end]
+        } else {
+            &self.source[start..]
+        };
         let hexa = u64::from_str_radix(bytes, 16).unwrap(); // TODO: error handling
         self.add_token(TokenType::IntegerLit(hexa));
     }
 
     fn scan_binary_number(&mut self) {
-        let start = self.current;
+        // Record the start of the number
+        let start = if let Some(idx) = self.peek_idx() {
+            idx
+        } else {
+            let loc = self.get_current_token_loc();
+            self.err.report(ScanError::MalformedBinary, loc);
+            return;
+        };
 
         // Consume digits
-        while !self.is_at_end() && self.peek().is_ascii_digit() {
+        while let Some(c) = self.peek() {
+            if !c.is_alphanumeric() {
+                break;
+            }
             self.advance();
         }
+
         // Floating points are not valid in binary
-        if self.peek() == b'.' {
-            self.err
-                .report(ScanError::NoFloatBinary, self.get_current_loc());
+        if self.peek() == Some('.') {
+            let loc = self.get_current_loc();
+            self.err.report(ScanError::NoFloatBinary, loc);
         }
 
         // Parse token
-        let bytes = &self.source[start..self.current];
-        let bytes = str::from_utf8(bytes).unwrap();
+        let bytes = if let Some(end) = self.peek_idx() {
+            &self.source[start..end]
+        } else {
+            &self.source[start..]
+        };
         let hexa = u64::from_str_radix(bytes, 2).unwrap(); // TODO: error handling
         self.add_token(TokenType::IntegerLit(hexa));
     }
@@ -296,7 +358,11 @@ impl<'a> Scanner<'a> {
     fn add_token(&mut self, token: TokenType) {
         self.check_stmt_ender(&token);
         self.tokens.push(token);
-        self.start = self.current;
+
+        // Set start location of the next token
+        if let Some(start) = self.peek_idx() {
+            self.start = start;
+        }
     }
 
     /// Registers a new line
@@ -305,22 +371,32 @@ impl<'a> Scanner<'a> {
             self.add_token(TokenType::SemiColon);
         }
         self.line += 1;
-        self.line_start = self.current;
-        self.start = self.current;
+        if let Some(idx) = self.peek_idx() {
+            self.line_start = idx;
+            self.start = idx;
+        }
     }
 
     /// Consumes every character until the end of source or the next line break.
     fn consume_comment(&mut self) {
-        while !self.is_at_end() && self.peek() != b'\n' {
+        while let Some(c) = self.peek() {
+            if c == '\n' {
+                break;
+            }
             self.advance();
         }
     }
 
     fn consume_whitespace(&mut self) {
-        while !self.is_at_end() && self.peek().is_ascii_whitespace() {
+        while let Some(c) = self.peek() {
+            if !c.is_whitespace() {
+                break;
+            }
             self.advance();
         }
-        self.start = self.current;
+        if let Some(idx) = self.peek_idx() {
+            self.start = idx;
+        }
     }
 
     /// Check if the token can be a statement ender and updates internal state accordingly.
@@ -328,7 +404,8 @@ impl<'a> Scanner<'a> {
         let candidate = match token {
             TokenType::IntegerLit(_) => true,
             TokenType::FloatLit(_) => true,
-            TokenType::BooleanLit(_) => true,
+            TokenType::True => true,
+            TokenType::False => true,
             TokenType::StringLit(_) => true,
             TokenType::Identifier(_) => true,
             TokenType::Return => true,
@@ -347,45 +424,48 @@ impl<'a> Scanner<'a> {
     }
 
     /// If the next character is 'c', consumes it and returns `true`. Returns `false` otherwise.
-    fn next_match(&mut self, c: u8) -> bool {
-        if self.is_at_end() {
-            false
-        } else if self.peek() != c {
-            false
-        } else {
-            self.current += 1;
-            true
+    fn next_match(&mut self, c: char) -> bool {
+        match self.peek() {
+            Some(next_c) if next_c == c => {
+                self.advance();
+                true
+            }
+            _ => false,
         }
     }
 
     /// Returns the next character by advancing the iterator.
-    fn advance(&mut self) -> u8 {
-        let c = self.peek();
-        self.current += 1;
-        c
-    }
-
-    /// Returns the previous character and move the iterator back to it.
-    fn back(&mut self) -> u8 {
-        self.current -= 1;
-        self.source[self.current]
+    fn advance(&mut self) -> Option<char> {
+        self.chars.next().map(|(_, c)| c)
     }
 
     /// Returns the next character *without* advancing the iterator.
-    fn peek(&self) -> u8 {
-        self.source[self.current]
+    fn peek(&mut self) -> Option<char> {
+        self.chars.peek().map(|(_, c)| c)
+    }
+
+    /// Returns the next character and its index *without* advancing the iterator.
+    fn peek_idx(&mut self) -> Option<usize> {
+        self.chars.peek().map(|(idx, _)| idx)
     }
 
     /// Returns `true` if end of the source was reached.
-    fn is_at_end(&self) -> bool {
-        self.current >= self.source.len()
+    fn is_at_end(&mut self) -> bool {
+        self.peek().is_none()
     }
 
+    // ———————————————————————————— Location getters ———————————————————————————— //
+
     /// Returns the location under the cursor (location of `self.peek`).
-    fn get_current_loc(&self) -> Location {
+    fn get_current_loc(&mut self) -> Location {
+        let idx = if let Some(idx) = self.peek_idx() {
+            idx
+        } else {
+            self.line_start + 1
+        };
         let start = Position {
             line: self.line,
-            column: (self.current - self.line_start) as u32,
+            column: (idx - self.line_start) as u32,
         };
         let mut end = start;
         end.column += 1;
@@ -393,18 +473,19 @@ impl<'a> Scanner<'a> {
     }
 
     /// Returns the location of the `len` last characters.
-    fn get_previous_loc(&self, len: usize) -> Location {
+    fn get_previous_loc(&mut self, len: usize) -> Location {
+        let idx = if let Some(idx) = self.peek_idx() {
+            idx
+        } else {
+            self.line_start + 1
+        };
         let end = Position {
             line: self.line,
-            column: (self.current - self.line_start) as u32,
+            column: (idx - self.line_start) as u32,
         };
 
-        let column = self.current - self.line_start;
-        let column = if column <= len {
-            0
-        } else {
-            column - len
-        } as u32;
+        let column = idx - self.line_start;
+        let column = if column <= len { 0 } else { column - len } as u32;
         let start = Position {
             line: self.line,
             column,
@@ -414,14 +495,19 @@ impl<'a> Scanner<'a> {
     }
 
     /// Returns the location of the token being actively built.
-    fn get_current_token_loc(&self) -> Location {
+    fn get_current_token_loc(&mut self) -> Location {
+        let idx = if let Some(idx) = self.peek_idx() {
+            idx
+        } else {
+            self.line_start + 1
+        };
         let start = Position {
             line: self.line,
-            column: self.start as u32,
+            column: (self.start - self.line_start) as u32,
         };
         let end = Position {
             line: self.line,
-            column: self.current as u32,
+            column: (idx - self.line_start) as u32,
         };
         Location { start, end }
     }
@@ -458,13 +544,62 @@ fn as_keyword(token: &str) -> Option<TokenType> {
     }
 }
 
+// ————————————————————————————————— Utils —————————————————————————————————— //
+
+/// A simple peakable iterator over the characters of a string and their positions.
+struct Peekable<'a> {
+    chars: str::CharIndices<'a>,
+    next: Option<(usize, char)>,
+}
+
+impl<'a> Peekable<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            chars: source.char_indices(),
+            next: None,
+        }
+    }
+
+    fn peek(&mut self) -> Option<(usize, char)> {
+        if self.next.is_none() {
+            self.next = self.chars.next();
+        }
+        self.next
+    }
+
+    fn next(&mut self) -> Option<(usize, char)> {
+        if self.next.is_some() {
+            let c = self.next;
+            self.next = None;
+            c
+        } else {
+            self.chars.next()
+        }
+    }
+}
+
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]
     fn keywords() {
         assert_eq!(as_keyword("foo"), None);
         assert_eq!(as_keyword("fun"), Some(TokenType::Fun));
+    }
+
+    #[test]
+    fn peek() {
+        let mut peekable = Peekable::new("Hello");
+        assert_eq!(peekable.next(), Some((0, 'H')));
+        assert_eq!(peekable.peek(), Some((1, 'e')));
+        assert_eq!(peekable.peek(), Some((1, 'e')));
+        assert_eq!(peekable.next(), Some((1, 'e')));
+        assert_eq!(peekable.next(), Some((2, 'l')));
+        assert_eq!(peekable.next(), Some((3, 'l')));
+        assert_eq!(peekable.peek(), Some((4, 'o')));
+        assert_eq!(peekable.next(), Some((4, 'o')));
+        assert_eq!(peekable.peek(), None);
+        assert_eq!(peekable.next(), None);
     }
 }
