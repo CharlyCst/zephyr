@@ -1,5 +1,13 @@
 //! # Tokens
 
+use crate::diagnostics::Location;
+
+#[derive(Debug)]
+pub struct Token {
+    pub t: TokenType,
+    pub loc: Location,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenType {
     // Single character

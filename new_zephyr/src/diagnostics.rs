@@ -98,14 +98,23 @@ impl fmt::Debug for Diagnostic {
             Level::Error => "error",
             Level::Warning => "warning",
         };
-        let loc = if let Some(Location { start, end }) = self.loc {
-            format!(
-                " - {}:{}~{}:{}",
-                start.line, start.column, end.line, end.column
-            )
+        let loc = if let Some(loc) = self.loc {
+            format!(" - {:?}", loc)
         } else {
             String::from("")
         };
         write!(f, "<{} - {}{}>", level, self.error.message(), loc)
+    }
+}
+
+impl fmt::Debug for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}~{:?}", self.start, self.end)
+    }
+}
+
+impl fmt::Debug for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
     }
 }

@@ -6,7 +6,7 @@ module   foo
 
 fun bar(a: i32) {
     let b = 0x42 * a
-    let c = 012a
+    let c = 012
     let s = "test :)"
 }
 "#;

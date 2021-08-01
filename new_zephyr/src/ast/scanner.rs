@@ -5,13 +5,13 @@
 use std::str;
 
 use super::diagnostics::ScanError;
-use super::tokens::TokenType;
+use super::tokens::{Token, TokenType};
 use crate::diagnostics::{Diagnostics, Location, Position};
 
 struct Scanner<'a> {
     source: &'a str,
     chars: Peekable<'a>,
-    tokens: Vec<TokenType>,
+    tokens: Vec<Token>,
     err: Diagnostics,
 
     /// Position in file
@@ -42,7 +42,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan(mut self) -> (Vec<TokenType>, Diagnostics) {
+    pub fn scan(mut self) -> (Vec<Token>, Diagnostics) {
         while !self.is_at_end() {
             self.scan_token();
         }
@@ -356,13 +356,27 @@ impl<'a> Scanner<'a> {
 
     /// Adds the token to the token list & update scanner state.
     fn add_token(&mut self, token: TokenType) {
+        let end = if let Some(idx) = self.peek_idx() {
+            idx
+        } else {
+            self.start + 1
+        };
+        let loc = Location {
+            start: Position {
+                line: self.line,
+                column: (1 + self.start - self.line_start) as u32,
+            },
+            end: Position {
+                line: self.line,
+                column: (1 + end - self.line_start) as u32,
+            },
+        };
+
         self.check_stmt_ender(&token);
-        self.tokens.push(token);
+        self.tokens.push(Token { t: token, loc });
 
         // Set start location of the next token
-        if let Some(start) = self.peek_idx() {
-            self.start = start;
-        }
+        self.start = end;
     }
 
     /// Registers a new line
@@ -465,7 +479,7 @@ impl<'a> Scanner<'a> {
         };
         let start = Position {
             line: self.line,
-            column: (idx - self.line_start) as u32,
+            column: (1 + idx - self.line_start) as u32,
         };
         let mut end = start;
         end.column += 1;
@@ -481,7 +495,7 @@ impl<'a> Scanner<'a> {
         };
         let end = Position {
             line: self.line,
-            column: (idx - self.line_start) as u32,
+            column: (1 + idx - self.line_start) as u32,
         };
 
         let column = idx - self.line_start;
@@ -503,17 +517,17 @@ impl<'a> Scanner<'a> {
         };
         let start = Position {
             line: self.line,
-            column: (self.start - self.line_start) as u32,
+            column: (1 + self.start - self.line_start) as u32,
         };
         let end = Position {
             line: self.line,
-            column: (idx - self.line_start) as u32,
+            column: (1 + idx - self.line_start) as u32,
         };
         Location { start, end }
     }
 }
 
-pub fn scan(source: &str) -> (Vec<TokenType>, Diagnostics) {
+pub fn scan(source: &str) -> (Vec<Token>, Diagnostics) {
     Scanner::new(source).scan()
 }
 
