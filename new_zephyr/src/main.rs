@@ -4,6 +4,8 @@ mod diagnostics;
 const PROGRAM: &'static str = r#"
 module   foo
 
+use std::string
+
 fun bar(a: i32) {
     let b = 0x42 * a
     let c = 012

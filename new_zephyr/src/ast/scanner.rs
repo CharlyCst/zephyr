@@ -61,7 +61,6 @@ impl<'a> Scanner<'a> {
                 '{' => TokenType::LeftBrace,
                 '}' => TokenType::RightBrace,
                 ',' => TokenType::Comma,
-                ':' => TokenType::Colon,
                 '.' => TokenType::Dot,
                 '-' => TokenType::Minus,
                 '+' => TokenType::Plus,
@@ -75,6 +74,13 @@ impl<'a> Scanner<'a> {
                         TokenType::BangEqual
                     } else {
                         TokenType::Bang
+                    }
+                }
+                ':' => {
+                    if self.next_match(':') {
+                        TokenType::ColonColon
+                    } else {
+                        TokenType::Colon
                     }
                 }
                 '=' => {

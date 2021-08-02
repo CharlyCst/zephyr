@@ -33,6 +33,7 @@ pub enum TokenType {
 
     // Two characters
     BangEqual,
+    ColonColon,
     EqualEqual,
     GreaterEqual,
     LessEqual,
