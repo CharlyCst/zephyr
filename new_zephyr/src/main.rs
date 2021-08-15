@@ -1,5 +1,8 @@
 mod ast;
 mod diagnostics;
+mod syntax;
+// mod id;
+// mod location;
 
 const PROGRAM: &'static str = r#"
 module   foo

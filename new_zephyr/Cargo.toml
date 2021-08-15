@@ -8,4 +8,5 @@ edition = "2018"
 # name = "zephyr"
 
 [dependencies]
+siphasher = "0.3"
 
