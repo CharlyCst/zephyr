@@ -1,5 +1,78 @@
 # Grammar specification
 
+// ——————————————————————————————— New Zephyr ——————————————————————————————— //
+
+## Main grammar
+
+```bnf
+program        = module declaration* EOF
+
+module         = "standalone"? module_kind IDENTIFIER ";"
+module_kind    = ( "runtime" "interface"? )? "module"
+
+declaration    = use | expose | function | struct | imports | runtime | impl_runtime
+use            = "use" module_path ( "as" IDENTIFIER)? ";"
+expose         = "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
+imports        = "from" IDENTIFIER "import" import_block ";"
+function       = "pub"? prototype block ";"
+struct         = "pub"? "runtime"? "struct" IDENTIFIER struct_block ";"
+interface      = "pub"? "interface" IDENTIFIER interface_block ";"
+
+import_block   = "{" import* "}"
+import         = "pub"? prototype ("as" IDENTIFIER) ";"
+
+struct_block   = "{" struct_field | declaration "}"
+struct_field   = "pub"? IDENTIFIER ":" type ";"
+
+prototype      = "fun" IDENTIFIER "(" parameters ? ")" result
+parameters     = IDENTIFIER ":" type ( "," IDENTIFIER ":" type )* ","?
+result         = (":" type)?
+
+// In ASM mode, use 'asm_statement' instead of 'statement'.
+asm_statement   -> WASM_OPCODE asm_primary? ";"
+asm_primary     -> NUMBER | IDENTIFIER
+
+statement      = expr_stmt | assign_stmt | let_stmt | if_stmt
+               | while_stmt | return_stmt
+expr_stmt      = expression ";"
+assign_stmt    = expression = expression ";"
+let_stmt       = "let" IDENTIFIER = expression ";"
+if_stmt        = "if" expression¹ block ("else" block) ";"
+while_stmt     = "while" expression¹ block ";"
+return_stmt    = "return" expression? ";"
+
+block          = "{" statement* "}"
+
+expression     = logical_or
+logical_or     = logical_and ("||" logical_and)*
+logical_and    = equality ("&&" equality)*
+equality       = comparison ( ( "!=" | "==" ) comparison)*
+comparison     = bitwise_or (("<" | ">" | "<=" | ">=") bitwise_or)*
+bitwise_or     = bitwise_xor ("|" bitwise_xor)*
+bitwise_xor    = bitwise_and ("^" bitwise_and)*
+bitwise_and    = addition ("&" addition)*
+addition       = multiplication (("+" | "-") multiplication)*
+multiplication = unary (("/" | "*" | "%" ) unary)*
+unary          = (("!" | "-") unary) | call
+call           = access ( "(" arguments? ")" )*
+access         = primary ( "." primary )*
+primary        = INTEGER | FLOAT | BOOLEAN | STRING | IDENTIFIER
+               | struct_literal | "false" | "true" | "(" expression ")"
+               | "(" ( expression "," )+ expression? ")"
+
+arguments      = ( expression ( "," expression )* ","? )?
+struct_literal = IDENTIFIER "{" (field ( ("," | ";") field )* ("," | ";")?)? "}"
+field          = IDENTIFIER ( ":" expression )?
+
+module_path    = IDENTIFIER ( "::" IDENTIFIER )*
+path           = IDENTIFIER ( "." IDENTIFIER )*
+type           = path | "(" type ( "," type )* ","? ")"
+
+// expression¹: except `struct_literal`, but `struct_literal` are allowed inside parentheses.
+```
+
+// ——————————————————————————————— Old Zephyr ——————————————————————————————— //
+
 ## Main grammar
 
 The grammar is defined as follow, and parsed in recursive descent fashion.
