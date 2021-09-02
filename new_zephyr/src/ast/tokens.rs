@@ -1,11 +1,14 @@
 //! # Tokens
 
-use crate::diagnostics::Location;
+#![allow(dead_code)]
+
+use std::fmt;
 
 #[derive(Debug)]
 pub struct Token {
     pub t: TokenType,
-    pub loc: Location,
+    pub start: u32,
+    pub end: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,10 +44,9 @@ pub enum TokenType {
     OrOr,
 
     // Literals
-    Identifier(String),
-    IntegerLit(u64),
-    FloatLit(f64),
-    StringLit(String),
+    Identifier,
+    NumberLit,
+    StringLit,
     False,
     True,
 
@@ -70,7 +72,46 @@ pub enum TokenType {
     While,
 
     // Other
+    CommentString,
     SemiColon,
     EOF,
+    Error,
+    NewLine,
+    Whitespace,
 }
 
+pub struct TokenStream<'a> {
+    tokens: Vec<Token>,
+    source: &'a str,
+}
+
+impl<'a> TokenStream<'a> {
+    pub fn new(tokens: Vec<Token>, source: &'a str) -> Self {
+        Self { tokens, source }
+    }
+
+    pub fn tokens(&self) -> &Vec<Token> {
+        &self.tokens
+    }
+
+    pub fn source(&self) -> &str {
+        self.source
+    }
+}
+
+impl<'a> fmt::Display for TokenStream<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let source = self.source;
+        write!(f, "|")?;
+        for token in &self.tokens {
+            if let TokenType::SemiColon = token.t {
+                write!(f, ";|")?;
+            } else {
+                let start = token.start as usize;
+                let end = token.end as usize;
+                write!(f, "{}|", &source[start..end])?;
+            }
+        }
+        Ok(())
+    }
+}

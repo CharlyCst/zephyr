@@ -25,15 +25,9 @@ enum Level {
 }
 
 #[derive(Clone, Copy)]
-pub struct Position {
-    pub line: u32,
-    pub column: u32,
-}
-
-#[derive(Clone, Copy)]
 pub struct Location {
-    pub start: Position,
-    pub end: Position,
+    pub start: u32,
+    pub end: u32,
 }
 
 pub trait Error {
@@ -103,18 +97,12 @@ impl fmt::Debug for Diagnostic {
         } else {
             String::from("")
         };
-        write!(f, "<{} - {}{}>", level, self.error.message(), loc)
+        write!(f, "<{} - {} @ {}>", level, self.error.message(), loc)
     }
 }
 
 impl fmt::Debug for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}~{:?}", self.start, self.end)
-    }
-}
-
-impl fmt::Debug for Position {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
+        write!(f, "{}~{}", self.start, self.end)
     }
 }

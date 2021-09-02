@@ -17,6 +17,7 @@ fun bar(a: i32) {
 "#;
 
 fn main() {
-    println!("Hello, world!");
-    println!("{:?}", ast::scan(PROGRAM));
+    let (tokens, errors) = ast::scan(PROGRAM);
+    println!("{:?}", tokens.tokens());
+    println!("{}\n\n{:?}", tokens, errors);
 }

@@ -1,12 +1,10 @@
 //! # Scanner
-//!
-//! TODO: handle UTF-8
 
 use std::str;
 
 use super::diagnostics::ScanError;
-use super::tokens::{Token, TokenType};
-use crate::diagnostics::{Diagnostics, Location, Position};
+use super::tokens::{Token, TokenStream, TokenType};
+use crate::diagnostics::{Diagnostics, Location};
 
 struct Scanner<'a> {
     source: &'a str,
@@ -14,13 +12,8 @@ struct Scanner<'a> {
     tokens: Vec<Token>,
     err: Diagnostics,
 
-    /// Position in file
-    line: u32,
-    /// Idex of the start of the line
-    line_start: usize,
-
     /// Index of the start of the current token
-    start: usize,
+    start: u32,
     /// Number of opened parenthesis
     parenthesis_count: u32,
     /// Wether the next line break is a statement ender
@@ -34,21 +27,20 @@ impl<'a> Scanner<'a> {
             chars: Peekable::new(source),
             tokens: Vec::new(),
             err: Diagnostics::default(),
-            line: 1,
-            line_start: 0,
             start: 0,
             parenthesis_count: 0,
             stmt_ender: false,
         }
     }
 
-    pub fn scan(mut self) -> (Vec<Token>, Diagnostics) {
+    pub fn scan(mut self) -> (TokenStream<'a>, Diagnostics) {
         while !self.is_at_end() {
             self.scan_token();
         }
 
         self.add_token(TokenType::EOF);
-        (self.tokens, self.err)
+        let token_stream = TokenStream::new(self.tokens, self.source);
+        (token_stream, self.err)
     }
 
     /// Scan the next token, advancing the cursor.
@@ -121,7 +113,7 @@ impl<'a> Scanner<'a> {
                 '/' => {
                     if self.next_match('/') {
                         self.consume_comment();
-                        return;
+                        return; // TODO: build comment token
                     } else {
                         TokenType::Slash
                     }
@@ -130,26 +122,26 @@ impl<'a> Scanner<'a> {
                 // Whitespaces and end of line
                 '\n' => {
                     self.new_line();
-                    return;
+                    TokenType::NewLine
                 }
                 ' ' | '\t' | '\r' => {
                     self.consume_whitespace();
-                    return;
+                    TokenType::Whitespace
                 }
 
                 // Advanced logic for multi-character tokens
                 c => {
                     if c.is_ascii_digit() {
-                        self.scan_number();
+                        self.scan_number()
                     } else if c.is_ascii_alphabetic() || c == '_' {
-                        self.scan_identifier();
+                        self.scan_identifier()
                     } else if c == '"' {
-                        self.scan_string();
+                        self.scan_string()
                     } else {
                         let loc = self.get_previous_loc(1);
                         self.err.report(ScanError::UnexpectedCharacter(c), loc);
+                        TokenType::Error
                     }
-                    return;
                 }
             },
             None => TokenType::EOF,
@@ -159,9 +151,9 @@ impl<'a> Scanner<'a> {
 
     // —————————————————————————————— Identifiers ——————————————————————————————— //
 
-    /// Consumes consecutive alphanumeric characters into an identifier. Procude a keyword token if
+    /// Consumes consecutive alphanumeric characters into an identifier. Produce a keyword token if
     /// the identifier happens to be one of the reserved keywords.
-    fn scan_identifier(&mut self) {
+    fn scan_identifier(&mut self) -> TokenType {
         // Move until the end of the current identifier [a-zA-Z0-9_]
         // Note: we don't disambiguate with numbers here, the caller should do it
         while let Some(c) = self.peek() {
@@ -171,58 +163,47 @@ impl<'a> Scanner<'a> {
             self.advance();
         }
 
-        // Convert that sequence of chars to a string
+        // Convert that sequence of chars to str
         let ident = if let Some(end) = self.peek_idx() {
-            &self.source[self.start..end]
+            &self.source[self.start as usize..end as usize]
         } else {
-            &self.source[self.start..]
+            &self.source[self.start as usize..]
         };
         if let Some(keyword) = as_keyword(&ident) {
-            self.add_token(keyword);
+            keyword
         } else {
-            self.add_token(TokenType::Identifier(ident.to_string()));
+            TokenType::Identifier
         }
     }
 
     // ———————————————————————————————— Strings ————————————————————————————————— //
 
     /// Consumes any (non carriage-return) characters between double quotes
-    fn scan_string(&mut self) {
-        let mut str_val = String::new();
-
+    fn scan_string(&mut self) -> TokenType {
         // Consume until the next char is a double quote
-        while let Some(c) = self.advance() {
-            match c {
-                // Some characters might be escaped, we have to process those differently
-                '\\' => match self.advance() {
-                    Some(c) => match c {
-                        '\\' => str_val.push('\\'),
-                        'n' => str_val.push('\n'),
-                        'r' => str_val.push('\r'),
-                        't' => str_val.push('\t'),
-                        '0' => str_val.push('\0'),
-                        '"' => str_val.push('"'),
-                        c => {
-                            let loc = self.get_previous_loc(2);
-                            self.err.report(ScanError::BadEscapeSequence(c), loc);
-                        }
-                    },
-                    None => {
-                        let loc = self.get_current_token_loc();
-                        self.err.report(ScanError::UnpairedDoubleQuote, loc);
+        loop {
+            if let Some(c) = self.advance() {
+                match c {
+                    // Escape the next character
+                    '\\' => {
+                        self.advance();
                     }
-                },
-                '"' => break, // End of string
-                '\n' => {
-                    // Exit if the double quote is not found on this line
-                    let loc = self.get_current_token_loc();
-                    self.err.report(ScanError::MultilineString, loc);
-                    break;
+                    '"' => break, // End of string
+                    '\n' => {
+                        // Exit if the double quote is not found on this line
+                        let loc = self.get_current_token_loc();
+                        self.err.report(ScanError::MultilineString, loc);
+                        return TokenType::Error;
+                    }
+                    _ => (),
                 }
-                c => str_val.push(c),
+            } else {
+                let loc = self.get_current_token_loc();
+                self.err.report(ScanError::UnpairedDoubleQuote, loc);
+                return TokenType::Error;
             }
         }
-        self.add_token(TokenType::StringLit(str_val));
+        TokenType::StringLit
     }
 
     // ———————————————————————————————— Numbers ————————————————————————————————— //
@@ -231,169 +212,62 @@ impl<'a> Scanner<'a> {
     // —————————————————————————————————————————————————————————————————————————— //
 
     /// Consumes consecutive digit characters and push a number token
-    fn scan_number(&mut self) {
+    fn scan_number(&mut self) -> TokenType {
         // Look for a basis (hexa or binary)
         match self.peek() {
             Some('x') => {
                 self.advance();
-                self.scan_hexadecimal_number()
             }
             Some('b') => {
                 self.advance();
-                self.scan_binary_number()
             }
-            Some(_) => self.scan_decimal_number(),
-            None => (),
-        }
-    }
-
-    fn scan_decimal_number(&mut self) {
-        let mut is_float = false;
+            _ => (),
+        };
 
         // Consume digits
         while let Some(c) = self.peek() {
-            if !c.is_alphanumeric() {
+            if !c.is_numeric() {
                 break;
             }
             self.advance();
         }
         if self.peek() == Some('.') {
-            is_float = true;
             while let Some(c) = self.peek() {
-                if !c.is_alphanumeric() {
+                if !c.is_numeric() {
                     break;
                 }
                 self.advance();
             }
         }
-
-        // Parse token
-        let bytes = if let Some(end) = self.peek_idx() {
-            &self.source[self.start..end]
-        } else {
-            &self.source[self.start..]
-        };
-        if is_float {
-            if let Ok(float) = bytes.parse::<f64>() {
-                self.add_token(TokenType::FloatLit(float));
-            } else {
-                let loc = self.get_current_token_loc();
-                self.err.report(ScanError::BadNumber, loc);
-            }
-        } else {
-            if let Ok(int) = bytes.parse::<u64>() {
-                self.add_token(TokenType::IntegerLit(int));
-            } else {
-                let loc = self.get_current_token_loc();
-                self.err.report(ScanError::BadNumber, loc);
-            }
-        };
-    }
-
-    fn scan_hexadecimal_number(&mut self) {
-        // Record the start of the number
-        let start = if let Some(idx) = self.peek_idx() {
-            idx
-        } else {
-            let loc = self.get_current_token_loc();
-            self.err.report(ScanError::MalformedHexa, loc);
-            return;
-        };
-
-        // Consume digits
-        while let Some(c) = self.peek() {
-            if !c.is_alphanumeric() {
-                break;
-            }
-            self.advance();
-        }
-
-        // Floating points are not valid in hexadecimal
-        if self.peek() == Some('.') {
-            let loc = self.get_current_loc();
-            self.err.report(ScanError::NoFloatHexa, loc);
-        }
-
-        // Parse token
-        let bytes = if let Some(end) = self.peek_idx() {
-            &self.source[start..end]
-        } else {
-            &self.source[start..]
-        };
-        let hexa = u64::from_str_radix(bytes, 16).unwrap(); // TODO: error handling
-        self.add_token(TokenType::IntegerLit(hexa));
-    }
-
-    fn scan_binary_number(&mut self) {
-        // Record the start of the number
-        let start = if let Some(idx) = self.peek_idx() {
-            idx
-        } else {
-            let loc = self.get_current_token_loc();
-            self.err.report(ScanError::MalformedBinary, loc);
-            return;
-        };
-
-        // Consume digits
-        while let Some(c) = self.peek() {
-            if !c.is_alphanumeric() {
-                break;
-            }
-            self.advance();
-        }
-
-        // Floating points are not valid in binary
-        if self.peek() == Some('.') {
-            let loc = self.get_current_loc();
-            self.err.report(ScanError::NoFloatBinary, loc);
-        }
-
-        // Parse token
-        let bytes = if let Some(end) = self.peek_idx() {
-            &self.source[start..end]
-        } else {
-            &self.source[start..]
-        };
-        let hexa = u64::from_str_radix(bytes, 2).unwrap(); // TODO: error handling
-        self.add_token(TokenType::IntegerLit(hexa));
+        TokenType::NumberLit
     }
 
     // ————————————————————————————————— Utils —————————————————————————————————— //
 
     /// Adds the token to the token list & update scanner state.
     fn add_token(&mut self, token: TokenType) {
-        let end = if let Some(idx) = self.peek_idx() {
-            idx
-        } else {
-            self.start + 1
-        };
-        let loc = Location {
-            start: Position {
-                line: self.line,
-                column: (1 + self.start - self.line_start) as u32,
-            },
-            end: Position {
-                line: self.line,
-                column: (1 + end - self.line_start) as u32,
-            },
-        };
+        let end = self.get_token_end();
 
         self.check_stmt_ender(&token);
-        self.tokens.push(Token { t: token, loc });
+        self.tokens.push(Token {
+            t: token,
+            start: self.start,
+            end,
+        });
 
         // Set start location of the next token
         self.start = end;
     }
 
-    /// Registers a new line
+    /// Registers a new line, that is insert a semi column if necessary.
     fn new_line(&mut self) {
         if self.stmt_ender {
-            self.add_token(TokenType::SemiColon);
-        }
-        self.line += 1;
-        if let Some(idx) = self.peek_idx() {
-            self.line_start = idx;
-            self.start = idx;
+            let idx = self.get_token_end();
+            self.tokens.push(Token {
+                t: TokenType::SemiColon,
+                start: idx,
+                end: idx,
+            });
         }
     }
 
@@ -414,25 +288,21 @@ impl<'a> Scanner<'a> {
             }
             self.advance();
         }
-        if let Some(idx) = self.peek_idx() {
-            self.start = idx;
-        }
     }
 
     /// Check if the token can be a statement ender and updates internal state accordingly.
     fn check_stmt_ender(&mut self, token: &TokenType) {
         let candidate = match token {
-            TokenType::IntegerLit(_) => true,
-            TokenType::FloatLit(_) => true,
             TokenType::True => true,
             TokenType::False => true,
-            TokenType::StringLit(_) => true,
-            TokenType::Identifier(_) => true,
             TokenType::Return => true,
+            TokenType::NumberLit => true,
+            TokenType::StringLit => true,
+            TokenType::Identifier => true,
             TokenType::RightBrace => true,
             TokenType::RightPar => {
                 self.parenthesis_count -= 1;
-                true
+                self.parenthesis_count == 0
             }
             TokenType::LeftPar => {
                 self.parenthesis_count += 1;
@@ -465,8 +335,8 @@ impl<'a> Scanner<'a> {
     }
 
     /// Returns the next character and its index *without* advancing the iterator.
-    fn peek_idx(&mut self) -> Option<usize> {
-        self.chars.peek().map(|(idx, _)| idx)
+    fn peek_idx(&mut self) -> Option<u32> {
+        self.chars.peek().map(|(idx, _)| idx as u32)
     }
 
     /// Returns `true` if end of the source was reached.
@@ -476,64 +346,40 @@ impl<'a> Scanner<'a> {
 
     // ———————————————————————————— Location getters ———————————————————————————— //
 
-    /// Returns the location under the cursor (location of `self.peek`).
-    fn get_current_loc(&mut self) -> Location {
-        let idx = if let Some(idx) = self.peek_idx() {
+    /// Returns the index of the current token end.
+    fn get_token_end(&mut self) -> u32 {
+        if let Some(idx) = self.peek_idx() {
             idx
         } else {
-            self.line_start + 1
-        };
-        let start = Position {
-            line: self.line,
-            column: (1 + idx - self.line_start) as u32,
-        };
-        let mut end = start;
-        end.column += 1;
-        Location { start, end }
+            self.source.len() as u32
+        }
     }
 
+    /// Returns the location under the cursor (location of `self.peek`).
+    // fn get_current_loc(&mut self) -> Location {
+    //     let idx = self.get_token_end();
+    //     Location {
+    //         start: idx,
+    //         end: idx + 1,
+    //     }
+    // }
+
     /// Returns the location of the `len` last characters.
-    fn get_previous_loc(&mut self, len: usize) -> Location {
-        let idx = if let Some(idx) = self.peek_idx() {
-            idx
-        } else {
-            self.line_start + 1
-        };
-        let end = Position {
-            line: self.line,
-            column: (1 + idx - self.line_start) as u32,
-        };
-
-        let column = idx - self.line_start;
-        let column = if column <= len { 0 } else { column - len } as u32;
-        let start = Position {
-            line: self.line,
-            column,
-        };
-
+    fn get_previous_loc(&mut self, len: u32) -> Location {
+        let end = self.get_token_end();
+        let start = 1 + end - len;
         Location { start, end }
     }
 
     /// Returns the location of the token being actively built.
     fn get_current_token_loc(&mut self) -> Location {
-        let idx = if let Some(idx) = self.peek_idx() {
-            idx
-        } else {
-            self.line_start + 1
-        };
-        let start = Position {
-            line: self.line,
-            column: (1 + self.start - self.line_start) as u32,
-        };
-        let end = Position {
-            line: self.line,
-            column: (1 + idx - self.line_start) as u32,
-        };
+        let end = self.get_token_end();
+        let start = self.start;
         Location { start, end }
     }
 }
 
-pub fn scan(source: &str) -> (Vec<Token>, Diagnostics) {
+pub fn scan(source: &str) -> (TokenStream, Diagnostics) {
     Scanner::new(source).scan()
 }
 
