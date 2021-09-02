@@ -113,7 +113,7 @@ impl<'a> Scanner<'a> {
                 '/' => {
                     if self.next_match('/') {
                         self.consume_comment();
-                        return; // TODO: build comment token
+                        TokenType::CommentString
                     } else {
                         TokenType::Slash
                     }
