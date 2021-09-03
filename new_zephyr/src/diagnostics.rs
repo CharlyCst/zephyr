@@ -84,6 +84,10 @@ impl Diagnostics {
             loc: None,
         })
     }
+
+    pub fn has_error(&self) -> bool {
+        self.has_error
+    }
 }
 
 impl fmt::Debug for Diagnostic {
@@ -93,7 +97,7 @@ impl fmt::Debug for Diagnostic {
             Level::Warning => "warning",
         };
         let loc = if let Some(loc) = self.loc {
-            format!(" - {:?}", loc)
+            format!("{:?}", loc)
         } else {
             String::from("")
         };

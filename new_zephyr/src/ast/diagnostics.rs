@@ -2,6 +2,7 @@
 
 use crate::diagnostics::Error;
 
+#[allow(dead_code)]
 pub enum ScanError {
     BadNumber,
     NoFloatHexa,
@@ -26,6 +27,25 @@ impl Error for ScanError {
             Self::UnpairedDoubleQuote => "Could not find matching quote '\"'".into(),
             Self::BadEscapeSequence(c) => format!("Invalid escape sequence: '\\{}'", c),
             Self::UnexpectedCharacter(c) => format!("Unexpected character: '{}'", c),
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub enum ParseError {
+    Unknown,
+    BadModDecl,
+    ModDeclMissIdent,
+    MissingSemicolon,
+}
+
+impl Error for ParseError {
+    fn message(&self) -> String {
+        match self {
+            Self::Unknown => "A parsing error occured".into(),
+            Self::BadModDecl => "Invalid module declaration".into(),
+            Self::ModDeclMissIdent => "Expected a module identifier".into(),
+            Self::MissingSemicolon => "Expected a statement ender, ty adding a line break".into(),
         }
     }
 }

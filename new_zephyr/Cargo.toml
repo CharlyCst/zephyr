@@ -8,5 +8,5 @@ edition = "2018"
 # name = "zephyr"
 
 [dependencies]
-siphasher = "0.3"
+rowan = "0.13.2"
 

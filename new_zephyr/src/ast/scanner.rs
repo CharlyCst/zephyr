@@ -3,7 +3,8 @@
 use std::str;
 
 use super::diagnostics::ScanError;
-use super::tokens::{Token, TokenStream, TokenType};
+use super::tokens::token_kind::*;
+use super::tokens::{SyntaxKind, Token, TokenStream};
 use crate::diagnostics::{Diagnostics, Location};
 
 struct Scanner<'a> {
@@ -38,7 +39,7 @@ impl<'a> Scanner<'a> {
             self.scan_token();
         }
 
-        self.add_token(TokenType::EOF);
+        self.add_token(EOF);
         let token_stream = TokenStream::new(self.tokens, self.source);
         (token_stream, self.err)
     }
@@ -48,85 +49,85 @@ impl<'a> Scanner<'a> {
         let token = match self.advance() {
             Some(c) => match c {
                 // Single character tokens
-                '(' => TokenType::LeftPar,
-                ')' => TokenType::RightPar,
-                '{' => TokenType::LeftBrace,
-                '}' => TokenType::RightBrace,
-                ',' => TokenType::Comma,
-                '.' => TokenType::Dot,
-                '-' => TokenType::Minus,
-                '+' => TokenType::Plus,
-                '*' => TokenType::Star,
-                '%' => TokenType::Percent,
-                '^' => TokenType::Hat,
+                '(' => LeftPar,
+                ')' => RightPar,
+                '{' => LeftBrace,
+                '}' => RightBrace,
+                ',' => Comma,
+                '.' => Dot,
+                '-' => Minus,
+                '+' => Plus,
+                '*' => Star,
+                '%' => Percent,
+                '^' => Hat,
 
                 // Two character tokens
                 '!' => {
                     if self.next_match('=') {
-                        TokenType::BangEqual
+                        BangEqual
                     } else {
-                        TokenType::Bang
+                        Bang
                     }
                 }
                 ':' => {
                     if self.next_match(':') {
-                        TokenType::ColonColon
+                        ColonColon
                     } else {
-                        TokenType::Colon
+                        Colon
                     }
                 }
                 '=' => {
                     if self.next_match('=') {
-                        TokenType::EqualEqual
+                        EqualEqual
                     } else {
-                        TokenType::Equal
+                        Equal
                     }
                 }
                 '>' => {
                     if self.next_match('=') {
-                        TokenType::GreaterEqual
+                        GreaterEqual
                     } else {
-                        TokenType::Greater
+                        Greater
                     }
                 }
                 '<' => {
                     if self.next_match('=') {
-                        TokenType::LessEqual
+                        LessEqual
                     } else {
-                        TokenType::Less
+                        Less
                     }
                 }
                 '&' => {
                     if self.next_match('&') {
-                        TokenType::AndAnd
+                        AndAnd
                     } else {
-                        TokenType::And
+                        And
                     }
                 }
                 '|' => {
                     if self.next_match('|') {
-                        TokenType::OrOr
+                        OrOr
                     } else {
-                        TokenType::Or
+                        Or
                     }
                 }
                 '/' => {
                     if self.next_match('/') {
                         self.consume_comment();
-                        TokenType::CommentString
+                        CommentString
                     } else {
-                        TokenType::Slash
+                        Slash
                     }
                 }
 
                 // Whitespaces and end of line
                 '\n' => {
                     self.new_line();
-                    TokenType::NewLine
+                    NewLine
                 }
                 ' ' | '\t' | '\r' => {
                     self.consume_whitespace();
-                    TokenType::Whitespace
+                    Whitespace
                 }
 
                 // Advanced logic for multi-character tokens
@@ -140,11 +141,11 @@ impl<'a> Scanner<'a> {
                     } else {
                         let loc = self.get_previous_loc(1);
                         self.err.report(ScanError::UnexpectedCharacter(c), loc);
-                        TokenType::Error
+                        Error
                     }
                 }
             },
-            None => TokenType::EOF,
+            None => EOF,
         };
         self.add_token(token);
     }
@@ -153,7 +154,7 @@ impl<'a> Scanner<'a> {
 
     /// Consumes consecutive alphanumeric characters into an identifier. Produce a keyword token if
     /// the identifier happens to be one of the reserved keywords.
-    fn scan_identifier(&mut self) -> TokenType {
+    fn scan_identifier(&mut self) -> SyntaxKind {
         // Move until the end of the current identifier [a-zA-Z0-9_]
         // Note: we don't disambiguate with numbers here, the caller should do it
         while let Some(c) = self.peek() {
@@ -172,14 +173,14 @@ impl<'a> Scanner<'a> {
         if let Some(keyword) = as_keyword(&ident) {
             keyword
         } else {
-            TokenType::Identifier
+            Identifier
         }
     }
 
     // ———————————————————————————————— Strings ————————————————————————————————— //
 
     /// Consumes any (non carriage-return) characters between double quotes
-    fn scan_string(&mut self) -> TokenType {
+    fn scan_string(&mut self) -> SyntaxKind {
         // Consume until the next char is a double quote
         loop {
             if let Some(c) = self.advance() {
@@ -193,17 +194,17 @@ impl<'a> Scanner<'a> {
                         // Exit if the double quote is not found on this line
                         let loc = self.get_current_token_loc();
                         self.err.report(ScanError::MultilineString, loc);
-                        return TokenType::Error;
+                        return Error;
                     }
                     _ => (),
                 }
             } else {
                 let loc = self.get_current_token_loc();
                 self.err.report(ScanError::UnpairedDoubleQuote, loc);
-                return TokenType::Error;
+                return Error;
             }
         }
-        TokenType::StringLit
+        StringLit
     }
 
     // ———————————————————————————————— Numbers ————————————————————————————————— //
@@ -212,7 +213,7 @@ impl<'a> Scanner<'a> {
     // —————————————————————————————————————————————————————————————————————————— //
 
     /// Consumes consecutive digit characters and push a number token
-    fn scan_number(&mut self) -> TokenType {
+    fn scan_number(&mut self) -> SyntaxKind {
         // Look for a basis (hexa or binary)
         match self.peek() {
             Some('x') => {
@@ -239,13 +240,13 @@ impl<'a> Scanner<'a> {
                 self.advance();
             }
         }
-        TokenType::NumberLit
+        NumberLit
     }
 
     // ————————————————————————————————— Utils —————————————————————————————————— //
 
     /// Adds the token to the token list & update scanner state.
-    fn add_token(&mut self, token: TokenType) {
+    fn add_token(&mut self, token: SyntaxKind) {
         let end = self.get_token_end();
 
         self.check_stmt_ender(&token);
@@ -264,7 +265,7 @@ impl<'a> Scanner<'a> {
         if self.stmt_ender {
             let idx = self.get_token_end();
             self.tokens.push(Token {
-                t: TokenType::SemiColon,
+                t: SemiColon,
                 start: idx,
                 end: idx,
             });
@@ -291,23 +292,23 @@ impl<'a> Scanner<'a> {
     }
 
     /// Check if the token can be a statement ender and updates internal state accordingly.
-    fn check_stmt_ender(&mut self, token: &TokenType) {
+    fn check_stmt_ender(&mut self, token: &SyntaxKind) {
         let candidate = match token {
-            TokenType::True => true,
-            TokenType::False => true,
-            TokenType::Return => true,
-            TokenType::NumberLit => true,
-            TokenType::StringLit => true,
-            TokenType::Identifier => true,
-            TokenType::RightBrace => true,
-            TokenType::RightPar => {
+            True | False => true,
+            Return => true,
+            NumberLit => true,
+            StringLit => true,
+            Identifier => true,
+            RightBrace => true,
+            RightPar => {
                 self.parenthesis_count -= 1;
                 self.parenthesis_count == 0
             }
-            TokenType::LeftPar => {
+            LeftPar => {
                 self.parenthesis_count += 1;
                 false
             }
+            Whitespace | CommentString => self.stmt_ender,
             _ => false,
         };
         self.stmt_ender = candidate && self.parenthesis_count <= 0
@@ -383,29 +384,29 @@ pub fn scan(source: &str) -> (TokenStream, Diagnostics) {
     Scanner::new(source).scan()
 }
 
-fn as_keyword(token: &str) -> Option<TokenType> {
+fn as_keyword(token: &str) -> Option<SyntaxKind> {
     match token {
-        "abstract" => Some(TokenType::Abstract),
-        "as" => Some(TokenType::As),
-        "else" => Some(TokenType::Else),
-        "expose" => Some(TokenType::Expose),
-        "false" => Some(TokenType::False),
-        "from" => Some(TokenType::From),
-        "fun" => Some(TokenType::Fun),
-        "if" => Some(TokenType::If),
-        "impl" => Some(TokenType::Impl),
-        "import" => Some(TokenType::Import),
-        "let" => Some(TokenType::Let),
-        "module" => Some(TokenType::Module),
-        "pub" => Some(TokenType::Pub),
-        "return" => Some(TokenType::Return),
-        "runtime" => Some(TokenType::Runtime),
-        "standalone" => Some(TokenType::Standalone),
-        "struct" => Some(TokenType::Struct),
-        "true" => Some(TokenType::True),
-        "use" => Some(TokenType::Use),
-        "var" => Some(TokenType::Var),
-        "while" => Some(TokenType::While),
+        "abstract" => Some(Abstract),
+        "as" => Some(As),
+        "else" => Some(Else),
+        "expose" => Some(Expose),
+        "false" => Some(False),
+        "from" => Some(From),
+        "fun" => Some(Fun),
+        "if" => Some(If),
+        "impl" => Some(Impl),
+        "import" => Some(Import),
+        "let" => Some(Let),
+        "module" => Some(Module),
+        "pub" => Some(Pub),
+        "return" => Some(Return),
+        "runtime" => Some(Runtime),
+        "standalone" => Some(Standalone),
+        "struct" => Some(Struct),
+        "true" => Some(True),
+        "use" => Some(Use),
+        "var" => Some(Var),
+        "while" => Some(While),
         _ => None,
     }
 }
@@ -451,7 +452,7 @@ mod test {
     #[test]
     fn keywords() {
         assert_eq!(as_keyword("foo"), None);
-        assert_eq!(as_keyword("fun"), Some(TokenType::Fun));
+        assert_eq!(as_keyword("fun"), Some(Fun));
     }
 
     #[test]
@@ -467,5 +468,25 @@ mod test {
         assert_eq!(peekable.next(), Some((4, 'o')));
         assert_eq!(peekable.peek(), None);
         assert_eq!(peekable.next(), None);
+    }
+
+    #[test]
+    fn loseless_scanner() {
+        let program = r#"
+        module   foo
+
+        use std::string
+
+        /// A super function!
+        fun bar(a: i32) {
+            let b = 0x42 * a
+            let c = 012
+            let s = "test :)"
+        }
+        "#;
+
+        let (tokens, diagnostics) = scan(program);
+        assert_eq!(&format!("{}", tokens), program);
+        assert!(!diagnostics.has_error());
     }
 }
