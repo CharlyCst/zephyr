@@ -20,11 +20,14 @@ mod syntax;
 const PROGRAM: &'static str = r#"runtime // hello!
 module     
 demo // Hi!
+
+use std::str
+
 "#;
 
 fn main() {
     let (tokens, errors) = ast::scan(PROGRAM);
-    println!("{}\n\n{:?}\n", tokens, errors);
+    println!("{:?}\n\n{:?}\n", tokens, errors);
     let (syntax_tree, errors) = ast::parse(tokens);
     println!("{:?}\n\n{:?}\n", syntax_tree, errors);
     assert_eq!(&format!("{}", syntax_tree), PROGRAM);

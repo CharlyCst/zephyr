@@ -37,6 +37,8 @@ pub enum ParseError {
     BadModDecl,
     ModDeclMissIdent,
     MissingSemicolon,
+    ExpectModPath,
+    ExpectedUseDecl,
 }
 
 impl Error for ParseError {
@@ -46,6 +48,8 @@ impl Error for ParseError {
             Self::BadModDecl => "Invalid module declaration".into(),
             Self::ModDeclMissIdent => "Expected a module identifier".into(),
             Self::MissingSemicolon => "Expected a statement ender, ty adding a line break".into(),
+            Self::ExpectModPath => "Expect a module path".into(),
+            Self::ExpectedUseDecl => "Expect a 'use' declaration".into(),
         }
     }
 }

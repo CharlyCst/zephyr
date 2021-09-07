@@ -21,6 +21,9 @@ pub enum SyntaxKind {
     ImportDecl,
     StructDecl,
 
+    // Declaration items
+    ModPath,
+
     // Statements
     ExprStmt,
     LetStmt,

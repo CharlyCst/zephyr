@@ -284,7 +284,7 @@ impl<'a> Scanner<'a> {
 
     fn consume_whitespace(&mut self) {
         while let Some(c) = self.peek() {
-            if !c.is_whitespace() {
+            if c == '\n' || !c.is_whitespace() {
                 break;
             }
             self.advance();
