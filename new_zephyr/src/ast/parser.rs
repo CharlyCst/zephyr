@@ -11,10 +11,14 @@ use super::syntax::SyntaxTree;
 use super::tokens::{Token, TokenStream};
 use crate::diagnostics::Diagnostics;
 
+/// A node builder, used to build the syntax tree.
 pub struct Builder<'cache> {
     inner: RefCell<GreenNodeBuilder<'cache>>,
 }
 
+/// A note context. Creating a context starts a new node and while the context is alive all the new
+/// nodes and tokens are added as children to that node.
+#[must_use]
 pub struct NodeContext<'builder, 'cache> {
     builder: &'builder Builder<'cache>,
 }
@@ -23,7 +27,6 @@ type ParserResult<'a, 'b> = Result<(), &'a Builder<'b>>;
 
 struct Parser<'tokens> {
     tokens: TokenStream<'tokens>,
-    // builder: GreenNodeBuilder<'cache>,
     err: Diagnostics,
 }
 
@@ -53,28 +56,37 @@ impl<'tokens> Parser<'tokens> {
     fn parse_decl(&mut self, builder: &Builder) {
         self.consume_blanks(builder);
         if let Some(token) = self.tokens.peek() {
-            match token.t {
+            let _ = match token.t {
                 Standalone | Runtime | Module => self.build_module_decl(builder),
                 Pub => {
                     if let Some(token) = self.tokens.peekpeek() {
                         match token.t {
                             Use => self.build_use_decl(builder),
-                            _ => self.synchronize_declaration(builder),
+                            Fun => self.build_fun(builder),
+                            _ => {
+                                self.synchronize_declaration(builder);
+                                Err(())
+                            }
                         }
+                    } else {
+                        Ok(())
                     }
                 }
                 Use => self.build_use_decl(builder),
+                Fun => self.build_fun(builder),
                 Expose => todo!(),
-                Fun => todo!(),
                 Struct => todo!(),
                 Import => todo!(),
-                _ => self.synchronize_declaration(builder),
-            }
+                _ => {
+                    self.synchronize_declaration(builder);
+                    Err(())
+                }
+            };
         }
     }
 
-    fn build_module_decl(&mut self, builder: &Builder) {
-        let _node_ctx = builder.start_node(ModDecl.into());
+    fn build_module_decl(&mut self, builder: &Builder) -> Result<(), ()> {
+        let _node_ctx = builder.start_node(ModDecl);
 
         if self.token_next_match(Standalone, builder) {
             self.consume_blanks(builder);
@@ -93,36 +105,191 @@ impl<'tokens> Parser<'tokens> {
 
         self.consume_blanks(builder);
         self.consume_semicolon_decl(builder);
+        Ok(())
     }
 
-    fn build_use_decl(&mut self, builder: &Builder) {
-        let _node_ctx = builder.start_node(UseDecl.into());
-
-        // "use"
-        if self.token_next_match(Use, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectedUseDecl);
-            self.synchronize_declaration(builder);
-            return;
-        }
+    fn build_use_decl(&mut self, builder: &Builder) -> Result<(), ()> {
+        let _node_ctx = builder.start_node(UseDecl);
 
         // "pub"
         if self.token_next_match(Pub, builder) {
             self.consume_blanks(builder);
         }
 
+        // "use"
+        if self.token_next_match(Use, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectUseDecl);
+            self.synchronize_declaration(builder);
+            return Err(());
+        }
+
         // module path
         let err = self.build_module_path(builder);
-        self.recover_decl(err);
+        self.recover_decl(err)?;
         self.consume_blanks(builder);
 
-        // TODO: handle "as" part of use decl
+        // "as"
+        if self.token_next_match(As, builder) {
+            self.consume_blanks(builder);
+            if !self.token_next_match(Identifier, builder) {
+                self.report_token(ParseError::ExpectIdent);
+                self.synchronize_declaration(builder);
+                return Err(());
+            }
+            self.consume_blanks(builder);
+        }
+
         self.consume_semicolon_decl(builder);
+        Ok(())
+    }
+
+    fn build_fun<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> Result<(), ()> {
+        let _node_ctx = builder.start_node(Fun);
+
+        // "pub"
+        if self.token_next_match(Pub, builder) {
+            self.consume_blanks(builder);
+        }
+
+        // prototype
+        let err = self.build_prototype(builder);
+        self.recover_decl(err)?;
+        self.consume_blanks(builder);
+
+        // block
+        let err = self.build_block(builder);
+        self.recover_decl(err)?;
+        self.consume_blanks(builder);
+
+        self.consume_semicolon_decl(builder);
+        Ok(())
+    }
+
+    fn build_prototype<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(Prototype);
+
+        // "fun"
+        if self.token_next_match(Fun, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectFunKeyword);
+            return Err(builder);
+        }
+
+        // identifier
+        if self.token_next_match(Identifier, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectIdent);
+            return Err(builder);
+        }
+
+        if self.token_next_match(LeftPar, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectLeftPar);
+            return Err(builder);
+        }
+
+        let mut first_param = true;
+        while !self.token_next_match(RightPar, builder) {
+            if !first_param {
+                if self.token_next_match(Comma, builder) {
+                    self.consume_blanks(builder);
+                } else {
+                    self.report_token(ParseError::ExpectLeftPar);
+                    return Err(builder);
+                }
+            }
+            self.build_parameter(builder)?;
+            self.consume_blanks(builder);
+            first_param = false;
+        }
+
+        if self.token_next_match(Colon, builder) {
+            self.consume_blanks(builder);
+            self.build_type(builder)?;
+        }
+
+        Ok(())
+    }
+
+    fn build_parameter<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(Parameter);
+
+        if self.token_next_match(Identifier, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectIdent);
+            return Err(builder);
+        }
+
+        if self.token_next_match(Colon, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectIdent);
+            return Err(builder);
+        }
+
+        self.build_type(builder)?;
+        Ok(())
+    }
+
+    fn build_type<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(Type);
+
+        if let Some(Token { t: LeftPar, .. }) = self.tokens.peek() {
+            // Tuple type
+            let _node_ctx = builder.start_node(TupleType);
+            self.consume_token(builder);
+            self.consume_blanks(builder);
+            self.build_type(builder)?;
+            while self.token_next_match(Comma, builder) {
+                self.consume_blanks(builder);
+                if let Some(Token { t: RightPar, .. }) = self.tokens.peek() {
+                    break;
+                }
+                self.build_type(builder)?;
+            }
+            self.consume_blanks(builder);
+            if !self.token_next_match(RightPar, builder) {
+                self.report_token(ParseError::MissingClosingPar);
+                return Err(builder);
+            }
+        } else {
+            // Path
+            self.build_path(builder)?
+        }
+
+        Ok(())
+    }
+
+    fn build_path<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(Path);
+
+        // First identifier
+        if !self.token_next_match(Identifier, builder) {
+            self.report_token(ParseError::ExpectIdent);
+            return Err(builder);
+        }
+        self.consume_blanks(builder);
+
+        // Optionnal path separated by '.' tokens
+        while self.token_next_match(Dot, builder) {
+            if !self.token_next_match(Identifier, builder) {
+                self.report_token(ParseError::ExpectPath); // TODO: could be more precise
+                return Err(builder);
+            }
+            self.consume_blanks(builder);
+        }
+
+        Ok(())
     }
 
     fn build_module_path<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
-        let _node_ctx = builder.start_node(ModPath.into());
+        let _node_ctx = builder.start_node(ModPath);
 
         // First identifier
         if !self.token_next_match(Identifier, builder) {
@@ -140,6 +307,22 @@ impl<'tokens> Parser<'tokens> {
             self.consume_blanks(builder);
         }
 
+        Ok(())
+    }
+
+    fn build_block<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(Block);
+
+        if !self.token_next_match(LeftBrace, builder) {
+            self.report_token(ParseError::ExpectLeftBrace);
+            return Err(builder);
+        }
+        self.consume_blanks(builder);
+        // TODO: parse statements
+        if !self.token_next_match(RightBrace, builder) {
+            self.report_token(ParseError::Unknown);
+            return Err(builder);
+        }
         Ok(())
     }
 
@@ -217,10 +400,13 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// Synchronizes up to the next declaration in case of error.
-    fn recover_decl(&mut self, result: ParserResult) {
+    fn recover_decl(&mut self, result: ParserResult) -> Result<(), ()> {
         match result {
-            Ok(()) => (),
-            Err(builder) => self.synchronize_declaration(builder),
+            Ok(()) => Ok(()),
+            Err(builder) => {
+                self.synchronize_declaration(builder);
+                Err(())
+            }
         }
     }
 }

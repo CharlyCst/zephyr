@@ -22,7 +22,13 @@ pub enum SyntaxKind {
     StructDecl,
 
     // Declaration items
+    Path,
     ModPath,
+    Prototype,
+    Parameter,
+    Type,
+    TupleType,
+    Block,
 
     // Statements
     ExprStmt,

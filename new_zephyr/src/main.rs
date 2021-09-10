@@ -17,12 +17,15 @@ mod syntax;
 // }
 // "#;
 
-const PROGRAM: &'static str = r#"runtime // hello!
-module     
-demo // Hi!
+const PROGRAM: &'static str = r#"
+runtime module demo
 
-use std::str
+use std::str as string
 
+/// A super function!
+fun bar(a: i32, b: (f32, f64,)) {
+    
+}
 "#;
 
 fn main() {

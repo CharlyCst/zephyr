@@ -38,7 +38,14 @@ pub enum ParseError {
     ModDeclMissIdent,
     MissingSemicolon,
     ExpectModPath,
-    ExpectedUseDecl,
+    ExpectPath,
+    ExpectUseDecl,
+    ExpectIdent,
+    ExpectColon,
+    ExpectLeftPar,
+    ExpectLeftBrace,
+    ExpectFunKeyword,
+    MissingClosingPar,
 }
 
 impl Error for ParseError {
@@ -49,7 +56,14 @@ impl Error for ParseError {
             Self::ModDeclMissIdent => "Expected a module identifier".into(),
             Self::MissingSemicolon => "Expected a statement ender, ty adding a line break".into(),
             Self::ExpectModPath => "Expect a module path".into(),
-            Self::ExpectedUseDecl => "Expect a 'use' declaration".into(),
+            Self::ExpectPath => "Expect a path".into(),
+            Self::ExpectUseDecl => "Expect a 'use' declaration".into(),
+            Self::ExpectIdent => "Expect an identifer".into(),
+            Self::ExpectColon => "Expect a colon (':')".into(),
+            Self::ExpectLeftPar => "Expect an opening parenthesis '('".into(),
+            Self::ExpectLeftBrace => "Expect an opening brace '{'".into(),
+            Self::ExpectFunKeyword => "Expect the 'fun' keyword for defining a function".into(),
+            Self::MissingClosingPar => "Missing closing parenthesis ')'".into(),
         }
     }
 }
