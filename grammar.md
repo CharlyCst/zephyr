@@ -10,7 +10,7 @@ program        = module declaration* EOF
 module         = "standalone"? module_kind IDENTIFIER ";"
 module_kind    = ( "runtime" "interface"? )? "module"
 
-declaration    = use | expose | function | struct | imports | runtime
+declaration    = use | expose | function | struct | imports
 use            = "use" module_path ( "as" IDENTIFIER)? ";"
 expose         = "expose" IDENTIFIER ("as" IDENTIFIER)? ";"
 imports        = "from" IDENTIFIER "import" import_block ";"

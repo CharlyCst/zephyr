@@ -24,7 +24,17 @@ use std::str as string
 
 /// A super function!
 fun bar(a: i32, b: (f32, f64,)) {
-    
+}
+
+struct Point {
+    x: i32
+    y: i32
+
+    use std::mem
+
+    fun hello() {
+
+    }
 }
 "#;
 

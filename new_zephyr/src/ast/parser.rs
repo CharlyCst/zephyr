@@ -56,16 +56,17 @@ impl<'tokens> Parser<'tokens> {
     fn parse_decl(&mut self, builder: &Builder) {
         self.consume_blanks(builder);
         if let Some(token) = self.tokens.peek() {
-            let _ = match token.t {
+            let err = match token.t {
                 Standalone | Runtime | Module => self.build_module_decl(builder),
                 Pub => {
                     if let Some(token) = self.tokens.peekpeek() {
                         match token.t {
                             Use => self.build_use_decl(builder),
                             Fun => self.build_fun(builder),
+                            Struct => self.build_struct(builder),
                             _ => {
-                                self.synchronize_declaration(builder);
-                                Err(())
+                                self.report_token(ParseError::Unknown);
+                                Err(builder)
                             }
                         }
                     } else {
@@ -74,18 +75,19 @@ impl<'tokens> Parser<'tokens> {
                 }
                 Use => self.build_use_decl(builder),
                 Fun => self.build_fun(builder),
+                Struct => self.build_struct(builder),
                 Expose => todo!(),
-                Struct => todo!(),
                 Import => todo!(),
                 _ => {
-                    self.synchronize_declaration(builder);
-                    Err(())
+                    self.report_token(ParseError::Unknown);
+                    Err(builder)
                 }
             };
+            self.recover_decl(err).ok();
         }
     }
 
-    fn build_module_decl(&mut self, builder: &Builder) -> Result<(), ()> {
+    fn build_module_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(ModDecl);
 
         if self.token_next_match(Standalone, builder) {
@@ -108,7 +110,7 @@ impl<'tokens> Parser<'tokens> {
         Ok(())
     }
 
-    fn build_use_decl(&mut self, builder: &Builder) -> Result<(), ()> {
+    fn build_use_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(UseDecl);
 
         // "pub"
@@ -121,8 +123,7 @@ impl<'tokens> Parser<'tokens> {
             self.consume_blanks(builder);
         } else {
             self.report_token(ParseError::ExpectUseDecl);
-            self.synchronize_declaration(builder);
-            return Err(());
+            return Err(builder);
         }
 
         // module path
@@ -135,8 +136,7 @@ impl<'tokens> Parser<'tokens> {
             self.consume_blanks(builder);
             if !self.token_next_match(Identifier, builder) {
                 self.report_token(ParseError::ExpectIdent);
-                self.synchronize_declaration(builder);
-                return Err(());
+                return Err(builder);
             }
             self.consume_blanks(builder);
         }
@@ -145,7 +145,109 @@ impl<'tokens> Parser<'tokens> {
         Ok(())
     }
 
-    fn build_fun<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> Result<(), ()> {
+    fn build_struct<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(StructDecl);
+
+        // "pub"
+        if self.token_next_match(Pub, builder) {
+            self.consume_blanks(builder);
+        }
+
+        // "struct"
+        if self.token_next_match(Struct, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectUseDecl);
+            return Err(builder);
+        }
+
+        // Identifier
+        if self.token_next_match(Identifier, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectIdent);
+        }
+
+        // Block start
+        if self.token_next_match(LeftBrace, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectLeftBrace);
+        }
+
+        // TODO
+        while let Some(token) = self.tokens.peek() {
+            let err = match token.t {
+                Pub => {
+                    if let Some(token) = self.tokens.peekpeek() {
+                        match token.t {
+                            Use => self.build_use_decl(builder),
+                            Fun => self.build_fun(builder),
+                            Struct => self.build_struct(builder),
+                            Import => todo!(),
+                            Expose => todo!(),
+                            Identifier => self.build_struct_field(builder), // TODO: recover statement in this case
+                            RightBrace => break,
+                            _ => {
+                                self.report_token(ParseError::Unknown);
+                                Err(builder)
+                            }
+                        }
+                    } else {
+                        Err(builder)
+                    }
+                }
+                Use => self.build_use_decl(builder),
+                Fun => self.build_fun(builder),
+                Struct => self.build_struct(builder),
+                Import => todo!(),
+                Expose => todo!(),
+                Identifier => self.build_struct_field(builder), // TODO: recover statement in that case
+                RightBrace => break,
+                _ => {
+                    self.report_token(ParseError::Unknown);
+                    Err(builder)
+                }
+            };
+            self.recover_decl(err).ok();
+            self.consume_blanks(builder);
+        }
+
+        // Block end
+        if self.token_next_match(RightBrace, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectRightBrace);
+            return Err(builder);
+        }
+        self.consume_semicolon_decl(builder);
+
+        Ok(())
+    }
+
+    fn build_struct_field<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(StructField);
+
+        if self.token_next_match(Identifier, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectIdent);
+            return Err(builder);
+        }
+
+        if self.token_next_match(Colon, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectColon);
+            return Err(builder);
+        }
+
+        self.build_type(builder)?;
+        self.consume_semicolon_decl(builder);
+        Ok(())
+    }
+
+    fn build_fun<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(Fun);
 
         // "pub"
@@ -183,7 +285,6 @@ impl<'tokens> Parser<'tokens> {
             self.consume_blanks(builder);
         } else {
             self.report_token(ParseError::ExpectIdent);
-            return Err(builder);
         }
 
         if self.token_next_match(LeftPar, builder) {
@@ -400,12 +501,12 @@ impl<'tokens> Parser<'tokens> {
     }
 
     /// Synchronizes up to the next declaration in case of error.
-    fn recover_decl(&mut self, result: ParserResult) -> Result<(), ()> {
+    fn recover_decl<'a, 'b>(&mut self, result: ParserResult<'a, 'b>) -> ParserResult<'a, 'b> {
         match result {
             Ok(()) => Ok(()),
             Err(builder) => {
                 self.synchronize_declaration(builder);
-                Err(())
+                Err(builder)
             }
         }
     }
@@ -439,7 +540,9 @@ impl<'cache> Builder<'cache> {
     }
 
     pub fn token(&self, kind: SyntaxKind, text: &str) {
-        self.inner.borrow_mut().token(kind.into(), text);
+        if kind != SemiColon {
+            self.inner.borrow_mut().token(kind.into(), text);
+        }
     }
 }
 

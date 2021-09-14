@@ -29,6 +29,7 @@ pub enum SyntaxKind {
     Type,
     TupleType,
     Block,
+    StructField,
 
     // Statements
     ExprStmt,
