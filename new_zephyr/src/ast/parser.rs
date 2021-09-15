@@ -59,7 +59,11 @@ impl<'tokens> Parser<'tokens> {
             let err = match token.t {
                 Standalone | Runtime | Module => self.build_module_decl(builder),
                 Pub => {
-                    if let Some(token) = self.tokens.peekpeek() {
+                    let _node_ctx = builder.start_node(PubDecl);
+                    self.add_token(token, builder);
+                    self.tokens.advance();
+                    self.consume_blanks(builder);
+                    if let Some(token) = self.tokens.peek() {
                         match token.t {
                             Use => self.build_use_decl(builder),
                             Fun => self.build_fun(builder),
@@ -179,7 +183,11 @@ impl<'tokens> Parser<'tokens> {
         while let Some(token) = self.tokens.peek() {
             let err = match token.t {
                 Pub => {
-                    if let Some(token) = self.tokens.peekpeek() {
+                    let _node_ctx = builder.start_node(PubDecl);
+                    self.add_token(token, builder);
+                    self.tokens.advance();
+                    self.consume_blanks(builder);
+                    if let Some(token) = self.tokens.peek() {
                         match token.t {
                             Use => self.build_use_decl(builder),
                             Fun => self.build_fun(builder),

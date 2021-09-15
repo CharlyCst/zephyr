@@ -14,6 +14,7 @@ pub enum SyntaxKind {
     // Nodes
 
     // Declarations
+    PubDecl,
     ModDecl,
     FunDecl,
     UseDecl,

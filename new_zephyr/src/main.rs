@@ -23,8 +23,7 @@ runtime module demo
 use std::str as string
 
 /// A super function!
-fun bar(a: i32, b: (f32, f64,)) {
-}
+pub fun bar(a: i32, b: (f32, f64,)) {}
 
 struct Point {
     x: i32
@@ -32,9 +31,7 @@ struct Point {
 
     use std::mem
 
-    fun hello() {
-
-    }
+    pub fun hello() {}
 }
 "#;
 
