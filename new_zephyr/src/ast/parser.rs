@@ -68,6 +68,7 @@ impl<'tokens> Parser<'tokens> {
                             Use => self.build_use_decl(builder),
                             Fun => self.build_fun(builder),
                             Struct => self.build_struct(builder),
+                            Expose => self.build_expose_decl(builder),
                             _ => {
                                 self.report_token(ParseError::Unknown);
                                 Err(builder)
@@ -80,7 +81,7 @@ impl<'tokens> Parser<'tokens> {
                 Use => self.build_use_decl(builder),
                 Fun => self.build_fun(builder),
                 Struct => self.build_struct(builder),
-                Expose => todo!(),
+                Expose => self.build_expose_decl(builder),
                 Import => todo!(),
                 _ => {
                     self.report_token(ParseError::Unknown);
@@ -149,6 +150,35 @@ impl<'tokens> Parser<'tokens> {
         Ok(())
     }
 
+    fn build_expose_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(ExposeDecl);
+
+        if self.token_next_match(Expose, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::Unknown);
+            return Err(builder);
+        }
+
+        if self.token_next_match(Identifier, builder) {
+            self.consume_blanks(builder);
+        } else {
+            self.report_token(ParseError::ExpectIdent);
+        }
+
+        if self.token_next_match(As, builder) {
+            self.consume_blanks(builder);
+            if self.token_next_match(Identifier, builder) {
+                self.consume_blanks(builder);
+            } else {
+                self.report_token(ParseError::ExpectIdent);
+            }
+        }
+
+        self.consume_semicolon_decl(builder);
+        Ok(())
+    }
+
     fn build_struct<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(StructDecl);
 
@@ -193,7 +223,7 @@ impl<'tokens> Parser<'tokens> {
                             Fun => self.build_fun(builder),
                             Struct => self.build_struct(builder),
                             Import => todo!(),
-                            Expose => todo!(),
+                            Expose => self.build_expose_decl(builder),
                             Identifier => self.build_struct_field(builder), // TODO: recover statement in this case
                             RightBrace => break,
                             _ => {
@@ -209,7 +239,7 @@ impl<'tokens> Parser<'tokens> {
                 Fun => self.build_fun(builder),
                 Struct => self.build_struct(builder),
                 Import => todo!(),
-                Expose => todo!(),
+                Expose => self.build_expose_decl(builder),
                 Identifier => self.build_struct_field(builder), // TODO: recover statement in that case
                 RightBrace => break,
                 _ => {
@@ -470,8 +500,8 @@ impl<'tokens> Parser<'tokens> {
     fn token_next_match(&mut self, kind: SyntaxKind, builder: &Builder) -> bool {
         if let Some(token) = self.tokens.peek() {
             if token.t == kind {
-                let token = self.tokens.advance().unwrap();
                 self.add_token(token, builder);
+                self.tokens.advance();
                 true
             } else {
                 false
