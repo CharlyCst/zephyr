@@ -1,6 +1,6 @@
 //! Parser
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use rowan::GreenNodeBuilder;
 
@@ -14,6 +14,8 @@ use crate::diagnostics::Diagnostics;
 /// A node builder, used to build the syntax tree.
 pub struct Builder<'cache> {
     inner: RefCell<GreenNodeBuilder<'cache>>,
+    is_buffering: Cell<bool>,
+    buffer: RefCell<Vec<(SyntaxKind, String)>>,
 }
 
 /// A note context. Creating a context starts a new node and while the context is alive all the new
@@ -59,7 +61,7 @@ impl<'tokens> Parser<'tokens> {
             let err = match token.t {
                 Standalone | Runtime | Module => self.build_module_decl(builder),
                 Pub => {
-                    let _node_ctx = builder.start_node(PubDecl);
+                    builder.start_buffering();
                     self.add_token(token, builder);
                     self.tokens.advance();
                     self.consume_blanks(builder);
@@ -213,7 +215,7 @@ impl<'tokens> Parser<'tokens> {
         while let Some(token) = self.tokens.peek() {
             let err = match token.t {
                 Pub => {
-                    let _node_ctx = builder.start_node(PubDecl);
+                    builder.start_buffering();
                     self.add_token(token, builder);
                     self.tokens.advance();
                     self.consume_blanks(builder);
@@ -561,11 +563,20 @@ impl<'cache> Builder<'cache> {
     pub fn new() -> Self {
         Self {
             inner: RefCell::new(GreenNodeBuilder::new()),
+            is_buffering: Cell::new(false),
+            buffer: RefCell::new(Vec::new()),
         }
     }
 
     pub fn start_node<'a>(&'a self, kind: SyntaxKind) -> NodeContext<'a, 'cache> {
-        self.inner.borrow_mut().start_node(kind.into());
+        let mut inner = self.inner.borrow_mut();
+        inner.start_node(kind.into());
+        if self.is_buffering.get() {
+            self.is_buffering.set(false);
+            for (kind, text) in self.buffer.borrow_mut().drain(..) {
+                inner.token(kind.into(), &text);
+            }
+        }
         NodeContext { builder: &self }
     }
 
@@ -579,8 +590,19 @@ impl<'cache> Builder<'cache> {
 
     pub fn token(&self, kind: SyntaxKind, text: &str) {
         if kind != SemiColon {
-            self.inner.borrow_mut().token(kind.into(), text);
+            if self.is_buffering.get() {
+                // TODO: we can do better than cloning the string here...
+                self.buffer.borrow_mut().push((kind, text.to_owned()));
+            } else {
+                self.inner.borrow_mut().token(kind.into(), text);
+            }
         }
+    }
+
+    /// Enter buffering mode, all tokens added are buffered until a new node is started, at which
+    /// points the buffered tokens are moved into that node.
+    pub fn start_buffering(&self) {
+        self.is_buffering.set(true)
     }
 }
 
