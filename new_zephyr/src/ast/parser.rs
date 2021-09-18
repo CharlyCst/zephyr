@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 
 use rowan::GreenNodeBuilder;
 
-use super::diagnostics::ParseError;
+use super::diagnostics::ParseError as Error;
 use super::syntax::SyntaxKind;
 use super::syntax::SyntaxKind::*;
 use super::syntax::SyntaxTree;
@@ -68,11 +68,12 @@ impl<'tokens> Parser<'tokens> {
                     if let Some(token) = self.tokens.peek() {
                         match token.t {
                             Use => self.build_use_decl(builder),
-                            Fun => self.build_fun(builder),
-                            Struct => self.build_struct(builder),
+                            Fun => self.build_fun_decl(builder),
+                            Struct => self.build_struct_decl(builder),
                             Expose => self.build_expose_decl(builder),
+                            From => self.build_import_decl(builder),
                             _ => {
-                                self.report_token(ParseError::Unknown);
+                                self.report_token(Error::Unknown);
                                 Err(builder)
                             }
                         }
@@ -81,12 +82,12 @@ impl<'tokens> Parser<'tokens> {
                     }
                 }
                 Use => self.build_use_decl(builder),
-                Fun => self.build_fun(builder),
-                Struct => self.build_struct(builder),
+                Fun => self.build_fun_decl(builder),
+                Struct => self.build_struct_decl(builder),
                 Expose => self.build_expose_decl(builder),
-                Import => todo!(),
+                From => self.build_import_decl(builder),
                 _ => {
-                    self.report_token(ParseError::Unknown);
+                    self.report_token(Error::Unknown);
                     Err(builder)
                 }
             };
@@ -97,22 +98,16 @@ impl<'tokens> Parser<'tokens> {
     fn build_module_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(ModDecl);
 
-        if self.token_next_match(Standalone, builder) {
-            self.consume_blanks(builder);
-        }
-        if self.token_next_match(Runtime, builder) {
-            self.consume_blanks(builder);
-        }
-        if self.token_next_match(Module, builder) {
-            self.consume_blanks(builder);
-            if !self.token_next_match(Identifier, builder) {
-                self.report_token(ParseError::ModDeclMissIdent);
+        self.next_match(Standalone, builder);
+        self.next_match(Runtime, builder);
+        if self.next_match(Module, builder) {
+            if !self.next_match(Identifier, builder) {
+                self.report_token(Error::ModDeclMissIdent);
             }
         } else {
-            self.report_token(ParseError::BadModDecl);
+            self.report_token(Error::BadModDecl);
         }
 
-        self.consume_blanks(builder);
         self.consume_semicolon_decl(builder);
         Ok(())
     }
@@ -120,98 +115,85 @@ impl<'tokens> Parser<'tokens> {
     fn build_use_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(UseDecl);
 
-        // "pub"
-        if self.token_next_match(Pub, builder) {
-            self.consume_blanks(builder);
-        }
-
-        // "use"
-        if self.token_next_match(Use, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectUseDecl);
-            return Err(builder);
-        }
+        self.next_match(Pub, builder);
+        self.next_match_or_repport(Use, Error::ExpectUseDecl, builder)?;
 
         // module path
         let err = self.build_module_path(builder);
         self.recover_decl(err)?;
         self.consume_blanks(builder);
 
-        // "as"
-        if self.token_next_match(As, builder) {
-            self.consume_blanks(builder);
-            if !self.token_next_match(Identifier, builder) {
-                self.report_token(ParseError::ExpectIdent);
-                return Err(builder);
-            }
-            self.consume_blanks(builder);
-        }
-
+        self.build_optionnal_as(builder)?;
         self.consume_semicolon_decl(builder);
         Ok(())
+    }
+
+    fn build_import_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(ImportDecl);
+
+        self.next_match(Pub, builder);
+        self.next_match_or_repport(From, Error::Unknown, builder)?;
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)
+            .ok();
+        self.next_match_or_repport(Import, Error::Internal, builder)
+            .ok();
+        self.build_import_block(builder)?;
+        self.consume_semicolon_decl(builder);
+        Ok(())
+    }
+
+    fn build_import_block<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(ImportBlock);
+
+        self.next_match_or_repport(LeftBrace, Error::ExpectLeftBrace, builder)
+            .ok();
+        while let Some(token) = self.tokens.peek() {
+            let err = match token.t {
+                Pub | Fun => self.build_import_item(builder),
+                RightBrace => break,
+                _ => {
+                    self.report_token(Error::ExpectRightBrace);
+                    Err(builder)
+                }
+            };
+            self.recover_decl(err)?;
+        }
+        self.next_match_or_repport(RightBrace, Error::ExpectRightBrace, builder)?;
+        Ok(())
+    }
+
+    fn build_import_item<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(ImportItem);
+
+        self.next_match(Pub, builder);
+        self.build_prototype(builder)?;
+        self.consume_semicolon_decl(builder);
+        self.build_optionnal_as(builder)
     }
 
     fn build_expose_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(ExposeDecl);
 
-        if self.token_next_match(Expose, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::Unknown);
-            return Err(builder);
-        }
-
-        if self.token_next_match(Identifier, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectIdent);
-        }
-
-        if self.token_next_match(As, builder) {
-            self.consume_blanks(builder);
-            if self.token_next_match(Identifier, builder) {
-                self.consume_blanks(builder);
-            } else {
-                self.report_token(ParseError::ExpectIdent);
-            }
-        }
-
+        self.next_match_or_repport(Expose, Error::Unknown, builder)?;
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)
+            .ok();
+        self.build_optionnal_as(builder)?;
         self.consume_semicolon_decl(builder);
         Ok(())
     }
 
-    fn build_struct<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+    fn build_struct_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(StructDecl);
 
-        // "pub"
-        if self.token_next_match(Pub, builder) {
-            self.consume_blanks(builder);
-        }
-
-        // "struct"
-        if self.token_next_match(Struct, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectUseDecl);
-            return Err(builder);
-        }
-
-        // Identifier
-        if self.token_next_match(Identifier, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectIdent);
-        }
+        self.next_match(Pub, builder);
+        self.next_match_or_repport(Struct, Error::ExpectUseDecl, builder)?;
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)
+            .ok();
 
         // Block start
-        if self.token_next_match(LeftBrace, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectLeftBrace);
-        }
+        self.next_match_or_repport(LeftBrace, Error::ExpectLeftBrace, builder)
+            .ok();
 
-        // TODO
         while let Some(token) = self.tokens.peek() {
             let err = match token.t {
                 Pub => {
@@ -222,14 +204,14 @@ impl<'tokens> Parser<'tokens> {
                     if let Some(token) = self.tokens.peek() {
                         match token.t {
                             Use => self.build_use_decl(builder),
-                            Fun => self.build_fun(builder),
-                            Struct => self.build_struct(builder),
-                            Import => todo!(),
-                            Expose => self.build_expose_decl(builder),
+                            Fun => self.build_fun_decl(builder),
+                            From => self.build_import_decl(builder),
+                            Expose => self.build_expose_decl(builder), // TODO: public expose are not allowed
+                            Struct => self.build_struct_decl(builder),
                             Identifier => self.build_struct_field(builder), // TODO: recover statement in this case
                             RightBrace => break,
                             _ => {
-                                self.report_token(ParseError::Unknown);
+                                self.report_token(Error::Unknown);
                                 Err(builder)
                             }
                         }
@@ -238,14 +220,14 @@ impl<'tokens> Parser<'tokens> {
                     }
                 }
                 Use => self.build_use_decl(builder),
-                Fun => self.build_fun(builder),
-                Struct => self.build_struct(builder),
-                Import => todo!(),
+                Fun => self.build_fun_decl(builder),
+                From => self.build_import_decl(builder),
+                Struct => self.build_struct_decl(builder),
                 Expose => self.build_expose_decl(builder),
                 Identifier => self.build_struct_field(builder), // TODO: recover statement in that case
                 RightBrace => break,
                 _ => {
-                    self.report_token(ParseError::Unknown);
+                    self.report_token(Error::Unknown);
                     Err(builder)
                 }
             };
@@ -254,46 +236,25 @@ impl<'tokens> Parser<'tokens> {
         }
 
         // Block end
-        if self.token_next_match(RightBrace, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectRightBrace);
-            return Err(builder);
-        }
+        self.next_match_or_repport(RightBrace, Error::ExpectRightBrace, builder)?;
         self.consume_semicolon_decl(builder);
-
         Ok(())
     }
 
     fn build_struct_field<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(StructField);
 
-        if self.token_next_match(Identifier, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectIdent);
-            return Err(builder);
-        }
-
-        if self.token_next_match(Colon, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectColon);
-            return Err(builder);
-        }
-
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)?;
+        self.next_match_or_repport(Colon, Error::ExpectColon, builder)?;
         self.build_type(builder)?;
         self.consume_semicolon_decl(builder);
         Ok(())
     }
 
-    fn build_fun<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+    fn build_fun_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(Fun);
 
-        // "pub"
-        if self.token_next_match(Pub, builder) {
-            self.consume_blanks(builder);
-        }
+        self.next_match(Pub, builder);
 
         // prototype
         let err = self.build_prototype(builder);
@@ -312,68 +273,37 @@ impl<'tokens> Parser<'tokens> {
     fn build_prototype<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(Prototype);
 
-        // "fun"
-        if self.token_next_match(Fun, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectFunKeyword);
-            return Err(builder);
-        }
+        self.next_match_or_repport(Fun, Error::ExpectFunKeyword, builder)?;
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)
+            .ok();
+        self.build_parameter_list(builder)?;
 
-        // identifier
-        if self.token_next_match(Identifier, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectIdent);
+        if self.next_match(Colon, builder) {
+            self.build_type(builder)?;
         }
+        Ok(())
+    }
 
-        if self.token_next_match(LeftPar, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectLeftPar);
-            return Err(builder);
-        }
-
+    fn build_parameter_list<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let _node_ctx = builder.start_node(ParameterList);
+        self.next_match_or_repport(LeftPar, Error::ExpectLeftPar, builder)?;
         let mut first_param = true;
-        while !self.token_next_match(RightPar, builder) {
+        while !self.next_match(RightPar, builder) {
             if !first_param {
-                if self.token_next_match(Comma, builder) {
-                    self.consume_blanks(builder);
-                } else {
-                    self.report_token(ParseError::ExpectLeftPar);
-                    return Err(builder);
-                }
+                self.next_match_or_repport(Comma, Error::ExpectLeftPar, builder)?;
             }
             self.build_parameter(builder)?;
             self.consume_blanks(builder);
             first_param = false;
         }
-
-        if self.token_next_match(Colon, builder) {
-            self.consume_blanks(builder);
-            self.build_type(builder)?;
-        }
-
         Ok(())
     }
 
     fn build_parameter<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(Parameter);
 
-        if self.token_next_match(Identifier, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectIdent);
-            return Err(builder);
-        }
-
-        if self.token_next_match(Colon, builder) {
-            self.consume_blanks(builder);
-        } else {
-            self.report_token(ParseError::ExpectIdent);
-            return Err(builder);
-        }
-
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)?;
+        self.next_match_or_repport(Colon, Error::ExpectIdent, builder)?;
         self.build_type(builder)?;
         Ok(())
     }
@@ -387,7 +317,7 @@ impl<'tokens> Parser<'tokens> {
             self.consume_token(builder);
             self.consume_blanks(builder);
             self.build_type(builder)?;
-            while self.token_next_match(Comma, builder) {
+            while self.next_match(Comma, builder) {
                 self.consume_blanks(builder);
                 if let Some(Token { t: RightPar, .. }) = self.tokens.peek() {
                     break;
@@ -395,10 +325,7 @@ impl<'tokens> Parser<'tokens> {
                 self.build_type(builder)?;
             }
             self.consume_blanks(builder);
-            if !self.token_next_match(RightPar, builder) {
-                self.report_token(ParseError::MissingClosingPar);
-                return Err(builder);
-            }
+            self.next_match_or_repport(RightPar, Error::MissingClosingPar, builder)?;
         } else {
             // Path
             self.build_path(builder)?
@@ -411,19 +338,12 @@ impl<'tokens> Parser<'tokens> {
         let _node_ctx = builder.start_node(Path);
 
         // First identifier
-        if !self.token_next_match(Identifier, builder) {
-            self.report_token(ParseError::ExpectIdent);
-            return Err(builder);
-        }
-        self.consume_blanks(builder);
+        self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)?;
 
         // Optionnal path separated by '.' tokens
-        while self.token_next_match(Dot, builder) {
-            if !self.token_next_match(Identifier, builder) {
-                self.report_token(ParseError::ExpectPath); // TODO: could be more precise
-                return Err(builder);
-            }
-            self.consume_blanks(builder);
+        while self.next_match(Dot, builder) {
+            // TODO: error can be more precise
+            self.next_match_or_repport(Identifier, Error::ExpectPath, builder)?;
         }
 
         Ok(())
@@ -433,35 +353,37 @@ impl<'tokens> Parser<'tokens> {
         let _node_ctx = builder.start_node(ModPath);
 
         // First identifier
-        if !self.token_next_match(Identifier, builder) {
-            self.report_token(ParseError::ExpectModPath);
-            return Err(builder);
-        }
-        self.consume_blanks(builder);
+        self.next_match_or_repport(Identifier, Error::ExpectModPath, builder)?;
 
         // Optionnal path separated by '::' tokens
-        while self.token_next_match(ColonColon, builder) {
-            if !self.token_next_match(Identifier, builder) {
-                self.report_token(ParseError::ExpectModPath); // TODO: could be more precise
-                return Err(builder);
-            }
-            self.consume_blanks(builder);
+        while self.next_match(ColonColon, builder) {
+            // TODO: error could be more precise
+            self.next_match_or_repport(Identifier, Error::ExpectModPath, builder)?;
         }
 
         Ok(())
     }
 
+    /// Try to build an "as" node if and only if the next token is the "as" keyword. Do nothing
+    /// otherwise.
+    fn build_optionnal_as<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        if let Some(Token { t: As, .. }) = self.tokens.peek() {
+            let _node_ctx = builder.start_node(AsIdent);
+            self.next_match_or_repport(As, Error::Internal, builder)?;
+            self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)
+        } else {
+            Ok(())
+        }
+    }
+
     fn build_block<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(Block);
 
-        if !self.token_next_match(LeftBrace, builder) {
-            self.report_token(ParseError::ExpectLeftBrace);
-            return Err(builder);
-        }
-        self.consume_blanks(builder);
+        self.next_match_or_repport(LeftBrace, Error::ExpectLeftBrace, builder)?;
+
         // TODO: parse statements
-        if !self.token_next_match(RightBrace, builder) {
-            self.report_token(ParseError::Unknown);
+        if !self.next_match(RightBrace, builder) {
+            self.report_token(Error::Unknown);
             return Err(builder);
         }
         Ok(())
@@ -491,25 +413,42 @@ impl<'tokens> Parser<'tokens> {
     /// Consumes a semi-colon, raise an error and synchronize up to the next declaration if none is
     /// found.
     fn consume_semicolon_decl(&mut self, builder: &Builder) {
-        if !self.token_next_match(SemiColon, builder) {
-            self.report_token(ParseError::MissingSemicolon);
+        if !self.next_match(SemiColon, builder) {
+            self.report_token(Error::MissingSemicolon);
             self.synchronize_declaration(builder);
         }
     }
 
-    /// Consumes the next token by adding it to the current node and return true if it matches the
-    /// given kind. Return false otherwise.
-    fn token_next_match(&mut self, kind: SyntaxKind, builder: &Builder) -> bool {
+    /// Consumes the next token and following blanks by adding them to the current node and return
+    /// true if it matches the given kind. Return false otherwise.
+    fn next_match(&mut self, kind: SyntaxKind, builder: &Builder) -> bool {
         if let Some(token) = self.tokens.peek() {
             if token.t == kind {
                 self.add_token(token, builder);
                 self.tokens.advance();
+                self.consume_blanks(builder);
                 true
             } else {
                 false
             }
         } else {
             false
+        }
+    }
+
+    /// Consumes the next token and following blanks by adding them to the current node if it
+    /// matches the given kind, raise an error otherwise.
+    fn next_match_or_repport<'a, 'b>(
+        &mut self,
+        kind: SyntaxKind,
+        error: Error,
+        builder: &'a Builder<'b>,
+    ) -> ParserResult<'a, 'b> {
+        if self.next_match(kind, builder) {
+            Ok(())
+        } else {
+            self.report_token(error);
+            Err(builder)
         }
     }
 
@@ -525,14 +464,15 @@ impl<'tokens> Parser<'tokens> {
     fn synchronize_declaration(&mut self, builder: &Builder) {
         while let Some(token) = self.tokens.peek() {
             match token.t {
-                Standalone | Runtime | Module | Pub | Use | Expose | Fun | Struct | Import => break,
+                Standalone | Runtime | Module | Pub | Use | Expose | Fun | Struct | Import
+                | From => break,
                 _ => self.consume_token(builder),
             }
         }
     }
 
     /// Report an error for the current token.
-    fn report_token(&mut self, error: ParseError) {
+    fn report_token(&mut self, error: Error) {
         if let Some(token) = self.tokens.peek() {
             self.err.report(error, token.loc());
         } else {

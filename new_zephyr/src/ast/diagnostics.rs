@@ -34,6 +34,7 @@ impl Error for ScanError {
 #[allow(dead_code)]
 pub enum ParseError {
     Unknown,
+    Internal,
     BadModDecl,
     ModDeclMissIdent,
     MissingSemicolon,
@@ -47,6 +48,7 @@ pub enum ParseError {
     ExpectLeftBrace,
     ExpectRightBrace,
     ExpectFunKeyword,
+    ExpectImportKeyword,
     MissingClosingPar,
 }
 
@@ -54,6 +56,7 @@ impl Error for ParseError {
     fn message(&self) -> String {
         match self {
             Self::Unknown => "A parsing error occured".into(),
+            Self::Internal => "An internal error occured during parsing".into(),
             Self::BadModDecl => "Invalid module declaration".into(),
             Self::ModDeclMissIdent => "Expected a module identifier".into(),
             Self::MissingSemicolon => "Expected a statement ender, ty adding a line break".into(),
@@ -67,6 +70,7 @@ impl Error for ParseError {
             Self::ExpectLeftBrace => "Expect an opening brace '{'".into(),
             Self::ExpectRightBrace => "Expect a closing brace '}'".into(),
             Self::ExpectFunKeyword => "Expect the 'fun' keyword for defining a function".into(),
+            Self::ExpectImportKeyword => "Expect the 'import' keyword for defining imported items".into(),
             Self::MissingClosingPar => "Missing closing parenthesis ')'".into(),
         }
     }

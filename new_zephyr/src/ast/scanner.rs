@@ -35,17 +35,14 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn scan(mut self) -> (TokenStream<'a>, Diagnostics) {
-        while !self.is_at_end() {
-            self.scan_token();
-        }
+        while self.scan_token() {}
 
-        self.add_token(EOF);
         let token_stream = TokenStream::new(self.tokens, self.source);
         (token_stream, self.err)
     }
 
-    /// Scan the next token, advancing the cursor.
-    fn scan_token(&mut self) {
+    /// Scan the next token, advancing the cursor. Return false when running out of tokens.
+    fn scan_token(&mut self) -> bool {
         let token = match self.advance() {
             Some(c) => match c {
                 // Single character tokens
@@ -145,9 +142,10 @@ impl<'a> Scanner<'a> {
                     }
                 }
             },
-            None => EOF,
+            None => return false,
         };
         self.add_token(token);
+        true
     }
 
     // —————————————————————————————— Identifiers ——————————————————————————————— //
@@ -338,11 +336,6 @@ impl<'a> Scanner<'a> {
     /// Returns the next character and its index *without* advancing the iterator.
     fn peek_idx(&mut self) -> Option<u32> {
         self.chars.peek().map(|(idx, _)| idx as u32)
-    }
-
-    /// Returns `true` if end of the source was reached.
-    fn is_at_end(&mut self) -> bool {
-        self.peek().is_none()
     }
 
     // ———————————————————————————— Location getters ———————————————————————————— //

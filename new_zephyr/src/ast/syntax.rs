@@ -25,10 +25,14 @@ pub enum SyntaxKind {
     Path,
     ModPath,
     Prototype,
+    ParameterList,
     Parameter,
     Type,
+    AsIdent,
     TupleType,
     Block,
+    ImportBlock,
+    ImportItem,
     StructField,
 
     // Statements
@@ -108,7 +112,6 @@ pub enum SyntaxKind {
     // Other
     CommentString,
     SemiColon,
-    EOF,
     Error,
     NewLine,
     Whitespace,

@@ -23,6 +23,10 @@ runtime module demo
 use std::str as string
 expose bar as foo
 
+from wasi import {
+    fun write(): i32
+}
+
 /// A super function!
 pub fun bar(a: i32, b: (f32, f64,)) {}
 

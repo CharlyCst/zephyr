@@ -90,7 +90,6 @@ pub mod token_kind {
         Var,
         While,
         Whitespace,
-        EOF,
     };
 }
 

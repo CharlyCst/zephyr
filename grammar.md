@@ -19,7 +19,7 @@ struct         = "pub"? "runtime"? "struct" IDENTIFIER struct_block ";"
 interface      = "pub"? "interface" IDENTIFIER interface_block ";"
 
 import_block   = "{" import* "}"
-import         = "pub"? prototype ("as" IDENTIFIER) ";"
+import         = "pub"? prototype ("as" IDENTIFIER)? ";"
 
 struct_block   = "{" struct_field | declaration "}"
 struct_field   = "pub"? IDENTIFIER ":" type ";"
