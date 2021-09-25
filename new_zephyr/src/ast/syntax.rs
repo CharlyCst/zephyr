@@ -113,12 +113,10 @@ pub enum SyntaxKind {
     While,
 
     // Other
-    CommentString,
     SemiColon,
     Error,
     EOF,
-    NewLine,
-    Whitespace,
+    Blank,
 
     // The module root:
     Root,

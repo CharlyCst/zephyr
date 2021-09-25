@@ -111,7 +111,7 @@ impl<'a> Scanner<'a> {
                 '/' => {
                     if self.next_match('/') {
                         self.consume_comment();
-                        CommentString
+                        Blank
                     } else {
                         Slash
                     }
@@ -120,11 +120,11 @@ impl<'a> Scanner<'a> {
                 // Whitespaces and end of line
                 '\n' => {
                     self.new_line();
-                    NewLine
+                    Blank
                 }
                 ' ' | '\t' | '\r' => {
-                    self.consume_whitespace();
-                    Whitespace
+                    self.consume_whitespaces();
+                    Blank
                 }
 
                 // Advanced logic for multi-character tokens
@@ -247,12 +247,17 @@ impl<'a> Scanner<'a> {
     fn add_token(&mut self, token: SyntaxKind) {
         let end = self.get_token_end();
 
-        self.check_stmt_ender(&token);
-        self.tokens.push(Token {
-            t: token,
-            start: self.start,
-            end,
-        });
+        if token == Blank && self.tokens.len() > 0 && self.tokens.last().unwrap().t == Blank {
+            // Last token is also a whitespace, merge both!
+            self.tokens.last_mut().unwrap().end = end;
+        } else {
+            self.check_stmt_ender(&token);
+            self.tokens.push(Token {
+                t: token,
+                start: self.start,
+                end,
+            });
+        }
 
         // Set start location of the next token
         self.start = end;
@@ -267,6 +272,7 @@ impl<'a> Scanner<'a> {
                 start: idx,
                 end: idx,
             });
+            self.stmt_ender = false;
         }
     }
 
@@ -280,12 +286,14 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn consume_whitespace(&mut self) {
+    /// Consumes whitespace characters.
+    fn consume_whitespaces(&mut self) {
         while let Some(c) = self.peek() {
-            if c == '\n' || !c.is_whitespace() {
-                break;
+            if c.is_whitespace() {
+                self.advance();
+            } else {
+                return;
             }
-            self.advance();
         }
     }
 
@@ -306,7 +314,7 @@ impl<'a> Scanner<'a> {
                 self.parenthesis_count += 1;
                 false
             }
-            Whitespace | CommentString => self.stmt_ender,
+            Blank => self.stmt_ender,
             _ => false,
         };
         self.stmt_ender = candidate && self.parenthesis_count <= 0

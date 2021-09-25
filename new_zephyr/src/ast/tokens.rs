@@ -43,12 +43,13 @@ pub mod token_kind {
 
         // Two characters
         BangEqual,
+        Blank,
+
         Colon,
         ColonColon,
         Comma,
 
         // Other
-        CommentString,
         Dot,
         Else,
         Equal,
@@ -76,7 +77,6 @@ pub mod token_kind {
         Let,
         Minus,
         Module,
-        NewLine,
         NumberLit,
         Or,
         OrOr,
@@ -97,10 +97,8 @@ pub mod token_kind {
         Use,
         Var,
         While,
-        Whitespace,
-
         // Special
-        EOF
+        EOF,
     };
 }
 
@@ -152,10 +150,13 @@ impl<'a> TokenStream<'a> {
     }
 
     pub fn peekpeek(&mut self) -> Token {
-        self.tokens.get(self.cursor + 1).cloned().unwrap_or_else(|| {
-            self.is_at_end = true;
-            Token::eof()
-        })
+        self.tokens
+            .get(self.cursor + 1)
+            .cloned()
+            .unwrap_or_else(|| {
+                self.is_at_end = true;
+                Token::eof()
+            })
     }
 
     pub fn text(&self, start: u32, end: u32) -> &'a str {

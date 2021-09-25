@@ -432,7 +432,7 @@ impl<'tokens> Parser<'tokens> {
         loop {
             let token = self.tokens.peek();
             match token.t {
-                Whitespace | NewLine | CommentString => {
+                Blank => {
                     self.consume_token(builder);
                 }
                 _ => return,
