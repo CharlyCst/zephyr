@@ -21,6 +21,14 @@ impl Token {
             end: self.end,
         }
     }
+
+    fn eof() -> Token {
+        Token {
+            t: SyntaxKind::EOF,
+            start: 0,
+            end: 0,
+        }
+    }
 }
 
 /// The list of tokens
@@ -90,12 +98,16 @@ pub mod token_kind {
         Var,
         While,
         Whitespace,
+
+        // Special
+        EOF
     };
 }
 
 pub struct TokenStream<'a> {
     tokens: Vec<Token>,
     cursor: usize,
+    is_at_end: bool,
     source: &'a str,
 }
 
@@ -105,6 +117,7 @@ impl<'a> TokenStream<'a> {
             tokens,
             source,
             cursor: 0,
+            is_at_end: false,
         }
     }
 
@@ -116,22 +129,33 @@ impl<'a> TokenStream<'a> {
         self.source
     }
 
-    pub fn advance(&mut self) -> Option<Token> {
+    pub fn is_at_end(&self) -> bool {
+        self.is_at_end
+    }
+
+    pub fn advance(&mut self) -> Token {
         let idx = self.cursor;
         if idx >= self.tokens.len() {
-            None
+            self.is_at_end = true;
+            Token::eof()
         } else {
             self.cursor += 1;
-            Some(self.tokens[idx])
+            self.tokens[idx]
         }
     }
 
-    pub fn peek(&self) -> Option<Token> {
-        self.tokens.get(self.cursor).cloned()
+    pub fn peek(&mut self) -> Token {
+        self.tokens.get(self.cursor).cloned().unwrap_or_else(|| {
+            self.is_at_end = true;
+            Token::eof()
+        })
     }
 
-    pub fn peekpeek(&self) -> Option<Token> {
-        self.tokens.get(self.cursor + 1).cloned()
+    pub fn peekpeek(&mut self) -> Token {
+        self.tokens.get(self.cursor + 1).cloned().unwrap_or_else(|| {
+            self.is_at_end = true;
+            Token::eof()
+        })
     }
 
     pub fn text(&self, start: u32, end: u32) -> &'a str {

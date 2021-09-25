@@ -2,6 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 
+use rowan::Checkpoint;
 use rowan::GreenNodeBuilder;
 
 use super::diagnostics::ParseError as Error;
@@ -44,7 +45,7 @@ impl<'tokens> Parser<'tokens> {
         {
             let _node_ctx = builder.start_node(Root);
 
-            while let Some(_) = self.tokens.peek() {
+            while !self.tokens.is_at_end() {
                 self.parse_decl(&builder);
             }
         }
@@ -57,42 +58,38 @@ impl<'tokens> Parser<'tokens> {
     /// Tries to parse a declaration
     fn parse_decl(&mut self, builder: &Builder) {
         self.consume_blanks(builder);
-        if let Some(token) = self.tokens.peek() {
-            let err = match token.t {
-                Standalone | Runtime | Module => self.build_module_decl(builder),
-                Pub => {
-                    builder.start_buffering();
-                    self.add_token(token, builder);
-                    self.tokens.advance();
-                    self.consume_blanks(builder);
-                    if let Some(token) = self.tokens.peek() {
-                        match token.t {
-                            Use => self.build_use_decl(builder),
-                            Fun => self.build_fun_decl(builder),
-                            Struct => self.build_struct_decl(builder),
-                            Expose => self.build_expose_decl(builder),
-                            From => self.build_import_decl(builder),
-                            _ => {
-                                self.report_token(Error::Unknown);
-                                Err(builder)
-                            }
-                        }
-                    } else {
-                        Ok(())
+        let token = self.tokens.peek();
+        let err = match token.t {
+            Standalone | Runtime | Module => self.build_module_decl(builder),
+            Pub => {
+                builder.start_buffering();
+                self.add_token(token, builder);
+                self.tokens.advance();
+                self.consume_blanks(builder);
+                let token = self.tokens.peek();
+                match token.t {
+                    Use => self.build_use_decl(builder),
+                    Fun => self.build_fun_decl(builder),
+                    Struct => self.build_struct_decl(builder),
+                    Expose => self.build_expose_decl(builder),
+                    From => self.build_import_decl(builder),
+                    _ => {
+                        self.report_token(Error::Unknown);
+                        Err(builder)
                     }
                 }
-                Use => self.build_use_decl(builder),
-                Fun => self.build_fun_decl(builder),
-                Struct => self.build_struct_decl(builder),
-                Expose => self.build_expose_decl(builder),
-                From => self.build_import_decl(builder),
-                _ => {
-                    self.report_token(Error::Unknown);
-                    Err(builder)
-                }
-            };
-            self.recover_decl(err).ok();
-        }
+            }
+            Use => self.build_use_decl(builder),
+            Fun => self.build_fun_decl(builder),
+            Struct => self.build_struct_decl(builder),
+            Expose => self.build_expose_decl(builder),
+            From => self.build_import_decl(builder),
+            _ => {
+                self.report_token(Error::Unknown);
+                Err(builder)
+            }
+        };
+        self.recover_decl(err).ok();
     }
 
     fn build_module_decl<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
@@ -147,7 +144,8 @@ impl<'tokens> Parser<'tokens> {
 
         self.next_match_or_repport(LeftBrace, Error::ExpectLeftBrace, builder)
             .ok();
-        while let Some(token) = self.tokens.peek() {
+        loop {
+            let token = self.tokens.peek();
             let err = match token.t {
                 Pub | Fun => self.build_import_item(builder),
                 RightBrace => break,
@@ -194,29 +192,27 @@ impl<'tokens> Parser<'tokens> {
         self.next_match_or_repport(LeftBrace, Error::ExpectLeftBrace, builder)
             .ok();
 
-        while let Some(token) = self.tokens.peek() {
+        loop {
+            let token = self.tokens.peek();
             let err = match token.t {
                 Pub => {
                     builder.start_buffering();
                     self.add_token(token, builder);
                     self.tokens.advance();
                     self.consume_blanks(builder);
-                    if let Some(token) = self.tokens.peek() {
-                        match token.t {
-                            Use => self.build_use_decl(builder),
-                            Fun => self.build_fun_decl(builder),
-                            From => self.build_import_decl(builder),
-                            Expose => self.build_expose_decl(builder), // TODO: public expose are not allowed
-                            Struct => self.build_struct_decl(builder),
-                            Identifier => self.build_struct_field(builder), // TODO: recover statement in this case
-                            RightBrace => break,
-                            _ => {
-                                self.report_token(Error::Unknown);
-                                Err(builder)
-                            }
+                    let token = self.tokens.peek();
+                    match token.t {
+                        Use => self.build_use_decl(builder),
+                        Fun => self.build_fun_decl(builder),
+                        From => self.build_import_decl(builder),
+                        Expose => self.build_expose_decl(builder), // TODO: public expose are not allowed
+                        Struct => self.build_struct_decl(builder),
+                        Identifier => self.build_struct_field(builder), // TODO: recover statement in this case
+                        RightBrace => break,
+                        _ => {
+                            self.report_token(Error::Unknown);
+                            Err(builder)
                         }
-                    } else {
-                        Err(builder)
                     }
                 }
                 Use => self.build_use_decl(builder),
@@ -311,7 +307,7 @@ impl<'tokens> Parser<'tokens> {
     fn build_type<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
         let _node_ctx = builder.start_node(Type);
 
-        if let Some(Token { t: LeftPar, .. }) = self.tokens.peek() {
+        if self.tokens.peek().t == LeftPar {
             // Tuple type
             let _node_ctx = builder.start_node(TupleType);
             self.consume_token(builder);
@@ -319,7 +315,7 @@ impl<'tokens> Parser<'tokens> {
             self.build_type(builder)?;
             while self.next_match(Comma, builder) {
                 self.consume_blanks(builder);
-                if let Some(Token { t: RightPar, .. }) = self.tokens.peek() {
+                if self.tokens.peek().t == RightPar {
                     break;
                 }
                 self.build_type(builder)?;
@@ -367,7 +363,7 @@ impl<'tokens> Parser<'tokens> {
     /// Try to build an "as" node if and only if the next token is the "as" keyword. Do nothing
     /// otherwise.
     fn build_optionnal_as<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
-        if let Some(Token { t: As, .. }) = self.tokens.peek() {
+        if self.tokens.peek().t == As {
             let _node_ctx = builder.start_node(AsIdent);
             self.next_match_or_repport(As, Error::Internal, builder)?;
             self.next_match_or_repport(Identifier, Error::ExpectIdent, builder)
@@ -389,18 +385,52 @@ impl<'tokens> Parser<'tokens> {
         Ok(())
     }
 
+    fn build_expression<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let checkpoint = builder.checkpoint();
+
+        Ok(())
+    }
+
+    fn build_primary<'a, 'b>(&mut self, builder: &'a Builder<'b>) -> ParserResult<'a, 'b> {
+        let token = self.tokens.peek();
+        match token.t {
+            NumberLit | StringLit | True | False => {
+                self.consume_token(builder);
+                self.consume_blanks(builder);
+            }
+            Identifier => {
+                builder.start_buffering();
+                self.consume_token(builder);
+                self.consume_blanks(builder);
+                // if let Some(token) = self.tokens.peek() && token.t == LeftBrace {
+                //     todo!(); // TODO: struct literal
+                // } else {
+                //     builder.start_node(Identifier);
+                // }
+            }
+            LeftPar => {
+                // TODO: can be either a penrenthesed expression or a tuple
+            }
+            _ => {
+                // TODO: error
+            }
+        }
+
+        todo!();
+    }
+
     // ————————————————————————————————— Utils —————————————————————————————————— //
 
     /// Consumes the next token and add it to the current node.
     fn consume_token(&mut self, builder: &Builder) {
-        if let Some(token) = self.tokens.advance() {
-            self.add_token(token, builder);
-        }
+        let token = self.tokens.advance();
+        self.add_token(token, builder);
     }
 
     /// Consumes whitespaces, new lines and comments by adding them to the current node.
     fn consume_blanks(&mut self, builder: &Builder) {
-        while let Some(token) = self.tokens.peek() {
+        loop {
+            let token = self.tokens.peek();
             match token.t {
                 Whitespace | NewLine | CommentString => {
                     self.consume_token(builder);
@@ -422,15 +452,11 @@ impl<'tokens> Parser<'tokens> {
     /// Consumes the next token and following blanks by adding them to the current node and return
     /// true if it matches the given kind. Return false otherwise.
     fn next_match(&mut self, kind: SyntaxKind, builder: &Builder) -> bool {
-        if let Some(token) = self.tokens.peek() {
-            if token.t == kind {
-                self.add_token(token, builder);
-                self.tokens.advance();
-                self.consume_blanks(builder);
-                true
-            } else {
-                false
-            }
+        if self.tokens.peek().t == kind {
+            let token = self.tokens.advance();
+            self.add_token(token, builder);
+            self.consume_blanks(builder);
+            true
         } else {
             false
         }
@@ -462,10 +488,10 @@ impl<'tokens> Parser<'tokens> {
 
     /// Consumes tokens until the next declaration is found.
     fn synchronize_declaration(&mut self, builder: &Builder) {
-        while let Some(token) = self.tokens.peek() {
-            match token.t {
+        loop {
+            match self.tokens.peek().t {
                 Standalone | Runtime | Module | Pub | Use | Expose | Fun | Struct | Import
-                | From => break,
+                | From | EOF => break,
                 _ => self.consume_token(builder),
             }
         }
@@ -473,7 +499,8 @@ impl<'tokens> Parser<'tokens> {
 
     /// Report an error for the current token.
     fn report_token(&mut self, error: Error) {
-        if let Some(token) = self.tokens.peek() {
+        let token = self.tokens.peek();
+        if token.t != EOF {
             self.err.report(error, token.loc());
         } else {
             self.err.report_no_loc(error);
@@ -518,6 +545,26 @@ impl<'cache> Builder<'cache> {
             }
         }
         NodeContext { builder: &self }
+    }
+
+    pub fn start_node_at<'a>(
+        &'a self,
+        checkpoint: Checkpoint,
+        kind: SyntaxKind,
+    ) -> NodeContext<'a, 'cache> {
+        let mut inner = self.inner.borrow_mut();
+        inner.start_node_at(checkpoint, kind.into());
+        if self.is_buffering.get() {
+            self.is_buffering.set(false);
+            for (kind, text) in self.buffer.borrow_mut().drain(..) {
+                inner.token(kind.into(), &text);
+            }
+        }
+        NodeContext { builder: &self }
+    }
+
+    pub fn checkpoint(&self) -> Checkpoint {
+        self.inner.borrow().checkpoint()
     }
 
     fn finish_node(&self) {

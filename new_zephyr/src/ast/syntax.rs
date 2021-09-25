@@ -35,6 +35,9 @@ pub enum SyntaxKind {
     ImportItem,
     StructField,
 
+    // Expressions
+    Expression,
+
     // Statements
     ExprStmt,
     LetStmt,
@@ -113,6 +116,7 @@ pub enum SyntaxKind {
     CommentString,
     SemiColon,
     Error,
+    EOF,
     NewLine,
     Whitespace,
 
